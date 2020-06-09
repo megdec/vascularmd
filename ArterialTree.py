@@ -2,20 +2,17 @@ import pyvista as pv # Meshing
 from scipy.spatial import KDTree
 
 # Trigonometry functions
-from math import pi, sin, cos, tan, atan, acos, asin, sqrt
+from math import pi
 from numpy.linalg import norm 
 from numpy import dot, cross
 
-# Spline and geometry modules
-from VTgeom import *
-from VTsignal import *
-
+# Plot
 import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
 
 import networkx as nx
-from VTspline import *
 
+from utils import *
 from Bifurcation import Bifurcation
 from Spline import Spline
 
@@ -112,6 +109,8 @@ class ArterialTree:
 		self.__set_topo_graph()
 
 
+
+
 	def __load_file(self, filename):
 
 		"""Converts a centerline file to a graph and set full_graph attribute.
@@ -119,17 +118,16 @@ class ArterialTree:
 		Keyword arguments:
 		filename -- path to centerline file
 		"""
+		
+		if filename[-4:] == ".swc":
+			print('Loading ' + filename[-3:] + ' file...')
+			self._full_graph = self.__swc_to_graph(filename)
 
-		file = np.loadtxt(filename, skiprows=0)
-		self._full_graph = nx.DiGraph()
-
-		for i in range(0, file.shape[0]):
-
-			# Brava database conversion to nii (x, ysize- z, zsize - y)
-			self._full_graph.add_node(int(file[i, 0]), coords=[file[i, 2],  198 - file[i, 4] , 115.9394 + file[i, 3], file[i, 5]])
-
-			if file[i, 6] >= 0:
-				self._full_graph.add_edge(int(file[i, 6]), int(file[i, 0]), coords = [])
+		elif filename[-4:] == ".vtk" or filename[-4:] == ".vtp":
+			print('Loading ' + filename[-3:] + ' file...')
+			self._full_graph = self.__vtk_to_graph(filename)
+		else:
+			raise ValueError("The provided files must be in swc, vtp or vtk format.")
 
 
 
@@ -192,7 +190,7 @@ class ArterialTree:
 			
 			while len(pts) < p:
 				# Linearly interpolate data
-				pts = linearInterpolation4(pts, 1)
+				pts = linear_interpolation(pts, 1)
 
 			clip = [[], []]
 			deriv = [[], []]
@@ -205,9 +203,8 @@ class ArterialTree:
 				clip[1] =  pts[-1]
 				deriv[1] = G.nodes[e[1]]['tangent']
 
-			spl1 = curvatureBoundedSplineApproximation(pts, p, np.mean(np.array(pts)[:,-1]), clip, deriv) 
 			spl = Spline()
-			spl.set_spl(spl1)
+			spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
 			spl.show(False, False, data = pts)
 
 			# Add edges with spline attributes
@@ -240,13 +237,12 @@ class ArterialTree:
 				pts2 = G.edges[e2]['coords']
 
 				# Fit splines from the main branch to the daughter branches
-				spla = curvatureBoundedSplineApproximation(pts0 + pts1, 3, np.mean(np.array(pts0 + pts1)[:,-1])) 
 				spl1 = Spline()
-				spl1.set_spl(spla)
+				spl1.curvature_bounded_approximation(pts0 + pts1, 1) 
 
-				spla = curvatureBoundedSplineApproximation(pts0 + pts2, 3, np.mean(np.array(pts0 + pts2)[:,-1]))
 				spl2 = Spline()
-				spl2.set_spl(spla)
+				spl2.curvature_bounded_approximation(pts0 + pts2, 1) 
+		
 			
 				# Find the separation point between the splines
 				r = np.mean(np.array(pts0)[:,-1])
@@ -408,7 +404,7 @@ class ArterialTree:
 					for i in range(N):
 
 						v = np.array(crsec1[i]) - np.array(G.nodes[e[1]]['coords'][:-1])
-						a = directedAngle(v01, v, tg1)
+						a = directed_angle(v01, v, tg1)
 
 						if abs(a) < abs(min_a):
 							min_a = a
@@ -497,7 +493,7 @@ class ArterialTree:
 
 			if alpha!=None: 
 				# Rotation of the reference vector
-				v = rotateVector(v, tg, theta[i])
+				v = rotate_vector(v, tg, theta[i])
 
 			crsec.append(self.__single_crsec(spl, t[i], v, N))
 
@@ -529,7 +525,7 @@ class ArterialTree:
 
 		nds = []
 		for theta in angle_list:
-			n = rotateVector(v, tg, theta)
+			n = rotate_vector(v, tg, theta)
 			nds.append(spl.project_time_to_surface(n, t).tolist())
 
 		return nds
@@ -951,11 +947,130 @@ class ArterialTree:
 
 
 	#####################################
+	##############  READ  ##############
+	#####################################
+
+
+
+	def __swc_to_graph(self, filename):
+
+		"""Converts a swc centerline file to a graph and set full_graph attribute.
+
+		Keyword arguments:
+		filename -- path to centerline file
+		"""
+
+		file = np.loadtxt(filename, skiprows=0)
+		G = nx.DiGraph()
+
+		for i in range(0, file.shape[0]):
+
+			# Brava database conversion to nii (x, ysize- z, zsize - y)
+			G.add_node(int(file[i, 0]), coords=[file[i, 2],  198 - file[i, 4] , 115.9394 + file[i, 3], file[i, 5]])
+
+			if file[i, 6] >= 0:
+				G.add_edge(int(file[i, 6]), int(file[i, 0]), coords = [])
+
+
+
+	def __vtk_to_graph(self, filename):
+
+
+		""" Converts vmtk centerline to a graph.
+
+		Keyword arguments:
+		filename -- path to vmtk .vtk or .vtp centerline file
+		"""
+
+		G = nx.DiGraph()
+		c = pv.read(filename)
+
+		pts = c.points.tolist()
+		radius = c.point_arrays['MaximumInscribedSphereRadius']
+
+		# Store the different centerlines
+		CL = []
+
+		p0 = pts[0] + [radius[0]]
+		cl = [p0]
+		
+		for i in range(1,len(pts)):
+			p = pts[i] + [radius[i]]
+
+			if i>0 and norm(np.array(p) - np.array(pts[i-1] + [radius[i-1]])) > 20: #p == p0:
+				CL.append(cl)
+				cl = []
+			else:
+				cl.append(p) 
+
+		CL.append(cl)
+
+
+		# Write nodes and edges
+		pts_mem = []
+
+		# Write first centerline
+		k = 0
+		for pt in CL[0]:
+			G.add_node(k, coords=pt)
+
+			if k > 0:
+				G.add_edge(k-1, k, coords = [])
+
+			pts_mem.append(pt)
+			k = k + 1
+
+
+		# Write other centerlines
+		for i in range(1, len(CL)):
+			for j in range(len(CL[i])):
+				p = CL[i][j]
+
+				newcl = True
+				for pts in pts_mem:
+					if norm(np.array(p) - np.array(pts)) < 1:
+						newcl = False
+
+				if newcl:
+					j = j - 10
+					p = CL[i][j]
+					break
+					
+
+			# Find closest point from p and write edge
+			min_d = 1000
+			for g in range(len(pts_mem)):
+				d = norm(np.array(p)[:-1] - np.array(pts_mem[g])[:-1])
+				if d < min_d:
+					min_p = g
+					min_d = d
+				
+		
+
+			G.add_node(k, coords=p)
+			pts_mem.append(p)
+			G.add_edge(min_p, k, coords = [])
+			k = k + 1
+
+
+			# Write the rest of the centerline
+			for h in range(j+1, len(CL[i])):
+				p = CL[i][h]
+				G.add_node(k, coords=p)
+				pts_mem.append(p)
+				G.add_edge(k-1, k, coords = [])
+				k = k + 1
+			
+
+		return G
+
+
+	#####################################
 	##############  WRITE  ##############
 	#####################################
 
 
-	def write_VTK_polyline(self, type):
+	def write_vtk(self, type, filename):
 
 		""" Writes centerlines as VTK polyline file.
 
@@ -992,16 +1107,22 @@ class ArterialTree:
 		# Add radius information
 		poly["scalars"] = np.array(r)
 		poly_tube = poly.tube(radius = 0.6)
-			
-		return poly_tube
+
+		poly_tube.save(filename)
 
 
 
-	def write_SWC(filename):
+
+	def write_swc(self, filename):
 
 		""" Write swc Neurite Tracer file using depth fist search."""
 
-		file = open(filename + '.txt' , 'w') 
+		print('Writing swc file...')
+
+		if filename[-4:] != ".swc":
+			filename = filename + "swc"		
+
+		file = open(filename, 'w') 
 
 		keys = list(nx.dfs_preorder_nodes(self._full_graph , 1))
 		values = range(1, len(keys) + 1)
@@ -1012,9 +1133,9 @@ class ArterialTree:
 
 			c = self._full_graph.nodes[p]['coords']
 
-			if self._full_graph.nodes.in_degree(p) == 1:
+			if self._full_graph.in_degree(p) == 1:
 
-				n = mapping[list(self._full_graph.nodes.predecessors(p))[0]]
+				n = mapping[list(self._full_graph.predecessors(p))[0]]
 				i = 3
 
 			else: 

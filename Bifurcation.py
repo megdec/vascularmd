@@ -1,20 +1,16 @@
 # Python 3
 import numpy as np # Tools for matrices
-from geomdl import BSpline, operations # Spline storage and evaluation
 import pyvista as pv # Meshing
 
 # Trigonometry functions
-from math import pi, sin, cos, tan, atan, acos, asin, sqrt
+from math import pi
 from numpy.linalg import norm 
 from numpy import dot, cross
-
-# Spline and geometry modules
-from VTgeom import *
-from VTsignal import *
 
 import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
 
+from utils import *
 from Spline import Spline
 
 
@@ -128,7 +124,7 @@ class Bifurcation:
 
 		for a in angle:
 
-			vrot = rotateVector(v, self._endsec[1][1][:-1], a)
+			vrot = rotate_vector(v, self._endsec[1][1][:-1], a)
 			ap, times = self.__find_intersection(vrot)
 
 			if times[1] > tmax:
@@ -513,7 +509,6 @@ class Bifurcation:
 		
 			for j in range(N):
 				nds_seg[:, j, :] = self.__bifurcationConnect(i, ind, end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
-				#linearInterpolation3([end_crsec[i][j], bif_crsec[connect_index[i][j]] ], num -2)
 
 			nds.append(nds_seg.tolist())
 
@@ -615,13 +610,13 @@ class Bifurcation:
 		v1 = P1 - self._B
 		v2 = P2 - self._B
 
-		theta = (directedAnglev2(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
+		theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
 
 		# Computing nodes using t and theta parameters
 		nds = []
 		for i in range(int(n)):
 
-			n = rotateVector(v1, cross(v1, v2), theta[i])
+			n = rotate_vector(v1, cross(v1, v2), theta[i])
 			nds.append(self.__send_to_surface(self._B, n, [0,1]))
 
 		return nds
@@ -671,7 +666,7 @@ class Bifurcation:
 			angle_list = (2 * pi / N) * np.arange(N)
 
 			for theta in angle_list:
-				n = np.array(rotateVector(ref, self._endsec[i][1][:-1], theta))
+				n = np.array(rotate_vector(ref, self._endsec[i][1][:-1], theta))
 				crsec_nds.append((self._endsec[i][0][:-1] + n * self._endsec[i][0][-1] / norm(n)).tolist())
 
 			nds.append(crsec_nds)

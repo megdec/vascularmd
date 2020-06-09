@@ -3,15 +3,11 @@
 import numpy as np # Tools for matrices
 from geomdl import BSpline, operations, helpers # Spline storage and evaluation
 
-# Trigonometry functions
-from math import pi, sin, cos, tan, atan, acos, asin, sqrt
 from numpy.linalg import norm 
 from numpy import dot, cross
 import matplotlib.pyplot as plt # Tools for plots
 
-from VTgeom import *
-from VTsignal import *
-from VTvisu import *
+from utils import *
 
 
 class Spline:
@@ -37,7 +33,7 @@ class Spline:
 				self._spl.order = order
 
 			if knot is None:
-				self._spl.knotvector = self.__uniform_knot()
+				self._spl.knotvector = self.__uniform_knot(self._spl.order, self._spl.ctrlpts_size)
 			else: 
 				self._spl.knotvector = knot
 
@@ -182,13 +178,11 @@ class Spline:
 	#####################################
 
 
-	def __uniform_knot(self):
+	def __uniform_knot(self, p, n):
 
 		""" Returns a B-spline uniform knot vector."""
 
 		knot = []
-		p = self._spl.order
-		n = self._spl.ctrlpts_size
 
 		for i in range(p + n):
 			if i < p:
@@ -202,16 +196,13 @@ class Spline:
 
 
 
-	def __averagingKnot(self, t):
+	def __averagingKnot(self, t, p, n):
 
 		""" Returns a B-spline averaging knot vector.
 
 		Keyword arguments:
 		t -- time parametrization vector
 		"""
-
-		p = self._spl.order
-		n = self._spl.ctrlpts_size
 
 		knot = [0.0] * p # First knot of multiplicity p
 
@@ -241,11 +232,375 @@ class Spline:
 		return t
 
 
+	def __basis_functions(self, knot, t, p, n):
+
+
+		"""Computes the value of B-spline basis functions evaluated at t
+
+		Keyword arguments:
+		knot -- knot vector
+		t -- time parameter 
+		p -- B-spline degree
+		n -- number of control points
+
+		"""
+
+		N = [0.0]*n # list of basis function values 
+
+		# Handle special cases for t 
+		if t == knot[0]:
+			N[0] = 1.0
+
+		elif t == knot[-1]:
+			N[-1] = 1.0
+		else:
+
+			# Find the bounding knots for t
+			k = 0
+			for kn in range(len(knot)-1):
+				if knot[kn] <= t < knot[kn+1]:
+					k = kn
+		
+			N[k] = 1.0 # Basis function of order 0
+			
+			# Compute basis functions = recurrence??!!
+			for d in range(1, p): 
+
+				if knot[k + 1] == knot[k- d + 1]:
+					N[k-d] = 0
+				else:
+					N[k-d] = (knot[k + 1] - t) / (knot[k + 1] - knot[k- d + 1]) * N[k- d + 1]
+
+				for i in range(k-d + 1, k):
+
+					if knot[i+d] == knot[i]:
+						c1 = 0
+					else:
+						c1 = (t - knot[i]) / (knot[i+d] - knot[i]) * N[i]
+
+					if knot[i + d + 1] == knot[i + 1]:
+						c2 = 0
+					else:
+						c2 = (knot[i + d + 1] - t) / (knot[i + d + 1] - knot[i + 1]) * N[i + 1]
+
+					N[i] =  c1 + c2
+
+				if knot[k+d] == knot[k]:
+					N[k] = 0
+				else:
+					N[k] = (t - knot[k]) / (knot[k+d] - knot[k]) * N[k]
+			
+
+		# Return array of n basis function values at t 
+		return N
+
+
 	#####################################
 	########## APPROXIMATION  ###########
 	#####################################
 
-	
+	def curvature_bounded_approximation(self, D, ratio, clip = [[],[]], deriv=[[],[]]): 
+
+
+		"""Approximate data points using a spline of degree p with n control_points, 
+		using constraint on the error of the fitting to find the optimal number of control points.
+
+		Keyword arguments:
+		D -- numpy array of coordinates for data points
+		ratio -- curvature radius / radius minimum ratio
+		clip -- end points if clipped ends
+		deriv -- end tangents to apply if constrainted tangents
+		"""
+
+		n = int(len(D) / 2)
+		t = self. __chord_length_parametrization(D)
+		knot =  self.__uniform_knot(3, n)
+		
+		search = True
+		lbd = 0
+
+		while (search and lbd < 1):
+			
+			self._spl = self.__solve_system(D, 3, n, knot, t, lbd, clip, deriv) 
+			rad_curv = self.curvature_radius(np.linspace(0, 1, self.spl.)).tolist()
+			rad = self._spl.evalpts[:,-1].tolist()
+
+			if all(rad_curv > rad/ratio):
+				search = False
+
+			lbd = lbd + 0.001
+
+		self.set_spl(self._spl)
+
+
+
+	def __solve_system(self, D, p, n, knot, t, lbd, clip = [[], []], tangent = [[], []]):
+
+		"""Approximate data points using a spline of degree p with n control_points.
+		Returns a geomdl.Bspline object
+
+		Keyword arguments:
+		D -- numpy array of coordinates for data points
+		p -- degree
+		n -- number of control points
+		knot -- knot vector
+		t -- time parametrization vector
+		lbd -- lambda coefficient that balances smoothness and accuracy
+		clip -- list of end points 
+		deriv -- list of end derivatives
+		"""
+
+		D = np.array(D)
+		m = D.shape[0]
+		x = D.shape[1]
+
+		D = D.reshape((m * x, 1))
+		
+		
+
+		if (len(tangent[0]) != 0 and len(clip[0]) == 0) or (len(tangent[1]) != 0 and len(clip[1]) == 0):
+			raise ValueError("Please use clip ends to add tangent constraint.")
+
+		if len(tangent[0]) != 0 and len(tangent[1]) != 0 and n<4:
+			n = 4
+
+
+		# Definition of light matrix N
+		Nl = []
+		for time in t:
+			Nl.append(self.__basis_functions(knot, time, p, n))
+		Nl = np.array(Nl)
+		
+
+		# Definition of full matrix N
+		N = []
+		for i in range(Nl.shape[0]):
+
+			for k in range(x):
+				line = []
+				for j in range(Nl.shape[1]):
+					elt = [0] * x
+					elt [k] = Nl[i, j]
+					line += elt
+				N.append(line)
+
+		N = np.array(N)
+		
+		
+
+		P1 = np.array([0]*x)
+		P2 = np.array([0]*x)
+		P3 = np.array([0]*x)
+		P4 = np.array([0]*x)
+
+		h = [0, 0]
+
+		# Get fixed control points, if necessary
+		if len(clip[0]) != 0:
+			P1 = np.array(clip[0])
+			h[0] = h[0] + x
+
+		if len(clip[1]) != 0:
+			P4 = np.array(clip[1])
+			h[1] = h[1] + x
+
+		if len(tangent[0]) != 0:
+			P2 = np.array(clip[0])
+			h[0] = h[0] + x - 1
+
+		if len(tangent[1]) != 0:
+			P3 = np.array(clip[1])
+			h[1] = h[1] + x - 1
+
+		# Definition of matrix Q1
+		Q1 = []
+		for i in range(0, m):
+			Q1.append(list(Nl[i, 0] * P1 + Nl[i, 1] * P2 + Nl[i, -2] * P3 + Nl[i, -1] * P4))
+		Q1 = np.array(Q1)
+
+		Q1 = Q1.reshape((Q1.shape[0] * Q1.shape[1], 1))
+
+
+
+		# Resizing N if clipped ends and tangents
+		if h[1] == 0:
+			N = N[:, h[0]:]
+		else: 
+			N = N[:, h[0]:-h[1]]
+
+		# Fill first and last columns if tangents
+		if len(tangent[0]) != 0:
+			j = 0
+			for i in range(N.shape[0]):
+				if j == 4:
+					j = 0
+
+				N[i, 0] = Nl[int(i/4), 1] * tangent[0][j]
+			
+				j +=1
+
+		if len(tangent[1]) != 0:
+			j = 0
+			for i in range(N.shape[0]):
+				if j == 4:
+					j = 0
+
+				N[i, -1] = Nl[int(i/4), -2] * tangent[1][j]
+				j = j + 1
+
+
+
+
+		# Definition of the smoothing matrix Delta
+		U = []
+		for i in range(2*x, n*x):
+			u = [0]*n*x
+
+			u[i] = 1.0
+			u[i - 1*x] = -2.0
+			u[i - 2*x] = 1.0
+
+			U.append(u)
+		U = np.array(U)
+
+
+		Delta = np.dot(U.transpose(), U)
+
+		
+
+		# Definition of matrix Q2
+		Q2 = []
+		for i in range(h[0], Delta.shape[0]-h[1]):
+			q2 = 0
+			for j in range(x):
+				q2 += Delta[i, j]* P1[j]
+				q2 += Delta[i, x + j]* P2[j]
+				q2 += Delta[i, - 2*x + j]* P3[j]
+				q2 += Delta[i, - x + j]* P4[j]
+
+			Q2.append(q2)
+		Q2 = np.array(Q2)
+		Q2 = Q2.reshape((len(Q2), 1))
+
+
+
+		# Resize Delta if clipped ends and 
+		if h[1] == 0:
+			Delta = Delta[h[0]:, h[0]:]
+		else: 
+			Delta = Delta[h[0]:-h[1], h[0]:-h[1]]
+
+		# Write columns if tangent constraint
+		if len(tangent[0])!= 0:
+			Delta[0, 0] = 5 * dot(np.array(tangent[0]), np.array(tangent[0]))
+
+			for i in range(1, Delta.shape[0]):
+				if i<=4:
+					Delta[i, 0] = -4 * tangent[0][i -1]
+
+				elif i>4 and i<=8:
+					Delta[i, 0] = 1 * tangent[0][i - x -1]
+
+				else: 
+					Delta[i, 0] = 0
+
+			#for i in range(1, Delta.shape[1]):
+			#	if i<=4:
+			#		Delta[0, i] = -4
+
+			#	elif i>4 and i<=8:
+			#		Delta[0, i] = 1
+
+			#	else: 
+			#		Delta[0, i] = 0
+
+					
+
+
+		if len(tangent[1])!= 0:
+
+			Delta[-1, -1] = 5 * dot(np.array(tangent[1]), np.array(tangent[1]))
+
+			for i in range(1, Delta.shape[1]):
+
+				if i<=4:
+					Delta[Delta.shape[1] - i - 1, -1] = -4 * tangent[1][i-1]
+
+				elif i>4 and i<=8:
+					Delta[Delta.shape[1] - i - 1, -1] = 1 * tangent[1][i - x -1]
+
+				else: 
+					Delta[Delta.shape[1] - i - 1, -1] = 0
+
+			#for i in range(1, Delta.shape[1]):
+
+			#	if i<=4:
+			#		Delta[-1, Delta.shape[1] - i - 1] = -4
+
+			#	elif i>4 and i<=8:
+			#		Delta[-1, Delta.shape[1] - i - 1] = 1
+
+			#	else: 
+			#		Delta[-1, Delta.shape[1] - i - 1]  = 0
+
+			if len(tangent[0])!= 0:
+				Delta[0, -1] = 0
+				Delta[-1, 0] = 0
+
+
+		
+		#print("Delta: ", Delta)
+		
+
+		# Write matrix M1 = NtN + lbd * Delta
+		M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+
+		# Write matrix M2 
+		M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
+	     
+
+		# Solve the system
+		P = np.dot(np.linalg.pinv(M1), M2)
+
+
+		if len(tangent[0]) != 0:
+			alpha = P[0]
+			P = P[1:]
+			
+
+		if len(tangent[1]) != 0:
+			beta = P[-1]
+			P = P[:-1]
+
+		P = P.reshape((int(len(P) / x), x))
+		P = P.tolist()
+
+
+
+		# Add tangent points to the list
+		if len(tangent[0]) != 0:
+			P = [(clip[0] + alpha * np.array(tangent[0])).tolist()] + P
+		if len(tangent[1]) != 0:
+			P = P + [(clip[1] + beta * np.array(tangent[1])).tolist()]
+
+
+		# Add fixed points to the list
+		if len(clip[0]) != 0:
+			P = [clip[0]] + P	
+		if len(clip[1]) != 0:
+			P = P + [clip[1]]	
+		
+
+		# Create spline
+		spl = BSpline.Curve()
+		spl.order = p
+		spl.ctrlpts = P
+		spl.knotvector = knot
+
+
+		return spl
+
+
 
 	#####################################
 	###########  GEOMETRY  ##############
