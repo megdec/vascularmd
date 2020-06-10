@@ -105,3 +105,15 @@ def linear_interpolation(nodes, num):
 	interp_nodes.append(nodes[-1])
 
 	return interp_nodes
+
+
+def lin_interp(p0, p1, num):
+
+	num = int(num)
+
+	points = np.zeros((num, 3))
+	points[:,0] = np.linspace(p0[0], p1[0], num).tolist()
+	points[:,1] = np.linspace(p0[1], p1[1], num).tolist()
+	points[:,2] = np.linspace(p0[2], p1[2], num).tolist()
+
+	return points.tolist()

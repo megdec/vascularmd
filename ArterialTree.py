@@ -287,7 +287,7 @@ class ArterialTree:
 	#####################################
 
 
-	def __cross_sections_graph(self, N, d):
+	def __cross_sections_graph(self, N, d, bifurcation_model = True):
 
 		""" Splits the splines into segments and bifurcation parts and computes surface cross sections.
 
@@ -312,11 +312,14 @@ class ArterialTree:
 				spl0 =  self._spline_graph.edges[list(self._spline_graph.in_edges(n))[0]]['spline']
 
 				S = []
+				spl_bif = []
 				for e in self._spline_graph.out_edges(n): # Out splines
 
 					#Cut spline
 					spl = self._spline_graph.edges[e]['spline']
 					splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2.5))
+
+					spl_bif.append(splb)
 
 					# Adding section
 					S.append([splb.point(1.0, True), splb.tangent(1.0, True)])
@@ -332,7 +335,11 @@ class ArterialTree:
 				S0 = [spl.point(0.0, True), spl.tangent(0.0, True)]
 			
 				# Compute bifurcation object
-				bif = Bifurcation(S0, S[0], S[1], 0.5)
+				if bifurcation_model : 
+					bif = Bifurcation(S0, S[0], S[1], 0.5)
+				else: 
+					bif = Bifurcation(S0, S[0], S[1], 0.5, spl = spl_bif)
+					
 				bif.show(nodes = True)
 
 				# Find cross sections
@@ -451,6 +458,7 @@ class ArterialTree:
 				if G.nodes[e[1]]['type'] == "end":
 					id_matrix, count = self.__id_nodes(crsec[-1], count)
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = id_matrix)
+					print("crsec: ", crsec[-1], "center: ", G.nodes[e[1]]['coords'])
 
 				self._crsec_graph = G
 
@@ -547,7 +555,7 @@ class ArterialTree:
 
 
 
-	def mesh_surface(self, N, d):
+	def mesh_surface(self, N, d, bifurcation_model = True):
 
 		""" Meshes the arterial tree.
 
@@ -560,7 +568,7 @@ class ArterialTree:
 		if self._spline_graph is None:
 			raise AttributeError('Please perform spline approximation first.')
 
-		G, count = self.__cross_sections_graph(N, d) # Get cross section graph
+		G, count = self.__cross_sections_graph(N, d, bifurcation_model) # Get cross section graph
 
 		vertices = np.zeros((count, 3))
 		faces = []
@@ -648,6 +656,104 @@ class ArterialTree:
 		# Connection tables (including rotations)
 
 		# Meshing the volume
+
+
+
+
+	def ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
+
+		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
+
+		Keyword arguments: 
+		center -- center point of the cross section as numpy array
+		crsec -- list of cross section nodes as numpy array
+		layer_ratio, num_a, num_b -- parameters of the O-grid
+		"""
+
+		# Get the symmetric nodes of the pattern
+		N = len(crsec)
+		sym_nodes = np.array([0, int(N/8), int(N/4)])
+
+		count = 0
+		nds = []
+		for s in range(4):
+
+			square_corners = []
+			for n in sym_nodes:
+
+				if n == N:
+					n = 0
+				v = crsec[n] - center
+				square_corners.append((center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist())
+
+			square_sides1 = [lin_interp(square_corners[0], square_corners[1], N/8+1), lin_interp(center, square_corners[2], N/8+1)]
+			square_sides2 = [lin_interp(square_corners[0], center, N/8+1), lin_interp(square_corners[1], square_corners[2], N/8+1)]
+
+			# First half points	
+			j = 0
+			for i in range(sym_nodes[0], sym_nodes[1]):
+
+				v = square_sides1[0][j] - crsec[i]
+				pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+				ray_nodes = lin_interp(crsec[i], pb, num_a + 2)[:-1]
+				ray_nodes = ray_nodes + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1]
+				ray_nodes = ray_nodes + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)
+				nds.append(ray_nodes)
+				count += len(ray_nodes)
+				j+=1
+
+
+			# Central points
+			v = square_corners[1] - crsec[sym_nodes[1]]
+			pb = crsec[sym_nodes[1]] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+			ray_nodes = lin_interp(crsec[sym_nodes[1]], pb, num_a + 2)[:-1]
+			ray_nodes = ray_nodes + lin_interp(pb, square_sides1[0][-1], num_b + 2)
+			nds.append(ray_nodes)
+			count += len(ray_nodes)
+
+
+			# Second half points
+			j = 1
+			for i in range(sym_nodes[1] + 1, sym_nodes[2]):
+
+				v = square_sides2[1][j] - crsec[i]
+				pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+				ray_nodes = lin_interp(crsec[i], pb, num_a + 2)[:-1]
+				ray_nodes = ray_nodes + lin_interp(pb, square_sides2[1][j], num_b + 2)[:-1]
+				ray_nodes = ray_nodes + lin_interp(square_sides2[0][j], square_sides2[1][j], N/8 + 1)
+
+				nds.append(ray_nodes)
+				count += len(ray_nodes)
+				j += 1
+
+			sym_nodes = sym_nodes + int(N/4)
+
+		# Meshing
+		# Get id table and vertices list
+
+		# Get faces list
+
+
+		# Display nodes
+		with plt.style.context(('ggplot')):
+		
+			fig = plt.figure(figsize=(10,7))
+			ax = Axes3D(fig)
+			ax.set_facecolor('white')
+
+			for i in range(len(nds)):
+				pts = np.array(nds[i])
+				ax.scatter(pts[:,0], pts[:,1], pts[:,2])
+
+		# Set the initial view
+		ax.view_init(90, -90) # 0 is the initial angle
+
+		# Hide the axes
+		ax.set_axis_off()
+		plt.show()
 
 
 
@@ -970,6 +1076,8 @@ class ArterialTree:
 
 			if file[i, 6] >= 0:
 				G.add_edge(int(file[i, 6]), int(file[i, 0]), coords = [])
+
+		return G
 
 
 

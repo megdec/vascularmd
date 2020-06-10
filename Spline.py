@@ -6,6 +6,7 @@ from geomdl import BSpline, operations, helpers # Spline storage and evaluation
 from numpy.linalg import norm 
 from numpy import dot, cross
 import matplotlib.pyplot as plt # Tools for plots
+from mpl_toolkits.mplot3d import Axes3D # 3D display
 
 from utils import *
 
@@ -313,7 +314,7 @@ class Spline:
 		"""
 
 		n = int(len(D) / 2)
-		t = self. __chord_length_parametrization(D)
+		t = self.__chord_length_parametrization(D)
 		knot =  self.__uniform_knot(3, n)
 		
 		search = True
@@ -322,15 +323,16 @@ class Spline:
 		while (search and lbd < 1):
 			
 			self._spl = self.__solve_system(D, 3, n, knot, t, lbd, clip, deriv) 
-			rad_curv = self.curvature_radius(np.linspace(0, 1, self.spl.)).tolist()
-			rad = self._spl.evalpts[:,-1].tolist()
+			rad_curv = self.curvature_radius(np.arange(0, 1, self._spl.delta).tolist() + [1.0])
+			rad = (self.get_points()[:,-1] / ratio).tolist()
 
-			if all(rad_curv > rad/ratio):
+			if all(rad_curv > rad):
 				search = False
 
 			lbd = lbd + 0.001
 
-		self.set_spl(self._spl)
+		#self.set_spl(self._spl)
+		self.set_spl(self.__solve_system(D, 3, n, knot, t, 0, clip, deriv))
 
 
 
