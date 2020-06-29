@@ -454,11 +454,12 @@ class ArterialTree:
 				if G.nodes[e[0]]['type'] == "end":
 					id_matrix, count = self.__id_nodes(crsec[0], count)
 					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id = id_matrix)
-				
+					print("crsec: ", crsec[0], "center: ", G.nodes[e[0]]['coords'])
+
 				if G.nodes[e[1]]['type'] == "end":
 					id_matrix, count = self.__id_nodes(crsec[-1], count)
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = id_matrix)
-					print("crsec: ", crsec[-1], "center: ", G.nodes[e[1]]['coords'])
+					
 
 				self._crsec_graph = G
 
@@ -669,12 +670,18 @@ class ArterialTree:
 		crsec -- list of cross section nodes as numpy array
 		layer_ratio, num_a, num_b -- parameters of the O-grid
 		"""
-
+		if sum(layer_ratio) != 1.0:
+			raise ValueError("The sum of the layer ratios must equal 1.")
+			
 		# Get the symmetric nodes of the pattern
 		N = len(crsec)
 		sym_nodes = np.array([0, int(N/8), int(N/4)])
 
 		count = 0
+
+		vertices = []
+		faces = []
+
 		nds = []
 		for s in range(4):
 
@@ -684,7 +691,9 @@ class ArterialTree:
 				if n == N:
 					n = 0
 				v = crsec[n] - center
-				square_corners.append((center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist())
+				pt = (center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist()
+				square_corners.append(pt)
+				
 
 			square_sides1 = [lin_interp(square_corners[0], square_corners[1], N/8+1), lin_interp(center, square_corners[2], N/8+1)]
 			square_sides2 = [lin_interp(square_corners[0], center, N/8+1), lin_interp(square_corners[1], square_corners[2], N/8+1)]
@@ -723,40 +732,55 @@ class ArterialTree:
 
 				ray_nodes = lin_interp(crsec[i], pb, num_a + 2)[:-1]
 				ray_nodes = ray_nodes + lin_interp(pb, square_sides2[1][j], num_b + 2)[:-1]
-				ray_nodes = ray_nodes + lin_interp(square_sides2[0][j], square_sides2[1][j], N/8 + 1)
+				ray_nodes = ray_nodes + lin_interp(square_sides2[1][j], square_sides2[0][j], N/8 + 1)
 
 				nds.append(ray_nodes)
 				count += len(ray_nodes)
 				j += 1
 
 			sym_nodes = sym_nodes + int(N/4)
+		
 
 		# Meshing
 		# Get id table and vertices list
+		id_nds = []
+		for ray in nds:
+			id_ray = []
+			for n in ray:
+				#if n not in vertices:
+				vertices.append(n)
+				id_ray.append(len(vertices)-1)
+				
+				#else: 
+				#	id_ray.append(vertices.index(n))
+				#	print(vertices.index(n))
+			id_nds.append(id_ray)
+
 
 		# Get faces list
+	
+		joining = [int(N/8), int(N/8 + N/4), int(N/8 + 2*N/4), int(N/8 + 3*N/4)]
+
+		for i in range(len(nds)):
+
+			if (i not in joining) and (i+1 not in joining):
+				for j in range(len(id_nds[i])-1):
+					if i == N -1:
+						faces.append([4, id_nds[i][j], id_nds[0][j], id_nds[0][j+1], id_nds[i][j+1]])
+					else:
+						faces.append([4, id_nds[i][j], id_nds[i+1][j], id_nds[i+1][j+1], id_nds[i][j+1]])
+
+			if i in joining:
+				l = len(id_nds[i])-1
+				for j in range(l):
+					faces.append([4, id_nds[i-1][j], id_nds[i][j], id_nds[i][j+1], id_nds[i-1][j+1]])
+					faces.append([4, id_nds[i][j], id_nds[i+1][j], id_nds[i+1][j+1], id_nds[i][j+1]])
+				faces.append([4, id_nds[i][-1], id_nds[i+1][l], id_nds[i+1][l+1], id_nds[i-1][l]])
 
 
-		# Display nodes
-		with plt.style.context(('ggplot')):
-		
-			fig = plt.figure(figsize=(10,7))
-			ax = Axes3D(fig)
-			ax.set_facecolor('white')
-
-			for i in range(len(nds)):
-				pts = np.array(nds[i])
-				ax.scatter(pts[:,0], pts[:,1], pts[:,2])
-
-		# Set the initial view
-		ax.view_init(90, -90) # 0 is the initial angle
-
-		# Hide the axes
-		ax.set_axis_off()
-		plt.show()
-
-
-
+		mesh = pv.PolyData(np.array(vertices), np.array(faces))
+		mesh.plot()
+		mesh.save("Results/ogrid.ply")
 
 
 	#####################################

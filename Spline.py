@@ -299,6 +299,7 @@ class Spline:
 	#####################################
 	########## APPROXIMATION  ###########
 	#####################################
+	
 
 	def curvature_bounded_approximation(self, D, ratio, clip = [[],[]], deriv=[[],[]]): 
 
