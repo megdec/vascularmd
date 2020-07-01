@@ -660,7 +660,6 @@ class ArterialTree:
 
 
 
-
 	def ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
 
 		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
@@ -670,6 +669,7 @@ class ArterialTree:
 		crsec -- list of cross section nodes as numpy array
 		layer_ratio, num_a, num_b -- parameters of the O-grid
 		"""
+		
 		if sum(layer_ratio) != 1.0:
 			raise ValueError("The sum of the layer ratios must equal 1.")
 			
@@ -680,11 +680,11 @@ class ArterialTree:
 		count = 0
 
 		vertices = []
-		faces = []
-
 		nds = []
+
 		for s in range(4):
 
+			square_grid = []
 			square_corners = []
 			for n in sym_nodes:
 
@@ -701,27 +701,50 @@ class ArterialTree:
 			# First half points	
 			j = 0
 			for i in range(sym_nodes[0], sym_nodes[1]):
-
+				
 				v = square_sides1[0][j] - crsec[i]
 				pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
 
-				ray_nodes = lin_interp(crsec[i], pb, num_a + 2)[:-1]
-				ray_nodes = ray_nodes + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1]
-				ray_nodes = ray_nodes + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)
-				nds.append(ray_nodes)
-				count += len(ray_nodes)
-				j+=1
+				if s != 0 and i == sym_nodes[0]:
 
+					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)
+					vertices += ray_vertices
+					nds.append(list(range(count, count + len(ray_vertices))) + square_edge)
+
+					count += len(ray_vertices)
+					
+				elif s == 3 and i!= sym_nodes[0]:
+
+					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)[:-1]
+					
+					vertices += ray_vertices
+					nds.append(list(range(count, count + len(ray_vertices))) + [nds[0][-j - 1]])
+				
+					count += len(ray_vertices)
+
+				else:
+					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)
+					vertices += ray_vertices
+					nds.append(list(range(count, count + len(ray_vertices))))
+
+					count += len(ray_vertices)
+				
+				square_grid.append(nds[-1][-int(N/8):])
+				j+=1
+		
+			square_edge = np.array(square_grid)[::-1, -1].tolist()
+			
 
 			# Central points
 			v = square_corners[1] - crsec[sym_nodes[1]]
 			pb = crsec[sym_nodes[1]] + v / norm(v) * (layer_ratio[0] * norm(v))
 
-			ray_nodes = lin_interp(crsec[sym_nodes[1]], pb, num_a + 2)[:-1]
-			ray_nodes = ray_nodes + lin_interp(pb, square_sides1[0][-1], num_b + 2)
-			nds.append(ray_nodes)
-			count += len(ray_nodes)
+			ray_vertices = lin_interp(crsec[sym_nodes[1]], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][-1], num_b + 2)
+			vertices += ray_vertices 
 
+			nds.append(list(range(count, count + len(ray_vertices))))
+			count += len(ray_vertices)
+			
 
 			# Second half points
 			j = 1
@@ -730,52 +753,36 @@ class ArterialTree:
 				v = square_sides2[1][j] - crsec[i]
 				pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
 
-				ray_nodes = lin_interp(crsec[i], pb, num_a + 2)[:-1]
-				ray_nodes = ray_nodes + lin_interp(pb, square_sides2[1][j], num_b + 2)[:-1]
-				ray_nodes = ray_nodes + lin_interp(square_sides2[1][j], square_sides2[0][j], N/8 + 1)
+				ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][j], num_b + 2)
+				vertices += ray_vertices
 
-				nds.append(ray_nodes)
-				count += len(ray_nodes)
-				j += 1
+				nds.append(list(range(count, count + len(ray_vertices))) + np.array(square_grid)[::-1, j-1].tolist())
+				count += len(ray_vertices)
+				j += 1	
 
 			sym_nodes = sym_nodes + int(N/4)
-		
-
-		# Meshing
-		# Get id table and vertices list
-		id_nds = []
-		for ray in nds:
-			id_ray = []
-			for n in ray:
-				#if n not in vertices:
-				vertices.append(n)
-				id_ray.append(len(vertices)-1)
-				
-				#else: 
-				#	id_ray.append(vertices.index(n))
-				#	print(vertices.index(n))
-			id_nds.append(id_ray)
 
 
 		# Get faces list
-	
+		faces = []
 		joining = [int(N/8), int(N/8 + N/4), int(N/8 + 2*N/4), int(N/8 + 3*N/4)]
 
 		for i in range(len(nds)):
 
 			if (i not in joining) and (i+1 not in joining):
-				for j in range(len(id_nds[i])-1):
+				for j in range(len(nds[i])-1):
 					if i == N -1:
-						faces.append([4, id_nds[i][j], id_nds[0][j], id_nds[0][j+1], id_nds[i][j+1]])
+						faces.append([4, nds[i][j], nds[0][j], nds[0][j+1], nds[i][j+1]])
 					else:
-						faces.append([4, id_nds[i][j], id_nds[i+1][j], id_nds[i+1][j+1], id_nds[i][j+1]])
+						faces.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
 
 			if i in joining:
-				l = len(id_nds[i])-1
+		
+				l = len(nds[i])-1
 				for j in range(l):
-					faces.append([4, id_nds[i-1][j], id_nds[i][j], id_nds[i][j+1], id_nds[i-1][j+1]])
-					faces.append([4, id_nds[i][j], id_nds[i+1][j], id_nds[i+1][j+1], id_nds[i][j+1]])
-				faces.append([4, id_nds[i][-1], id_nds[i+1][l], id_nds[i+1][l+1], id_nds[i-1][l]])
+					faces.append([4, nds[i-1][j], nds[i][j], nds[i][j+1], nds[i-1][j+1]])
+					faces.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
+				faces.append([4, nds[i][-1], nds[i+1][l], nds[i+1][l+1], nds[i-1][l]])
 
 
 		mesh = pv.PolyData(np.array(vertices), np.array(faces))
