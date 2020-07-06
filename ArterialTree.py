@@ -1,4 +1,5 @@
 import pyvista as pv # Meshing
+import vtk
 from scipy.spatial import KDTree
 
 # Trigonometry functions
@@ -644,19 +645,55 @@ class ArterialTree:
 		
 
 
-	def mesh_volume(self):
+	def mesh_volume(self, N, d, layer_ratio, num_a, num_b, bifurcation_model=True):
 
 		""" Meshes the inside of the 3D surface with 0-grid pattern."""
 
-		if self._surface_mesh is None:
-			raise AttributeError('Please perform surface meshing first')
+		if self._spline_graph is None:
+			raise AttributeError('Please perform spline approximation first.')
+
+		G, count = self.__cross_sections_graph(N, d, bifurcation_model) # Get cross section graph
+
+		vertices = []
+		cells = []
+		cell_types = []
+
+		for e in G.edges():
+
+			# Compute the O-grid for each cross section
+			seg_crsec = np.array(G.edges[e]['crsec'])
+
+			crsec = seg_crsec[0]
+			v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
+
+			for i in range(1,3): #, len(seg_crsec)): 
+
+				crsec = seg_crsec[i]
+				center = (crsec[0] + crsec[int(N/2)])/2.0
+				v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
+				
+				
+				for j in range(len(f_act)):
+			
+					cells.append([8] + (np.array(f_prec[j])[1:] + len(vertices)).tolist() + (np.array(f_act[j])[1:] + len(vertices) + len(v_prec)).tolist())
+					cell_types += [vtk.VTK_HEXAHEDRON]
+
+					#mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array([8] + (np.array(f_prec[j])[1:] + len(vertices)).tolist() + (np.array(f_act[j])[1:] + len(vertices) + len(v_prec)).tolist()), np.array([vtk.VTK_HEXAHEDRON]), np.array(v_prec + v_act))
+					#mesh.plot(show_edges=True)
+				vertices += v_prec + v_act
+				
+				v_prec = v_act
+				f_prec = f_act
 
 
-		# Compute the O-grid for each cross section
+			# Meshing the volume
 
-		# Connection tables (including rotations)
+			self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
 
-		# Meshing the volume
+			self._volume_mesh.plot(show_edges=True)
+			self._volume_mesh.save("Results/hex_tube.vtk")
+		
+		
 
 
 
@@ -669,7 +706,7 @@ class ArterialTree:
 		crsec -- list of cross section nodes as numpy array
 		layer_ratio, num_a, num_b -- parameters of the O-grid
 		"""
-		
+
 		if sum(layer_ratio) != 1.0:
 			raise ValueError("The sum of the layer ratios must equal 1.")
 			
@@ -766,7 +803,7 @@ class ArterialTree:
 		# Get faces list
 		faces = []
 		joining = [int(N/8), int(N/8 + N/4), int(N/8 + 2*N/4), int(N/8 + 3*N/4)]
-
+		
 		for i in range(len(nds)):
 
 			if (i not in joining) and (i+1 not in joining):
@@ -779,15 +816,26 @@ class ArterialTree:
 			if i in joining:
 		
 				l = len(nds[i])-1
+
+				if i == N-1:
+					k = 0
+				else: 
+					k = i+1
+				
 				for j in range(l):
+
 					faces.append([4, nds[i-1][j], nds[i][j], nds[i][j+1], nds[i-1][j+1]])
-					faces.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
-				faces.append([4, nds[i][-1], nds[i+1][l], nds[i+1][l+1], nds[i-1][l]])
-
-
+					faces.append([4, nds[i][j], nds[k][j], nds[k][j+1], nds[i][j+1]])
+					
+				faces.append([4, nds[i][-1], nds[k][l], nds[k][l+1], nds[i-1][l]])
+		
 		mesh = pv.PolyData(np.array(vertices), np.array(faces))
-		mesh.plot()
-		mesh.save("Results/ogrid.ply")
+		mesh.plot(show_edges=True)
+		#mesh.save("Results/ogrid.ply")
+
+		return vertices, faces
+
+
 
 
 	#####################################

@@ -508,7 +508,7 @@ class Bifurcation:
 			nds_seg = np.zeros((num, N, 3))
 		
 			for j in range(N):
-				nds_seg[:, j, :] = self.__bifurcationConnect(i, ind, end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
+				nds_seg[:, j, :] = self.__bifurcation_connect(i, ind, end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
 
 			nds.append(nds_seg.tolist())
 
@@ -517,7 +517,7 @@ class Bifurcation:
 
 
 
-	def __bifurcationConnect(self, tind, ind, P0, P1, n):
+	def __bifurcation_connect(self, tind, ind, P0, P1, n):
 
 
 		""" Compute the nodes connecting an end point to a separation point.
