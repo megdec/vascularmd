@@ -47,12 +47,13 @@ def test_ogrid_pattern():
 
 def test_volume_mesh():
 
-	tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
 	tree.spline_approximation()
 	tree.show(False)
 
-	tree.mesh_volume(24, 0.2, [0.5, 0.4, 0.1], 5, 25, bifurcation_model=False)
+	tree.mesh_volume(24, 0.2, [0.2, 0.3, 0.5], 5, 10, bifurcation_model=False)
 
 
 #test_tree_class()

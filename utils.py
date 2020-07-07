@@ -20,7 +20,7 @@ def rotate_vector(v, axis, theta):
 	axis -- axis of rotation
 	theta -- angle
 	"""
-    
+	
 	axis = axis / norm(axis)
 	a = cos(theta / 2.0)
 	b, c, d = -axis * sin(theta / 2.0)
@@ -38,27 +38,56 @@ def rotate_vector(v, axis, theta):
 
 def directed_angle(v1, v2, u):
 
-    """
-    Return the directed angle between v1 and v2 using spatial reference u.
+	"""
+	Return the directed angle between v1 and v2 using spatial reference u.
 
-    Keywords arguments:
-    v1, v2 -- vectors
-    u -- reference vector 
-    """
+	Keywords arguments:
+	v1, v2 -- vectors
+	u -- reference vector 
+	"""
 
-    v1 = np.array(v1)
-    v2 = np.array(v2)
-    u = np.array(u)
+	v1 = np.array(v1)
+	v2 = np.array(v2)
+	u = np.array(u)
 
-    x = dot(v1, v2) / (norm(v1) * norm(v2))
+	x = dot(v1, v2) / (norm(v1) * norm(v2))
 
-    if x > 1.0:
-        x = 1.0
+	if x > 1.0:
+		x = 1.0
 
-    if x < -1.0:
-        x = -1.0
+	if x < -1.0:
+		x = -1.0
 
-    return acos(x)
+	return acos(x)
+
+
+
+def directed_angle_negative(v1, v2, u):
+
+	"""
+	Return the directed angle between v1 and v2 using spatial reference u.
+
+	Keywords arguments:
+	v1, v2 -- vectors
+	u -- reference vector 
+	"""
+
+	v1 = np.array(v1)
+	v2 = np.array(v2)
+	u = np.array(u)
+
+	x = dot(v1, v2) / (norm(v1) * norm(v2))
+
+	if x > 1.0:
+		x = 1.0
+
+	if x < -1.0:
+		x = -1.0
+
+	if np.linalg.det(np.array([[v1[0], v2[0], u[0]], [v1[1], v2[1], u[1]], [v1[2], v2[2], u[0]]])) >= 0:
+		return acos(x)
+	else: 
+		return - acos(x)
 
 
 

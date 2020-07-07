@@ -206,7 +206,7 @@ class ArterialTree:
 
 			spl = Spline()
 			spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
-			spl.show(False, False, data = pts)
+			#spl.show(False, False, data = pts)
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
@@ -341,7 +341,7 @@ class ArterialTree:
 				else: 
 					bif = Bifurcation(S0, S[0], S[1], 0.5, spl = spl_bif)
 					
-				bif.show(nodes = True)
+				#bif.show(nodes = True)
 
 				# Find cross sections
 				end_crsec, bif_crsec, nds, connect_index = bif.cross_sections(N, d)
@@ -351,17 +351,17 @@ class ArterialTree:
 				
 				# Add separation nodes with cross sections
 				id_matrix, count = self.__id_nodes(end_crsec[0], count)
-				G.add_node(n, coords = spl.point(0.0, True), type = "sep", crsec = end_crsec[0], id = id_matrix)
+				G.add_node(n, coords = spl.point(0.0, True), type = "sep", crsec = end_crsec[0], id = id_matrix, id_crsec = None)
 
 				id_matrix, count = self.__id_nodes(end_crsec[1], count)
-				G.add_node(nmax - 2, coords = S[0][0], type = "sep", crsec = end_crsec[1], id = id_matrix)
+				G.add_node(nmax - 2, coords = S[0][0], type = "sep", crsec = end_crsec[1], id = id_matrix, id_crsec = None)
 
 				id_matrix, count = self.__id_nodes(end_crsec[2], count)
-				G.add_node(nmax - 1, coords = S[1][0], type = "sep", crsec = end_crsec[2], id = id_matrix)
+				G.add_node(nmax - 1, coords = S[1][0], type = "sep", crsec = end_crsec[2], id = id_matrix, id_crsec = None)
 
 				# Add bifurcation node
 				id_matrix, count = self.__id_nodes(bif_crsec, count)
-				G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id = id_matrix)
+				G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id = id_matrix, id_crsec = None)
 				
 				# Add bifurcation edges
 				id_matrix, count = self.__id_nodes(nds[0], count)
@@ -409,10 +409,10 @@ class ArterialTree:
 					v01 = spl.transport_vector(v0, 0, 1)
 
 					min_a = 5.0
-					for i in range(N):
+					for i in [0, int(N/4), int(N/2), int(3* N/4)]: #range(N)
 
 						v = np.array(crsec1[i]) - np.array(G.nodes[e[1]]['coords'][:-1])
-						a = directed_angle(v01, v, tg1)
+						a = directed_angle_negative(v01, v, tg1)
 
 						if abs(a) < abs(min_a):
 							min_a = a
@@ -454,12 +454,11 @@ class ArterialTree:
 
 				if G.nodes[e[0]]['type'] == "end":
 					id_matrix, count = self.__id_nodes(crsec[0], count)
-					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id = id_matrix)
-					print("crsec: ", crsec[0], "center: ", G.nodes[e[0]]['coords'])
+					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id = id_matrix, id_crsec = None)
 
 				if G.nodes[e[1]]['type'] == "end":
 					id_matrix, count = self.__id_nodes(crsec[-1], count)
-					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = id_matrix)
+					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = id_matrix, id_crsec = None)
 					
 
 				self._crsec_graph = G
@@ -658,15 +657,27 @@ class ArterialTree:
 		cells = []
 		cell_types = []
 
+		# Store the vertices and change the id of every cross section
 		for e in G.edges():
 
-			# Compute the O-grid for each cross section
+			# Mesh the first cross section
+			if G.nodes[e[0]]['id_crsec'] is None:
+
+				crsec = np.array(G.nodes[e[0]]['crsec'])
+				center = np.array(G.nodes[e[0]]['coords'])[:-1]
+				v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
+			
+				vertices += v_prec
+				ind_dep = len(vertices) - len(v_prec)
+				G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = G.nodes[e[0]]['crsec'], type = G.nodes[e[0]]['type'], id = G.nodes[e[0]]['id'], id_crsec = ind_dep)
+
+			else: 
+				ind_dep = G.nodes[e[0]]['id_crsec']
+
 			seg_crsec = np.array(G.edges[e]['crsec'])
 
-			crsec = seg_crsec[0]
-			v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
-
-			for i in range(1,3): #, len(seg_crsec)): 
+			# Mesh edges
+			for i in range(len(seg_crsec)): 
 
 				crsec = seg_crsec[i]
 				center = (crsec[0] + crsec[int(N/2)])/2.0
@@ -675,27 +686,75 @@ class ArterialTree:
 				
 				for j in range(len(f_act)):
 			
-					cells.append([8] + (np.array(f_prec[j])[1:] + len(vertices)).tolist() + (np.array(f_act[j])[1:] + len(vertices) + len(v_prec)).tolist())
+					cells.append([8] + (np.array(f_prec[j])[1:] + ind_dep).tolist() + (np.array(f_act[j])[1:] + len(vertices)).tolist())
 					cell_types += [vtk.VTK_HEXAHEDRON]
 
-					#mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array([8] + (np.array(f_prec[j])[1:] + len(vertices)).tolist() + (np.array(f_act[j])[1:] + len(vertices) + len(v_prec)).tolist()), np.array([vtk.VTK_HEXAHEDRON]), np.array(v_prec + v_act))
-					#mesh.plot(show_edges=True)
-				vertices += v_prec + v_act
-				
+				vertices += v_act
+
 				v_prec = v_act
 				f_prec = f_act
 
+				ind_dep = len(vertices) - len(v_prec)
 
-			# Meshing the volume
+			# Mesh the last cross section
 
-			self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
+			
+			# Bifurcation case 
+			if G.nodes[e[1]]['type'] == "bif":
 
-			self._volume_mesh.plot(show_edges=True)
-			self._volume_mesh.save("Results/hex_tube.vtk")
+				if G.nodes[e[1]]['id_crsec'] is None:
+
+					end_crsec = np.array(G.nodes[e[1]]['crsec'])
+					center = np.array(G.nodes[e[1]]['coords'])[:-1]
+
+					# Meshing the 3 halves
+					v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+					ind_dep = len(vertices)
+
+					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[0]]['crsec'], type = G.nodes[e[0]]['type'], id = G.nodes[e[0]]['id'], id_crsec = ind_dep)
+
+				else:
+					ind_dep = G.nodes[e[1]]['id_crsec']
+
+			
+
+			# Rotated segment case
+			else:
+
+				if G.nodes[e[1]]['id_crsec'] is None:
+
+					end_crsec = np.array(G.nodes[e[1]]['crsec'])
+					center = np.array(G.nodes[e[1]]['coords'])[:-1]
+					v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+					ind_dep = len(vertices)
+
+					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[0]]['crsec'], type = G.nodes[e[0]]['type'], id = G.nodes[e[0]]['id'], id_crsec = ind_dep)
+
+				else:
+					ind_dep = G.nodes[e[1]]['id_crsec']
+
+				j = int([0, int(N/4), int(N/2), int(3* N/4)].index(G.edges[e]['connect'][0]) * len(f_act) / 4)
+
+				for k in range(len(f_act)):
+
+					if j == len(f_act):
+						j = 0
+			
+					cells.append([8] + (np.array(f_prec[j])[1:] + len(vertices) - len(v_prec)).tolist() + (np.array(f_act[j])[1:] + ind_dep).tolist())
+					cell_types += [vtk.VTK_HEXAHEDRON]
+
+					j +=1
+
+				vertices += v_act
+		
+
+		# Create volume mesh
+		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
+
+		self._volume_mesh.plot(show_edges=True)
+		self._volume_mesh.save("Results/hex_tube.vtk")
 		
 		
-
-
 
 	def ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
 
@@ -793,7 +852,7 @@ class ArterialTree:
 				ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][j], num_b + 2)
 				vertices += ray_vertices
 
-				nds.append(list(range(count, count + len(ray_vertices))) + np.array(square_grid)[::-1, j-1].tolist())
+				nds.append(list(range(count, count + len(ray_vertices))) + np.array(square_grid)[::-1, j-1][0:1].tolist())
 				count += len(ray_vertices)
 				j += 1	
 
@@ -829,8 +888,8 @@ class ArterialTree:
 					
 				faces.append([4, nds[i][-1], nds[k][l], nds[k][l+1], nds[i-1][l]])
 		
-		mesh = pv.PolyData(np.array(vertices), np.array(faces))
-		mesh.plot(show_edges=True)
+		#mesh = pv.PolyData(np.array(vertices), np.array(faces))
+		#mesh.plot(show_edges=True)
 		#mesh.save("Results/ogrid.ply")
 
 		return vertices, faces

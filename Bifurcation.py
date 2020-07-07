@@ -515,8 +515,6 @@ class Bifurcation:
 		return end_crsec, bif_crsec, nds, connect_index
 
 
-
-
 	def __bifurcation_connect(self, tind, ind, P0, P1, n):
 
 
