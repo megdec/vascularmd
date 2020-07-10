@@ -54,13 +54,20 @@ def test_volume_mesh():
 
 	#file = open('Results/tree_spline_ref_mesh.obj', 'wb') 
 	#pickle.dump(tree, file)
-	file = open('Results/tree_spline_ref_mesh.obj', 'rb') 	 
+	file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
 	tree = pickle.load(file)
-
 	tree.show(False)
-	tree.mesh_surface(24, 0.2, bifurcation_model=False)
 
-	#tree.mesh_volume(48, 0.2, [0.2, 0.3, 0.5], 5, 10, bifurcation_model=False)
+	#tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
+
+	mesh = tree.mesh_surface()
+
+	mesh.plot(show_edges=True)
+	mesh.save("Results/hex_mesh.vtk")
+
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+	mesh.plot(show_edges=True)
+	mesh.save("Results/hex_mesh.vtk")
 
 
 #test_tree_class()

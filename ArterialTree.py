@@ -38,11 +38,13 @@ class ArterialTree:
 			self._full_graph = None
 			self._topo_graph = None
 			self._spline_graph = None
+			self._crsec_graph = None
 
 		else:
 			self.__load_file(filename)
 			self.__set_topo_graph()
 			self._spline_graph = None
+			self._crsec_graph = None
 
 
 
@@ -52,29 +54,32 @@ class ArterialTree:
 	#####################################
 
 	def get_full_graph(self):
+
 		if self._full_graph is not None:
 			return self._full_graph
 		else:
 			raise AttributeError('Please set the centerline data points')
 
 	def get_topo_graph(self):
+
 		if self._topo_graph is not None:
 			return self._topo_graph
 		else:
 			raise AttributeError('Please set the centerline data points')
 
 	def get_spline_graph(self):
-		if self._topo_graph is not None:
+
+		if self._spline_graph is not None:
 			return self._spline_graph
 		else:
 			raise AttributeError('Please perform spline approximation first.')
 
-	def get_surface_mesh(self):
-		if self._surface_mesh is not None:
-			return self._surface_mesh
+	def get_crsec_graph(self):
+
+		if self._crsec_graph is not None:
+			return self._crsec_graph
 		else:
 			raise AttributeError('Please perform meshing first.')
-
 
 
 
@@ -180,6 +185,8 @@ class ArterialTree:
 
 		""" Approximate centerlines using splines and sets the attribute spline-graph.
 		"""
+
+		print('Modeling the network with splines...')
 
 		p = 3 # Spline order
 		G = self.__bifurcation_point_estimation(p)
@@ -288,7 +295,7 @@ class ArterialTree:
 	#####################################
 
 
-	def __cross_sections_graph(self, N, d, bifurcation_model = True):
+	def compute_cross_sections(self, N, d, bifurcation_model = True):
 
 		""" Splits the splines into segments and bifurcation parts and computes surface cross sections.
 
@@ -296,10 +303,14 @@ class ArterialTree:
 
 		N -- number of nodes in a transverse section (multiple of 4)
 		d -- longitudinal density of nodes as a proportion of the radius
+		bifurcation_model -- (true) bifurcation based on a model (false) bifurcation based on the data
 		"""
 
 		if self._spline_graph is None:
-			raise AttributeError('Please perform spline approximation first.')
+
+			print('Modeling the network with splines...')
+			self.spline_approximation()
+			
 
 		G = self._spline_graph.copy()
 		nmax = max(list(G.nodes())) + 1
@@ -466,8 +477,9 @@ class ArterialTree:
 					
 
 				self._crsec_graph = G
-
-		return G, count
+				self._crsec_graph.graph['count'] = count
+				self._crsec_graph.graph['N'] = N
+				self._crsec_graph.graph['d'] = d
 
 
 
@@ -544,6 +556,7 @@ class ArterialTree:
 		return nds
 
 
+
 	def __id_nodes(self, L, count):
 
 		""" Write a list of indices for nodes in list L, starting from index count."""
@@ -560,26 +573,21 @@ class ArterialTree:
 
 
 
-	def mesh_surface(self, N, d, bifurcation_model = True):
+	def mesh_surface(self):
 
-		""" Meshes the arterial tree.
+		""" Meshes the surface of the arterial tree."""
 
-		Keyword arguments:
+		if self._crsec_graph is None:
 
-		N -- number of nodes in a transverse section (multiple of 4)
-		d -- longitudinal density of nodes as a proportion of the radius
-		"""
-
-		if self._spline_graph is None:
-			raise AttributeError('Please perform spline approximation first.')
-
+			print('Computing cross sections with default parameters...')
+			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
 		
-		print('Computing cross sections...')
-		G, count = self.__cross_sections_graph(N, d, bifurcation_model) # Get cross section graph
+		G = self._crsec_graph
+		N = G.graph['N']
 
 		print('Meshing surface...')
 
-		vertices = np.zeros((count, 3))
+		vertices = np.zeros((G.graph['count'], 3))
 		faces = []
 
 		for e in G.edges():		
@@ -648,24 +656,28 @@ class ArterialTree:
 			
 				faces.append([4, id1, id2, id3, id4])
 
-		self._surface_mesh = pv.PolyData(vertices, np.array(faces))
-
-		self._surface_mesh.plot(show_edges=True)
-		self._surface_mesh.save("Results/surf_mesh.vtk")
+		return pv.PolyData(vertices, np.array(faces))
 		
 
 
+	def mesh_volume(self, layer_ratio, num_a, num_b):
 
-	def mesh_volume(self, N, d, layer_ratio, num_a, num_b, bifurcation_model=True):
+		""" Meshes the volume of the arterial tree with O-grid pattern.
 
-		""" Meshes the inside of the 3D surface with 0-grid pattern."""
+		Keyword arguments:
 
-		if self._spline_graph is None:
-			raise AttributeError('Please perform spline approximation first.')
+		layer_ratio -- radius ratio of the three O-grid parts [a, b, c] such as a+b+c = 1
+		num_a, num_b -- number of layers in the parts a and b
+		"""
 
-		print('Computing cross sections...')
+		if self._crsec_graph is None:
 
-		G, count = self.__cross_sections_graph(N, d, bifurcation_model) # Get cross section graph
+			print('Computing cross sections with default parameters...')
+			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
+
+		G = self._crsec_graph
+		N = G.graph['N']
+
 		print('Meshing volume...')
 
 		vertices = []
@@ -684,6 +696,7 @@ class ArterialTree:
 			
 				vertices += v_prec
 				ind_dep = len(vertices) - len(v_prec)
+				
 				G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = G.nodes[e[0]]['crsec'], type = G.nodes[e[0]]['type'], id = G.nodes[e[0]]['id'], id_crsec = ind_dep)
 
 			else: 
@@ -758,12 +771,8 @@ class ArterialTree:
 
 				vertices += v_act
 		
-
-		# Create volume mesh
-		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
-
-		self._volume_mesh.plot(show_edges=True)
-		self._volume_mesh.save("Results/hex_mesh.vtk")
+		# Return volume mesh
+		return pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
 		
 		
 
