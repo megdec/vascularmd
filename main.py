@@ -48,12 +48,19 @@ def test_ogrid_pattern():
 def test_volume_mesh():
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
-	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
-	tree.spline_approximation()
+	#tree.spline_approximation()
+
+	#file = open('Results/tree_spline_ref_mesh.obj', 'wb') 
+	#pickle.dump(tree, file)
+	file = open('Results/tree_spline_ref_mesh.obj', 'rb') 	 
+	tree = pickle.load(file)
+
 	tree.show(False)
+	tree.mesh_surface(24, 0.2, bifurcation_model=False)
 
-	tree.mesh_volume(24, 0.2, [0.2, 0.3, 0.5], 5, 10, bifurcation_model=False)
+	#tree.mesh_volume(48, 0.2, [0.2, 0.3, 0.5], 5, 10, bifurcation_model=False)
 
 
 #test_tree_class()

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
 
 from utils import *
+from termcolor import colored
 
 
 class Spline:
@@ -816,7 +817,7 @@ class Spline:
 		tg = self.tangent(t0)
 
 		if dot(v, tg) > 0.001:
-			print("Warning : The vector to transport was not normal to the spline.", dot(v, tg))
+			print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
 
 		v = cross(tg, cross(v, tg)) # Make sure than v is normal to the spline
 		v = v / norm(v)
@@ -856,7 +857,7 @@ class Spline:
 		tg = self.tangent(t)
 
 		if dot(v, tg) > 0.001:
-			print("Warning : The projection vector was not normal to the spline.", dot(v, tg))
+			print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
 
 		v = cross(tg, cross(v, tg)) # Make sure than v is normal to the spline
 		v = v / norm(v)
@@ -929,11 +930,11 @@ class Spline:
 		
 		if t < 0.0:
 			t = 0.0
-			print("Warning : The point was beyond the spline ends.")
+			print(colored('Warning : The point was beyond the spline ends.', 'red'))
 
 		if t > 1.0:
 			t = 1.0
-			print("Warning : The point was beyond the spline ends.")
+			print(colored('Warning : The point was beyond the spline ends.', 'red'))
 
 		return t
 
