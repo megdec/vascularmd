@@ -729,11 +729,31 @@ class ArterialTree:
 
 				if G.nodes[e[1]]['id_crsec'] is None:
 
-					end_crsec = np.array(G.nodes[e[1]]['crsec'])
-					center = (end_crsec[0] + end_crsec[int(N/2)])/2.0
+					crsec = G.nodes[e[1]]['crsec']
+					center = (np.array(crsec[0]) + crsec[1])/2.0
 
-					# Meshing the 3 halves
-					v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+					# Meshing the 3 half-sections
+					numnds = int((N - 2)/2)
+					crsec1 = [crsec[0]] + crsec[2:numnds + 2] + [crsec[1]] + crsec[numnds + 2:(numnds * 2) + 2][::-1]
+
+					v_h1, f_h1 = self.ogrid_pattern(center, np.array(crsec1), layer_ratio, num_a, num_b)
+					#v_h1 = v_h1[:int(len(v_h1)/2)]
+					f_h1 = f_h1[:int(len(f_h1)/2)]
+
+					crsec2 = [crsec[0]] + crsec[numnds + 2:(numnds * 2) + 2] + [crsec[1]] + crsec[2:numnds + 2] [::-1]
+					v_h2, f_h2 = self.ogrid_pattern(center, np.array(crsec2), layer_ratio, num_a, num_b)
+					#v_h2 = v_h2[:int(len(v_h2)/2)]
+					f_h2 = f_h2[:int(len(f_h2)/2)]
+
+					crsec3 = [crsec[0]] + crsec[(numnds*2) + 2:(numnds * 3) + 2] + [crsec[1]] + crsec[numnds + 2:(numnds * 2) + 2][::-1]
+					v_h3, f_h3 = self.ogrid_pattern(center, np.array(crsec3), layer_ratio, num_a, num_b)
+					#v_h3 = v_h3[:int(len(v_h3)/2)]
+					f_h3 = f_h3[:int(len(f_h3)/2)] 
+
+					pv.PolyData(np.array(v_h1), np.array(f_h1)).plot(show_edges=True)
+					pv.PolyData(np.array(v_h2), np.array(f_h2)).plot(show_edges=True)
+					pv.PolyData(np.array(v_h3), np.array(f_h3)).plot(show_edges=True)
+		
 					ind_dep = len(vertices)
 
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[1]]['crsec'], type = G.nodes[e[1]]['type'], id = G.nodes[e[1]]['id'], id_crsec = ind_dep)
