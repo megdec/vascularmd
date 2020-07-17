@@ -724,7 +724,7 @@ class ArterialTree:
 
 				ind_dep = len(vertices) - len(v_prec)
 
-			# Mesh the last cross section	
+			# Mesh the last cross section
 			if G.nodes[e[1]]['type'] == "bif": # Bifurcation case 
 
 				if G.nodes[e[1]]['id_crsec'] is None:
@@ -732,30 +732,12 @@ class ArterialTree:
 					crsec = G.nodes[e[1]]['crsec']
 					center = (np.array(crsec[0]) + crsec[1])/2.0
 
-					# Meshing the 3 half-sections
-					numnds = int((N - 2)/2)
-					crsec1 = [crsec[0]] + crsec[2:numnds + 2] + [crsec[1]] + crsec[numnds + 2:(numnds * 2) + 2][::-1]
-
-					v_h1, f_h1 = self.ogrid_pattern(center, np.array(crsec1), layer_ratio, num_a, num_b)
-					#v_h1 = v_h1[:int(len(v_h1)/2)]
-					f_h1 = f_h1[:int(len(f_h1)/2)]
-
-					crsec2 = [crsec[0]] + crsec[numnds + 2:(numnds * 2) + 2] + [crsec[1]] + crsec[2:numnds + 2] [::-1]
-					v_h2, f_h2 = self.ogrid_pattern(center, np.array(crsec2), layer_ratio, num_a, num_b)
-					#v_h2 = v_h2[:int(len(v_h2)/2)]
-					f_h2 = f_h2[:int(len(f_h2)/2)]
-
-					crsec3 = [crsec[0]] + crsec[(numnds*2) + 2:(numnds * 3) + 2] + [crsec[1]] + crsec[numnds + 2:(numnds * 2) + 2][::-1]
-					v_h3, f_h3 = self.ogrid_pattern(center, np.array(crsec3), layer_ratio, num_a, num_b)
-					#v_h3 = v_h3[:int(len(v_h3)/2)]
-					f_h3 = f_h3[:int(len(f_h3)/2)] 
-
-					pv.PolyData(np.array(v_h1), np.array(f_h1)).plot(show_edges=True)
-					pv.PolyData(np.array(v_h2), np.array(f_h2)).plot(show_edges=True)
-					pv.PolyData(np.array(v_h3), np.array(f_h3)).plot(show_edges=True)
-		
+					# Mesh of the 3 half-sections
+					v, f = self.bif_ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+					pv.PolyData(np.array(v), np.array(f)).plot(show_edges = True)
+					pv.PolyData(np.array(v), np.array(f)).save('Results/bif_ogrid.ply')
+							
 					ind_dep = len(vertices)
-
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[1]]['crsec'], type = G.nodes[e[1]]['type'], id = G.nodes[e[1]]['id'], id_crsec = ind_dep)
 
 				else:
@@ -793,8 +775,196 @@ class ArterialTree:
 		
 		# Return volume mesh
 		return pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
+
+
+
+
+	def bif_ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
+
+
+		""" Computes the nodes of a O-grid pattern from the bifurcation separation nodes.
+
+		Keyword arguments: 
+		center -- center point of the cross section as numpy array
+		crsec -- list of cross section nodes as numpy array 
+		"""
 		
+
+		if sum(layer_ratio) != 1.0:
+			raise ValueError("The sum of the layer ratios must equal 1.")
+			
+		# Get the nodes of each half section
+
+		half_crsec =  []
+		N = int((len(crsec) - 2) / 3)
 		
+		half_crsec.append([crsec[0]] + crsec[2:N + 2] + [crsec[1]])
+		half_crsec.append([crsec[0]] + crsec[N + 2:(N * 2) + 2] + [crsec[1]])
+		half_crsec.append([crsec[0]] + crsec[(N*2) + 2:(N * 3) + 2] + [crsec[1]])
+		
+		sym_nodes = np.array([0, int(N/4) + 1, int(N/2) + 1])
+
+		vertices_list = []
+		nds_list = []
+
+		N = 24 # WORKAROUND
+
+		for h in range(3):
+
+			count = 0
+
+			nds_full = []
+			vertices_full = []
+
+			crsec_quart = [half_crsec[h][:int(len(half_crsec[h])/2) + 1]] + [half_crsec[h][int(len(half_crsec[h])/2):][::-1]]
+			reverse = True
+
+			for crsec in crsec_quart:
+				
+				crsec = np.array(crsec)
+				reverse = not reverse
+
+				nds = []
+				vertices = []
+
+				# Compute the edges of the central squared part c
+				square_grid = []
+				square_corners = []
+				
+
+				for n in sym_nodes:
+
+					v = crsec[n] - center
+					pt = (center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist()
+					square_corners.append(pt)
+
+				square_sides1 = [lin_interp(square_corners[0], square_corners[1], N/8+1), lin_interp(center, square_corners[2], N/8+1)]
+				square_sides2 = [lin_interp(square_corners[0], center, N/8+1), lin_interp(square_corners[1], square_corners[2], N/8+1)]
+
+
+				# First half points	
+				j = 0
+				for i in range(sym_nodes[0], sym_nodes[1]):
+					
+					v = square_sides1[0][j] - crsec[i]
+					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+					if reverse: 
+
+						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)[:-1]
+						vertices += ray_vertices
+						nds.append(list(range(count, count + len(ray_vertices))) + [square_edge[-j - 1]])
+
+						count += len(ray_vertices)
+
+					else: 
+
+						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)
+						vertices += ray_vertices
+						nds.append(list(range(count, count + len(ray_vertices))))
+
+						count += len(ray_vertices)
+						
+					square_grid.append(nds[-1][-int(N/8):])
+					j+=1
+				
+				square_edge = np.array(square_grid)[::-1, -1].tolist()
+				
+
+				# Central points
+				v = square_corners[1] - crsec[sym_nodes[1]]
+				pb = crsec[sym_nodes[1]] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+				ray_vertices = lin_interp(crsec[sym_nodes[1]], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][-1], num_b + 2)
+				vertices += ray_vertices 
+
+				nds.append(list(range(count, count + len(ray_vertices))))
+				count += len(ray_vertices)
+					
+
+				# Second half points
+				j = 1
+				if reverse : 
+					last = sym_nodes[2] + 1
+				else: 
+					last = sym_nodes[2]
+
+				for i in range(sym_nodes[1] + 1, last):
+
+					v = square_sides2[1][j] - crsec[i]
+					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v))
+
+					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][j], num_b + 2)
+					vertices += ray_vertices
+
+					nds.append(list(range(count, count + len(ray_vertices))) + np.array(square_grid)[::-1, j-1][0:1].tolist())
+					count += len(ray_vertices)
+
+					j += 1
+
+				if reverse: 
+					nds = nds[::-1]
+
+					#for i in range(len(nds)):
+					#	for j in range(len(nds[i])):
+					#		nds[i][j] = #?? INVERSER LES INDICES
+
+					#vertices = vertices[::-1]
+				
+				ind_last = len(nds_full)
+
+				nds_full += nds
+				vertices_full += vertices
+
+			nds_list.append(nds_full)
+			vertices_list.append(vertices_full)
+
+
+		# Combine the 3 half-sections:	
+		num_ray = num_a + num_b +  int(N/8) + 3
+
+		# Concatenate vertices
+		vertices = vertices_list[0]
+	
+		# Correct the nds matrices to shift index + share the central edge
+		for s in range(1,3): # half-section index
+			for i in range(len(nds_list[s])): # ray index
+				for j in range(len(nds_list[s][i])): # node index
+
+					if nds_list[s][i][j] >= num_ray: # and nds_list[s][i][j] < ind_last) or nds_list[s][i][j] > ind_last + num_ray:
+						nds_list[s][i][j] += len(vertices) - num_ray
+
+			vertices += vertices_list[s][num_ray:] #vertices_list[s][num_ray:ind_last] + vertices_list[s][ind_last + num_ray:]
+
+		# Write faces for the whole separation plan
+		faces = []
+		joining = [int(N/8), int(N/8 + N/4)]
+
+		for s in range(3):
+			nds = nds_list[s]
+
+			for i in range(len(nds) - 1):
+
+				if (i not in joining) and (i+1 not in joining):
+					for j in range(len(nds[i])-1):
+						faces.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
+
+				if i in joining:
+					
+					l = len(nds[i])-1
+
+					for j in range(l):
+
+						faces.append([4, nds[i-1][j], nds[i][j], nds[i][j+1], nds[i-1][j+1]])
+						faces.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
+								
+					faces.append([4, nds[i][-1], nds[i+1][l], nds[i+1][l+1], nds[i-1][l]])
+
+		return vertices, faces
+
+
+
+
 
 	def ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
 
@@ -927,10 +1097,6 @@ class ArterialTree:
 					faces.append([4, nds[i][j], nds[k][j], nds[k][j+1], nds[i][j+1]])
 					
 				faces.append([4, nds[i][-1], nds[k][l], nds[k][l+1], nds[i-1][l]])
-		
-		#mesh = pv.PolyData(np.array(vertices), np.array(faces))
-		#mesh.plot(show_edges=True)
-		#mesh.save("Results/ogrid.ply")
 
 		return vertices, faces
 
