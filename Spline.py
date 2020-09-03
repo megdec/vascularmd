@@ -145,7 +145,8 @@ class Spline:
 
 		""" Returns the unit tangent of spline at time t as a numpy array."""
 
-		tg = self._spl.tangent(t)[1]
+		# tg = self._spl.tangent(t)[1]
+		tg = operations.tangent(self._spl, t)[1]
 
 		if self._spl.dimension == 3:
 			tg = np.array(tg)
@@ -156,6 +157,7 @@ class Spline:
 				tg = np.array(tg)[:-1]
 
 		return tg / norm(tg)
+		
 
 
 	def point(self, t, radius = False):
@@ -325,7 +327,7 @@ class Spline:
 		while (search and lbd < 1):
 			
 			self._spl = self.__solve_system(D, 3, n, knot, t, lbd, clip, deriv) 
-			rad_curv = self.curvature_radius(np.arange(0, 1, self._spl.delta).tolist() + [1.0])
+			rad_curv = self.curvature_radius(np.arange(0, 1, self._spl.delta).tolist()) # + [1.0]
 			rad = (self.get_points()[:,-1] / ratio).tolist()
 
 			if all(rad_curv > rad):
@@ -770,7 +772,7 @@ class Spline:
 
 			i1 = int(np.floor(T/ self._spl.delta))
 
-			if i1 == len(length) - 1:
+			if i1 >= len(length) - 1:
 					L = length[-1]
 			else: 
 				i2 = i1 + 1

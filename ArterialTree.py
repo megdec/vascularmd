@@ -329,7 +329,7 @@ class ArterialTree:
 
 					#Cut spline
 					spl = self._spline_graph.edges[e]['spline']
-					splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2.5))
+					splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2))
 
 					spl_bif.append(splb)
 

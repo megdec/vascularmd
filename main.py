@@ -1,15 +1,28 @@
 import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits.mplot3d import Axes3D # 3D display
-
 import pickle 
-
 import pyvista as pv
+from geomdl import BSpline, operations
 
 from Bifurcation import Bifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 
+
+def test_bifurcation_class():
+
+
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+
+
+	bif = Bifurcation(S0, S1, S2, 0.5)
+
+	mesh = bif.mesh(24, 0.2)
+	mesh.plot()
+	mesh.save("Results/bifurcation.vtk")
 
 
 def test_tree_class():
@@ -17,7 +30,6 @@ def test_tree_class():
 	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
 	#tree.deteriorate_centerline(0.05, [0.0, 0.0, 0.0, 0.0])
-
 	#tree.write_swc("Results/refence_mesh_simplified_centerline.swc")
 
 	tree.show()
@@ -25,11 +37,6 @@ def test_tree_class():
 	tree.spline_approximation()
 	tree.show(False)
 
-	tree.mesh_surface(24, 0.2, bifurcation_model=False)
-	mesh = tree.get_surface_mesh()
-	mesh.plot()
-	mesh.save("Results/aneurisk_hex_mesh.ply")
-	#tree.distance_mesh("model.vtp", display=True)
 
 
 def test_ogrid_pattern():
@@ -45,32 +52,34 @@ def test_ogrid_pattern():
 	tree.ogrid_pattern(center2, crsec2, [0.5, 0.4, 0.1], 5, 25)
 
 
-def test_volume_mesh():
+def test_meshing():
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
-	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
+	#tree.deteriorate_centerline(0.05, [0.3, 0.3, 0.3, 0.1])
+	#tree.show(True, False, False)
 	#tree.spline_approximation()
 
 	#file = open('Results/tree_spline_ref_mesh.obj', 'wb') 
 	#pickle.dump(tree, file)
 	file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
 	tree = pickle.load(file)
-	tree.show(False)
+	tree.show()
 
-	#tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
+	#tree.compute_cross_sections(24, 0.2, bifurcation_model=True)
 
 	mesh = tree.mesh_surface()
 
 	mesh.plot(show_edges=True)
-	mesh.save("Results/hex_mesh.vtk")
+	mesh.save("Results/surface_mesh_aneurisk.vtk")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.plot(show_edges=True)
-	mesh.save("Results/hex_mesh.vtk")
+	mesh.save("Results/volume_mesh_aneurisk.vtk")
 
 
 #test_tree_class()
 #test_ogrid_pattern()
-
-test_volume_mesh()
+test_meshing()
+#test_bifurcation_class()

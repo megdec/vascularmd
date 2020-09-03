@@ -24,6 +24,7 @@ class Bifurcation:
 	def __init__(self, S0, S1, S2, R, spl = []):
 
 		# Check user parameters 
+
 		
 		# Set user paramaters
 
@@ -192,40 +193,7 @@ class Bifurcation:
 
 		self._SP = np.array(SP)
 
-
-
-
-	#def bifurcationKeyPoint(spl1, spl2):
-
-
-		""" Find the point of CL1 intersecting with the surface of CL2.
-
-		Keywords arguments: 
-		spl1, spl2 -- splines
-		"""
-
-	#	print("Computing the key points positions.")
-
-	#	t0 = 0.0
-	#	t1 = 1.0
-
-	#	while abs(t0 - t1)> 10**(-10):
-
-	#		t = (t0 + t1) / 2.0
-
-	#		pt = spl1.evaluate_single(t)[:-1]
-	#		t_min = minimumDistance(pt, spl2)
-	#		pt2 = np.array(spl2.evaluate_single(t_min))
-
-	#		dist = norm(np.array(pt) - pt2[:-1])
-			
-	#		if dist > pt2[3]:
-	#			t1 = t
-	#		else: 
-	#			t0 = t
-		
-		
-	#	return (t0 + t1) / 2.0 
+ 
 
 
 	def __set_B(self):
@@ -439,7 +407,7 @@ class Bifurcation:
 
 					faces.append([4, id_nds[s][i][j] , id_nds[s][i][j2], id_nds[s][i + 1][j2],  id_nds[s][i + 1][j]])
 
-		mesh = pv.PolyData(np.array(vertices), np.array(faces))
+		mesh = pv.PolyData(np.array(vertices), np.asarray(faces, dtype=int))
 		return mesh
 
 
