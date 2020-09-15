@@ -657,7 +657,7 @@ class ArterialTree:
 				faces.append([4, id1, id2, id3, id4])
 
 		return pv.PolyData(vertices, np.array(faces))
-		
+
 
 
 
@@ -919,7 +919,7 @@ class ArterialTree:
 							ray_ind = list(range(count, count + len(ray_vertices))) + [shared_edge1[-i-1]]
 
 						if i == (len(quarters[q])-1) / 2:
-							shared_edge3 = ray_ind[-3:]
+							shared_edge3 = ray_ind[-int(N/8):]
 							
 
 					else: # Second half points
@@ -1028,7 +1028,7 @@ class ArterialTree:
 						shared_edge1.append(ray_ind[-1]) # Store the indices of the shared nodes
 
 					if j == int(N/8):
-						shared_edge2 = ray_ind[-3:]
+						shared_edge2 = ray_ind[-int(N/8):]
 						
 
 				else: 
