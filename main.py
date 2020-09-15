@@ -57,17 +57,19 @@ def test_meshing():
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
 	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
-	#tree.deteriorate_centerline(0.05, [0.3, 0.3, 0.3, 0.1])
-	#tree.show(True, False, False)
-	#tree.spline_approximation()
+	tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
+	tree.show(True, False, False)
+	tree.spline_approximation()
 
-	#file = open('Results/tree_spline_ref_mesh.obj', 'wb') 
+	#file = open('Results/tree_spline_ref_mesh.obj', 'rb') 
 	#pickle.dump(tree, file)
-	file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
-	tree = pickle.load(file)
-	tree.show()
+	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
+	#tree = pickle.load(file)
+	#tree.show()
 
-	#tree.compute_cross_sections(24, 0.2, bifurcation_model=True)
+	tree.compute_cross_sections(48, 0.2, bifurcation_model=True)
+	file = open('Results/tree_crsec_ref_mesh.obj', 'wb')
+	pickle.dump(tree, file)
 
 	mesh = tree.mesh_surface()
 

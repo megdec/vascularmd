@@ -34,6 +34,7 @@ class ArterialTree:
 		self.database_name = database_name
 		self._surface_mesh = None
 
+
 		if filename == None:
 			self._full_graph = None
 			self._topo_graph = None
@@ -310,11 +311,12 @@ class ArterialTree:
 
 			print('Modeling the network with splines...')
 			self.spline_approximation()
-			
+		
+		self._N = N
+		self._d = d	
 
 		G = self._spline_graph.copy()
 		nmax = max(list(G.nodes())) + 1
-		count = 0
 		
 		# Bifurcation cross sections
 		for n in self._spline_graph.nodes():
@@ -361,28 +363,17 @@ class ArterialTree:
 
 				
 				# Add separation nodes with cross sections
-				id_matrix, count = self.__id_nodes(end_crsec[0], count)
-				G.add_node(n, coords = spl.point(0.0, True), type = "sep", crsec = end_crsec[0], id = id_matrix, id_crsec = None)
-
-				id_matrix, count = self.__id_nodes(end_crsec[1], count)
-				G.add_node(nmax - 2, coords = S[0][0], type = "sep", crsec = end_crsec[1], id = id_matrix, id_crsec = None)
-
-				id_matrix, count = self.__id_nodes(end_crsec[2], count)
-				G.add_node(nmax - 1, coords = S[1][0], type = "sep", crsec = end_crsec[2], id = id_matrix, id_crsec = None)
+				G.add_node(n, coords = spl.point(0.0, True), type = "sep", crsec = end_crsec[0], id_crsec = None)
+				G.add_node(nmax - 2, coords = S[0][0], type = "sep", crsec = end_crsec[1], id_crsec = None)
+				G.add_node(nmax - 1, coords = S[1][0], type = "sep", crsec = end_crsec[2], id_crsec = None)
 
 				# Add bifurcation node
-				id_matrix, count = self.__id_nodes(bif_crsec, count)
-				G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id = id_matrix, id_crsec = None)
+				G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id_crsec = None)
 				
 				# Add bifurcation edges
-				id_matrix, count = self.__id_nodes(nds[0], count)
-				G.add_edge(n, nmax, spline = tspl[0], crsec = nds[0], connect = connect_index[0], id = id_matrix)
-
-				id_matrix, count = self.__id_nodes(nds[1], count)
-				G.add_edge(nmax - 2, nmax, spline = tspl[1], crsec = nds[1], connect = connect_index[1], id = id_matrix)
-
-				id_matrix, count = self.__id_nodes(nds[2], count)
-				G.add_edge(nmax - 1, nmax, spline = tspl[2], crsec = nds[2], connect = connect_index[2], id = id_matrix)
+				G.add_edge(n, nmax, spline = tspl[0], crsec = nds[0], connect = connect_index[0])
+				G.add_edge(nmax - 2, nmax, spline = tspl[1], crsec = nds[1], connect = connect_index[1])
+				G.add_edge(nmax - 1, nmax, spline = tspl[2], crsec = nds[2], connect = connect_index[2])
 				
 				nmax = nmax + 1
 
@@ -464,22 +455,16 @@ class ArterialTree:
 					
 
 				# Add cross sections
-				id_matrix, count = self.__id_nodes(crsec[1:-1], count)
-				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = connect_index, id = id_matrix)
+				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = connect_index)
 
 				if G.nodes[e[0]]['type'] == "end":
-					id_matrix, count = self.__id_nodes(crsec[0], count)
-					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id = id_matrix, id_crsec = None)
+					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id_crsec = None)
 
 				if G.nodes[e[1]]['type'] == "end":
-					id_matrix, count = self.__id_nodes(crsec[-1], count)
-					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = id_matrix, id_crsec = None)
+					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id_crsec = None)
 					
 
 				self._crsec_graph = G
-				self._crsec_graph.graph['count'] = count
-				self._crsec_graph.graph['N'] = N
-				self._crsec_graph.graph['d'] = d
 
 
 
@@ -573,6 +558,7 @@ class ArterialTree:
 
 
 
+
 	def mesh_surface(self):
 
 		""" Meshes the surface of the arterial tree."""
@@ -583,81 +569,80 @@ class ArterialTree:
 			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
 		
 		G = self._crsec_graph
-		N = G.graph['N']
 
 		print('Meshing surface...')
 
-		vertices = np.zeros((G.graph['count'], 3))
+		# Retirer l'attribut "count" du graphe
+		vertices = []
 		faces = []
 
 		for e in G.edges():		
 
-			# Meshing the edge cross sections
-			for i in range(len(G.edges[e]['crsec'])-1):
-				for j in range(N):
+			# Mesh the first cross section
+			if G.nodes[e[0]]['id_crsec'] is None:
 
-					# Append the vertex to vertices list
-					id1 = G.edges[e]['id'][i][j]
-					vertices[id1, :] =  G.edges[e]['crsec'][i][j]
+				v_prec = G.nodes[e[0]]['crsec']
+				ind_dep = len(vertices) 
 
-					# Append face to face list (forward, counterclockwise)
-					id2 = G.edges[e]['id'][i + 1][j]
-					vertices[id2, :] =  G.edges[e]['crsec'][i + 1][j]
+				vertices += list(v_prec)
+				G.nodes[e[0]]['id_crsec'] = ind_dep 
 
-					if j == N - 1: 
-						id3 = G.edges[e]['id'][i + 1][0]
-						id4 = G.edges[e]['id'][i][0]
+			else: 
+				ind_dep = G.nodes[e[0]]['id_crsec']
+
+			seg_crsec = G.edges[e]['crsec']
+
+			# Mesh edges
+			for i in range(len(seg_crsec)): 
+
+				v_act = seg_crsec[i]
+				for j in range(len(v_act)):
+
+					if j == len(v_act) - 1:
+						j2 = 0
 					else:
-						id3 = G.edges[e]['id'][i + 1][j + 1]
-						id4 = G.edges[e]['id'][i][j + 1]
+						j2 = j + 1
+					faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])	
 
-					faces.append([4, id1, id2, id3, id4])
+				vertices += list(v_act)
+				v_prec = v_act
+	
+				ind_dep = len(vertices) - len(v_prec)
 
-
-			# Meshing the connecting parts
-			for l in range(N): # Starting cross section
-
-				id1 = G.nodes[e[0]]['id'][l]
-				vertices[id1, :] =  G.nodes[e[0]]['crsec'][l]
-
-
-				# Add faces
-				id2 = G.edges[e]['id'][0][l]
-
-				if l == N - 1: 
-					id3 = G.edges[e]['id'][0][0]
-					id4 = G.nodes[e[0]]['id'][0]
-				else:
-					id3 = G.edges[e]['id'][0][l + 1]
-					id4 = G.nodes[e[0]]['id'][l + 1]
-
-				faces.append([4, id1, id2, id3, id4])
-
-
-			for l in range(N): # Ending cross section 
-
-				# Add faces
-				id1 = G.edges[e]['id'][-1][l]
-				id2 = G.nodes[e[1]]['id'][G.edges[e]['connect'][l]]
-
-
-				if l == N - 1:
-
-					id3 = G.nodes[e[1]]['id'][G.edges[e]['connect'][0]]
-					id4 = G.edges[e]['id'][-1][0]
-					vertices[id3, :] =  G.nodes[e[1]]['crsec'][G.edges[e]['connect'][0]]
-
-
-				else:
-
-					id3 = G.nodes[e[1]]['id'][G.edges[e]['connect'][l + 1]]
-					id4 = G.edges[e]['id'][-1][l + 1]
-					vertices[id3, :] =  G.nodes[e[1]]['crsec'][G.edges[e]['connect'][l + 1]]
+			# Mesh the last cross section
 			
-				faces.append([4, id1, id2, id3, id4])
+			if G.nodes[e[1]]['id_crsec'] is None:
 
-		return pv.PolyData(vertices, np.array(faces))
+				v_act = G.nodes[e[1]]['crsec']
+	
+				ind_dep = len(vertices)
+				ind_prec = len(vertices) - len(v_prec)
 
+				G.nodes[e[1]]['id_crsec'] = ind_dep
+				vertices += list(v_act)
+
+			else:
+				ind_dep = G.nodes[e[1]]['id_crsec']
+				ind_prec = len(vertices) - len(v_prec)
+			
+			# Get bifurcation half section id and orientation from connection information
+			connect = G.edges[e]['connect']
+								
+			# Add faces
+			for j in range(len(v_prec)): 
+				if j == len(v_prec) - 1:
+					j2 = 0
+					j3 = connect[0]
+				else:
+					j2 = j + 1
+					j3 = connect[j+1] 
+			
+				faces.append([4, ind_prec + j, ind_dep + connect[j],  ind_dep + j3, ind_prec + j2])
+			
+		# Effacer les id
+		nx.set_node_attributes(G, None, 'id_crsec')
+		
+		return pv.PolyData(np.array(vertices), np.array(faces))
 
 
 
@@ -677,7 +662,9 @@ class ArterialTree:
 			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
 
 		G = self._crsec_graph
-		N = G.graph['N']
+
+		if self._N%8 != 0:
+			raise ValueError('The number of cross section nodes must be a multiple of 8 for volume meshing.')
 
 		print('Meshing volume...')
 
@@ -693,12 +680,12 @@ class ArterialTree:
 
 				crsec = np.array(G.nodes[e[0]]['crsec'])
 				center = np.array(G.nodes[e[0]]['coords'])[:-1]
-				v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
+				v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(self._N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
 			
 				vertices += v_prec
 				ind_dep = len(vertices) - len(v_prec)
-				
-				G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = G.nodes[e[0]]['crsec'], type = G.nodes[e[0]]['type'], id = G.nodes[e[0]]['id'], id_crsec = ind_dep)
+				G.nodes[e[0]]['id_crsec'] = ind_dep
+			
 
 			else: 
 				ind_dep = G.nodes[e[0]]['id_crsec']
@@ -709,7 +696,7 @@ class ArterialTree:
 			for i in range(len(seg_crsec)): 
 
 				crsec = seg_crsec[i]
-				center = (crsec[0] + crsec[int(N/2)])/2.0
+				center = (crsec[0] + crsec[int(self._N/2)])/2.0
 				v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
 				
 				
@@ -736,8 +723,8 @@ class ArterialTree:
 					v, f = self.bif_ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)				
 							
 					ind_dep = len(vertices)
-					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[1]]['crsec'], type = G.nodes[e[1]]['type'], id = G.nodes[e[1]]['id'], id_crsec = ind_dep)
-
+					G.nodes[e[1]]['id_crsec'] = ind_dep
+				
 					vertices += v
 					ind_prec = len(vertices) - len(v) -len(v_prec)
 
@@ -750,11 +737,11 @@ class ArterialTree:
 				connect = G.edges[e]['connect']
 
 				h = []
-				for s in [1, int(N/2) + 1]:
+				for s in [1, int(self._N/2) + 1]:
 
-					if connect[s] <= N/2:
+					if connect[s] <= self._N/2:
 						h1 = [0]
-					elif connect[s] >= N:
+					elif connect[s] >= self._N:
 						h1 = [2]
 					else: 
 						h1 = [1]
@@ -783,13 +770,13 @@ class ArterialTree:
 								face = quarter[i][j]
 								f_act.append([4, face[2] , face[1], face[4], face[3]])
 
-							for k in range(int(N/8)):
-								face = quarter[-int(N/8)+k][-i -1]
+							for k in range(int(self._N/8)):
+								face = quarter[-int(self._N/8)+k][-i -1]
 								f_act.append([4, face[3] , face[2], face[1], face[4]])
 
 						else:
 
-							for j in range(len(quarter[i]) - int(N/8)): # Iterate on the faces
+							for j in range(len(quarter[i]) - int(self._N/8)): # Iterate on the faces
 								face = quarter[i][j]
 								f_act.append([4, face[2] , face[1], face[4], face[3]])
 
@@ -807,16 +794,15 @@ class ArterialTree:
 				if G.nodes[e[1]]['id_crsec'] is None:
 
 					end_crsec = np.array(G.nodes[e[1]]['crsec'])
-					center = (end_crsec[0] + end_crsec[int(N/2)])/2.0
+					center = (end_crsec[0] + end_crsec[int(self._N/2)])/2.0
 					v_act, f_act = self.ogrid_pattern(center, end_crsec, layer_ratio, num_a, num_b)
 					ind_dep = len(vertices)
-
-					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = G.nodes[e[1]]['crsec'], type = G.nodes[e[1]]['type'], id = G.nodes[e[1]]['id'], id_crsec = ind_dep)
-
+					G.nodes[e[1]]['id_crsec'] = ind_dep
+				
 				else:
 					ind_dep = G.nodes[e[1]]['id_crsec']
 
-				j = int([0, int(N/4), int(N/2), int(3* N/4)].index(G.edges[e]['connect'][0]) * len(f_act) / 4)
+				j = int([0, int(self._N/4), int(self._N/2), int(3* self._N/4)].index(G.edges[e]['connect'][0]) * len(f_act) / 4)
 
 				for k in range(len(f_act)):
 
