@@ -8,6 +8,10 @@ from numpy.linalg import norm
 from numpy import dot, cross, arctan2
 
 
+#####################################
+############# GEOMETRY ##############
+#####################################
+
 
 def rotate_vector(v, axis, theta):
 
@@ -146,3 +150,40 @@ def lin_interp(p0, p1, num):
 	points[:,2] = np.linspace(p0[2], p1[2], num).tolist()
 
 	return points.tolist()
+
+
+
+#####################################
+############ VALIDATION  ############
+#####################################
+
+def distance(mesh1, mesh2, display=False):
+
+	mesh1.compute_implicit_distance(mesh2, inplace=True)
+
+	if display: 
+		mesh1.plot(show_edges = True)
+
+	tab = mesh1['implicit_distance']
+	return np.mean(tab), np.min(tab), np.max(tab)
+
+
+
+
+def quality(mesh, metric='scaled_jacobian', display=False):
+
+	""" Compute the quality metric form the cells of a surface mesh. 
+	Returns the mean, min and max values.
+
+	Keyword arguments:
+	metric -- name of the metric (see pyvista doc)
+	display -- true to display the mesh with quality values
+	"""
+	quality = mesh.compute_cell_quality(metric)
+
+	if display: 
+		mesh.plot(show_edges = True)
+
+	tab = quality['CellQuality']
+	return np.mean(tab), np.min(tab), np.max(tab)
+	

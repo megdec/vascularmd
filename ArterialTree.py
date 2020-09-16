@@ -353,9 +353,7 @@ class ArterialTree:
 					bif = Bifurcation(S0, S[0], S[1], 0.5)
 				else: 
 					bif = Bifurcation(S0, S[0], S[1], 0.5, spl = spl_bif)
-					
-				#bif.show(nodes = True)
-
+				
 				# Find cross sections
 				end_crsec, bif_crsec, nds, connect_index = bif.cross_sections(N, d)
 				B = bif.get_B()

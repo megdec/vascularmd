@@ -44,6 +44,7 @@ class Bifurcation:
 		self.__set_CP() # Common points
 
 		self.__set_tspl()# Trajectory splines
+
 	
 
 	#####################################
@@ -328,94 +329,98 @@ class Bifurcation:
 	#####################################
 
 
+	def surface_mesh(self, pts=None):
 
-	def mesh(self, N, d):
-
-		""" Writes the mesh of a bifurcation defined by three end cross sections.
+		""" Returns the surface mesh of the bifurcation
 
 		Keyword arguments:
+		pts -- The nodes of the mesh, computed with the cross_sections method.
+		If not given, he cross section are computed with default parameters.
+		"""
 
-		S0, S1, S2 -- downstream and upstram cross sections 
-		N -- number of nodes in a transverse section (multiple of 4)
-		d -- longitudinal density of nodes as a proportion of the radius """
-
-		end_crsec, bif_crsec, nds, ind = self.cross_sections(N, d)
+		if pts == None:
+			print('Computing cross sections with default parameters N = 24 and d = 0.2')
+			end_crsec, bif_crsec, nds, ind = self.cross_sections(24, 0.2)
+		else: 
+			[end_crsec, bif_crsec, nds, ind] = pts
 
 		vertices = []
 		faces = []
 
-		# Attribute a id to every nodes
-		count = 0
+		vertices += bif_crsec
+		 
+		for e in range(3):
 
-		id_end = np.zeros(np.array(end_crsec).shape[:-1])
-		for i in range(id_end.shape[0]):
-			for j in range(id_end.shape[1]):
-					id_end[i, j] = count
-					vertices.append(end_crsec[i][j])
-					count += 1
-		id_end = id_end.tolist()
+			# Mesh the end cross section
+			v_prec = end_crsec[e]
+			ind_dep = len(vertices)
+			vertices += v_prec
+			
+			seg_crsec = nds[e]
+			# Mesh edges
+			for i in range(len(seg_crsec)): 
 
-		id_bif = np.zeros(np.array(bif_crsec).shape[:-1])
-		for i in range(id_bif.shape[0]):
-			id_bif[i] = count
-			vertices.append(bif_crsec[i])
-			count += 1
-		id_bif = id_bif.tolist()
+				v_act = seg_crsec[i]
+				for j in range(len(v_act)):
 
-		id_nds = [] 
-		for i in range(len(nds)):
-			tab = np.zeros(np.array(nds[i]).shape[:-1]) 
-			for j in range(tab.shape[0]):
-				for k in range(tab.shape[1]):
-					tab[j, k] = count
-					vertices.append(nds[i][j][k])
-					count += 1
-			id_nds.append(tab.tolist())
-
-		# Connect end sections
-		for s in range(3):
-			for i in range(N):
-
-				if i == N - 1:
-					i2 = 0
-				else: 
-					i2 = i + 1
-
-				faces.append([4, id_end[s][i], id_end[s][i2], id_nds[s][0][i2],  id_nds[s][0][i]])
-
-		# Connect bif section
-		for s in range(3):
-			for i in range(N):
-
-				if i == N - 1:
-					i2 = 0
-				else: 
-					i2 = i + 1
-
-				faces.append([4, id_nds[s][-1][i], id_nds[s][-1][i2], id_bif[ind[s][i2]],  id_bif[ind[s][i]]])
-
-
-		# Connect other nodes
-		for s in range(3):
-			for i in range(len(nds[s])-1):
-				for j in range(N):
-
-					if j == N - 1:
+					if j == len(v_act) - 1:
 						j2 = 0
-					else: 
+					else:
 						j2 = j + 1
+					faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])	
 
-					faces.append([4, id_nds[s][i][j] , id_nds[s][i][j2], id_nds[s][i + 1][j2],  id_nds[s][i + 1][j]])
+				ind_dep = len(vertices)
+				vertices += v_act
+				v_prec = v_act
+	
+			# Mesh the bifurcation
+			ind_dep = len(vertices) - len(v_prec)
+			connect = ind[e]
+			for j in range(len(v_prec)): 
+				if j == len(v_prec) - 1:
+					j2 = 0
+					j3 = connect[0]
+				else:
+					j2 = j + 1
+					j3 = connect[j+1] 
+			
+				faces.append([4, ind_dep + j, connect[j], j3, ind_dep + j2])
 
-		mesh = pv.PolyData(np.array(vertices), np.asarray(faces, dtype=int))
+		mesh = pv.PolyData(np.array(vertices), np.array(faces))
+		#mesh.plot(show_edges = True)
+
 		return mesh
 
 
-	def __smooth_apex(self, mesh):
 
-		""" Smoothes the bifurcation apex and separation sections."""
+	def __smooth(self, pts):
 
-		return mesh
+		""" Smoothes the bifurcation.
+
+		Keyword arguments:
+		pts -- The nodes of the mesh, computed with the cross_sections method.
+		"""
+
+		mesh = self.surface_mesh(pts)
+		mesh = mesh.smooth(n_iter = 1000) # Laplacian smooth
+
+		# Get points and re-order them in the original structure
+		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
+		end_crsec = []
+		nds = [[], [], []]
+		N = len(pts[0][0])
+
+		j = len(pts[1])
+		for s in range(3):
+			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
+			j += N
+
+			for i in range(len(pts[2][s])):
+				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
+				j += N
+
+		return end_crsec, bif_crsec, nds
+		
 
 
 	def cross_sections(self, N, d):
@@ -480,6 +485,7 @@ class Bifurcation:
 
 			nds.append(nds_seg.tolist())
 
+		end_crsec, bif_crsec, nds = self.__smooth([end_crsec, bif_crsec, nds, connect_index])
 		return end_crsec, bif_crsec, nds, connect_index
 
 
@@ -703,6 +709,8 @@ class Bifurcation:
 			pt = O + ((c0 + c1) / 2.0) * n
 
 			return pt
+
+
 
 
 

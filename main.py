@@ -8,6 +8,7 @@ from geomdl import BSpline, operations
 from Bifurcation import Bifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
+from utils import quality, distance
 
 
 def test_bifurcation_class():
@@ -55,25 +56,24 @@ def test_ogrid_pattern():
 def test_meshing():
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
-	tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
-	tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
-	tree.show(True, False, False)
-	tree.spline_approximation()
+	#tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
+	#tree.show(True, False, False)
+	#tree.spline_approximation()
 
 	#file = open('Results/tree_spline_ref_mesh.obj', 'rb') 
 	#pickle.dump(tree, file)
-	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
-	#tree = pickle.load(file)
+	file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
+	tree = pickle.load(file)
 	#tree.show()
 
-	tree.compute_cross_sections(48, 0.2, bifurcation_model=True)
-	file = open('Results/tree_crsec_ref_mesh.obj', 'wb')
-	pickle.dump(tree, file)
+	#tree.compute_cross_sections(48, 0.2, bifurcation_model=True)
 
 	mesh = tree.mesh_surface()
 
 	mesh.plot(show_edges=True)
+	print(distance(mesh, mesh, True))
 	mesh.save("Results/surface_mesh_aneurisk.vtk")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
