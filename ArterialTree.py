@@ -96,6 +96,7 @@ class ArterialTree:
 		self._full_graph = G
 		self.__set_topo_graph()
 		self._spline_graph = None
+		self._crsec_graph = None
 
 
 	def set_topo_graph(self, G):
@@ -105,6 +106,7 @@ class ArterialTree:
 		self._topo_graph = G
 		self._full_graph = self.topo_to_full()
 		self._spline_graph = None
+		self._crsec_graph = None
 
 
 	def set_spline_graph(self, G):
@@ -114,6 +116,7 @@ class ArterialTree:
 		self._spline_graph = G
 		self._full_graph = self.spline_to_full()
 		self.__set_topo_graph()
+		self._crsec_graph = None
 
 
 
@@ -316,6 +319,8 @@ class ArterialTree:
 		self._d = d	
 
 		G = self._spline_graph.copy()
+		nx.set_node_attributes(G, None, name='id_crsec')
+
 		nmax = max(list(G.nodes())) + 1
 		
 		# Bifurcation cross sections
@@ -397,7 +402,6 @@ class ArterialTree:
 					crsec = self.__segment_crsec(spl, num, N)
 					connect_index = np.arange(0, N).tolist()
 
-
 				# Connecting tube
 				elif G.nodes[e[0]]['type'] == "sep" and G.nodes[e[1]]['type'] == "sep":
 
@@ -455,11 +459,13 @@ class ArterialTree:
 				# Add cross sections
 				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = connect_index)
 
+				
 				if G.nodes[e[0]]['type'] == "end":
 					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id_crsec = None)
 
 				if G.nodes[e[1]]['type'] == "end":
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id_crsec = None)
+				
 					
 
 				self._crsec_graph = G
@@ -480,7 +486,9 @@ class ArterialTree:
 
 		crsec = []
 
-		t = [0.0] + spl.resample_time(num) + [1.0]
+		t = np.linspace(0.0, 1.0, num) #t = [0.0] + spl.resample_time(num) + [1.0]
+
+		# Numerical error correction
 
 		if len(v0) == 0:
 			# Random initialisation of the reference vector
@@ -493,7 +501,7 @@ class ArterialTree:
 			# Get rotation angles
 			theta = [0.0] + np.linspace(0.0, alpha, num).tolist() + [alpha]
 
-		for i in range(num + 2):
+		for i in range(len(t)):
 
 			tg = spl.tangent(t[i])
 			# Transports the reference vector to time t[i]
@@ -1131,6 +1139,24 @@ class ArterialTree:
 				G.add_edge(e[0], e[1], coords = [])
 
 		return G
+
+
+
+	def subgraph(self, nodes):
+
+		""" Cuts the original graph to a subgraph. 
+		Remove any spline approximation of cross section computation performed on the previous graph.
+
+		Keywords arguments: 
+		nodes -- list of nodes to keep in the subgraph
+		"""
+		if self._topo_graph is None:
+			raise ValueError('Cannot make subgraph because no network was found.')
+		else:
+		
+			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
+			self.__set_topo_graph()
+
 
 
 	#####################################

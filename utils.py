@@ -7,6 +7,8 @@ from math import pi, sin, cos, tan, atan, acos, asin, sqrt
 from numpy.linalg import norm 
 from numpy import dot, cross, arctan2
 
+import pyvista as pv
+
 
 #####################################
 ############# GEOMETRY ##############
@@ -162,7 +164,10 @@ def distance(mesh1, mesh2, display=False):
 	mesh1.compute_implicit_distance(mesh2, inplace=True)
 
 	if display: 
-		mesh1.plot(show_edges = True)
+		p = pv.Plotter()
+		p.add_mesh(mesh1, scalars = 'implicit_distance')
+		p.add_mesh(mesh2, color=True, opacity=0.25) # Reference mesh
+		p.show()
 
 	tab = mesh1['implicit_distance']
 	return np.mean(tab), np.min(tab), np.max(tab)
@@ -170,7 +175,7 @@ def distance(mesh1, mesh2, display=False):
 
 
 
-def quality(mesh, metric='scaled_jacobian', display=False):
+def quality(mesh, display=False, metric='scaled_jacobian'):
 
 	""" Compute the quality metric form the cells of a surface mesh. 
 	Returns the mean, min and max values.
@@ -182,7 +187,7 @@ def quality(mesh, metric='scaled_jacobian', display=False):
 	quality = mesh.compute_cell_quality(metric)
 
 	if display: 
-		mesh.plot(show_edges = True)
+		quality.plot(show_edges = True, scalars = 'CellQuality')
 
 	tab = quality['CellQuality']
 	return np.mean(tab), np.min(tab), np.max(tab)

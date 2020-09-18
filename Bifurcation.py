@@ -30,6 +30,7 @@ class Bifurcation:
 
 		self._endsec = np.array([S0, S1, S2]) # Cross sections of main and daughter branches
 		self.R = R  # Minimum curvature for rounded apex
+		self._crsec = None
 
 		# Set modeling variables
 		if len(spl)!= 0:
@@ -329,7 +330,7 @@ class Bifurcation:
 	#####################################
 
 
-	def surface_mesh(self, pts=None):
+	def surface_mesh(self, N=24, d=0.2):
 
 		""" Returns the surface mesh of the bifurcation
 
@@ -338,11 +339,10 @@ class Bifurcation:
 		If not given, he cross section are computed with default parameters.
 		"""
 
-		if pts == None:
-			print('Computing cross sections with default parameters N = 24 and d = 0.2')
-			end_crsec, bif_crsec, nds, ind = self.cross_sections(24, 0.2)
+		if self._crsec == None:
+			end_crsec, bif_crsec, nds, ind = self.cross_sections(N, d)
 		else: 
-			[end_crsec, bif_crsec, nds, ind] = pts
+			[end_crsec, bif_crsec, nds, ind] = self._crsec
 
 		vertices = []
 		faces = []
@@ -393,7 +393,7 @@ class Bifurcation:
 
 
 
-	def __smooth(self, pts):
+	def smooth(self, n_iter):
 
 		""" Smoothes the bifurcation.
 
@@ -401,8 +401,13 @@ class Bifurcation:
 		pts -- The nodes of the mesh, computed with the cross_sections method.
 		"""
 
-		mesh = self.surface_mesh(pts)
-		mesh = mesh.smooth(n_iter = 1000) # Laplacian smooth
+		if self._crsec == None:
+			raise ValueError('Please first perform cross section computation.')
+		else: 
+			pts = self._crsec
+
+		mesh = self.surface_mesh()
+		mesh = mesh.smooth(n_iter, boundary_smoothing=False, feature_angle=45, feature_smoothing= False, relaxation_factor=0.01) # Laplacian smooth
 
 		# Get points and re-order them in the original structure
 		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
@@ -419,7 +424,9 @@ class Bifurcation:
 				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
 				j += N
 
-		return end_crsec, bif_crsec, nds
+		self._crsec[0] = end_crsec
+		self._crsec[1] = bif_crsec
+		self._crsec[2] = nds
 		
 
 
@@ -485,8 +492,9 @@ class Bifurcation:
 
 			nds.append(nds_seg.tolist())
 
-		end_crsec, bif_crsec, nds = self.__smooth([end_crsec, bif_crsec, nds, connect_index])
-		return end_crsec, bif_crsec, nds, connect_index
+		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
+		#self.smooth()
+		return self._crsec
 
 
 	def __bifurcation_connect(self, tind, ind, P0, P1, n):

@@ -318,6 +318,9 @@ class Spline:
 		"""
 
 		n = int(len(D) / 2)
+		if n < 4:
+			n = 4
+		
 		t = self.__chord_length_parametrization(D)
 		knot =  self.__uniform_knot(3, n)
 		
@@ -335,8 +338,8 @@ class Spline:
 
 			lbd = lbd + 0.001
 
-		#self.set_spl(self._spl)
 		self.set_spl(self.__solve_system(D, 3, n, knot, t, 0, clip, deriv))
+		
 
 
 
@@ -723,23 +726,35 @@ class Spline:
 			T = []
 			for i in range(len(L)):
 
-				i1 = np.argmax(length >= L[i])
+				i1 = np.argmax(length > L[i])
 
-				if i1 == len(length) - 1 or (i1 == 0 and length[0]< L[i]):
-					T.append(1.0)
+				if i1 == 0:
+					if length[0] > L[i]:
+						T.append(0.0) # length is < 0
+					else: 
+						T.append(1.0) # length is > length of the spline
+				
 				else: 
+					i1 = i1 - 1
 					i2 = i1 + 1
-					T.append(i1 * self._spl.delta - (i1 * self._spl.delta - i2 * self._spl.delta) * ((L[i] - length[i1]) / (length[i2] - length[i1])))
+					T.append((i1 * self._spl.delta) + (self._spl.delta * ((L[i] - length[i1]) / (length[i2] - length[i1]))))
+
 
 		else:
-			i1 = np.argmax(length >= L)
 
-			if i1 == len(length) - 1 or (i1 == 0 and length[0]< L):
-				T = 1.0
+			i1 = np.argmax(length > L)
+
+			if i1 == 0:
+				if length[0] > L:
+					T = 0.0 # length is < 0
+				else: 
+					T = 1.0 # length is > length of the spline
+				
 			else: 
+				i1 = i1 - 1
 				i2 = i1 + 1
-				T = i1 * self._spl.delta - (i1 * self._spl.delta - i2 * self._spl.delta) * ((L - length[i1]) / (length[i2] - length[i1])) 
-		
+				T = (i1 * self._spl.delta) + (self._spl.delta * ((L - length[i1]) / (length[i2] - length[i1])))
+
 		return T
 			 
 

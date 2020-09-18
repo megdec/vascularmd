@@ -21,9 +21,51 @@ def test_bifurcation_class():
 
 	bif = Bifurcation(S0, S1, S2, 0.5)
 
-	mesh = bif.mesh(24, 0.2)
+	mesh = bif.surface_mesh()
 	mesh.plot()
 	mesh.save("Results/bifurcation.vtk")
+
+
+def test_bifurcation_smoothing():
+
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+
+	bif_ref = Bifurcation(S0, S1, S2, 0)
+	mesh_ref = bif_ref.surface_mesh()
+	mesh_ref.plot(show_edges=True)
+
+	mean_distance = [distance(mesh_ref, mesh_ref)[0]]
+	mean_quality = [quality(mesh_ref)[0]]
+	n_iter = [0]
+
+	for i in range(10):
+		bif_ref.smooth(100)
+		mesh = bif_ref.surface_mesh()
+		mesh.plot(show_edges=True)
+		mean_distance.append(distance(mesh, mesh_ref, True)[0])
+		mean_quality.append(quality(mesh, True)[0])
+		n_iter.append(n_iter[-1] + 100)
+
+	fig, ax = plt.subplots() 
+	ax.set_ylabel('distance', fontsize=60) 
+	ax.set_xlabel('n_iter', fontsize=60) 
+	ax.plot(n_iter, mean_distance, color = 'red')
+	plt.xticks(fontsize=20)
+	plt.yticks(fontsize=20)
+	plt.show() 
+
+	fig, ax = plt.subplots() 
+	ax.set_ylabel('cell quality', fontsize=60) 
+	ax.set_xlabel('n_iter', fontsize=60) 
+	ax.plot(n_iter, mean_quality, color = 'red')
+	plt.xticks(fontsize=20)
+	plt.yticks(fontsize=20)
+	plt.show() 
+
+		
+
 
 
 def test_tree_class():
@@ -55,25 +97,29 @@ def test_ogrid_pattern():
 
 def test_meshing():
 
-	#tree = ArterialTree("TestPatient", "BraVa", "Results/simple_tube.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_part.swc")
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
 	#tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
 	#tree.show(True, False, False)
 	#tree.spline_approximation()
 
-	#file = open('Results/tree_spline_ref_mesh.obj', 'rb') 
+	file = open('Results/tree_spline_brava_part.obj', 'rb') 
 	#pickle.dump(tree, file)
-	file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
+	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
 	tree = pickle.load(file)
 	#tree.show()
 
-	#tree.compute_cross_sections(48, 0.2, bifurcation_model=True)
+	#tree.show(True, False, False)
+	#tree.subgraph([1,2,3])
+	#tree.show(True, False, False)
+
+
+	tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
 
 	mesh = tree.mesh_surface()
 
 	mesh.plot(show_edges=True)
-	print(distance(mesh, mesh, True))
 	mesh.save("Results/surface_mesh_aneurisk.vtk")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
@@ -81,7 +127,9 @@ def test_meshing():
 	mesh.save("Results/volume_mesh_aneurisk.vtk")
 
 
+
 #test_tree_class()
 #test_ogrid_pattern()
 test_meshing()
+#test_bifurcation_smoothing()
 #test_bifurcation_class()
