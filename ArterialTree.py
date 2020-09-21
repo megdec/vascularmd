@@ -319,7 +319,7 @@ class ArterialTree:
 		self._d = d	
 
 		G = self._spline_graph.copy()
-		nx.set_node_attributes(G, None, name='id_crsec')
+		#nx.set_node_attributes(G, None, name='id_crsec')
 
 		nmax = max(list(G.nodes())) + 1
 		
@@ -487,8 +487,6 @@ class ArterialTree:
 		crsec = []
 
 		t = np.linspace(0.0, 1.0, num) #t = [0.0] + spl.resample_time(num) + [1.0]
-
-		# Numerical error correction
 
 		if len(v0) == 0:
 			# Random initialisation of the reference vector
@@ -1141,6 +1139,10 @@ class ArterialTree:
 		return G
 
 
+	#####################################
+	############  OPERATIONS  ###########
+	#####################################
+
 
 	def subgraph(self, nodes):
 
@@ -1156,6 +1158,62 @@ class ArterialTree:
 		
 			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
 			self.__set_topo_graph()
+
+
+	def transpose(self, val):
+
+		""" Cuts the original graph to a subgraph. 
+		Remove any spline approximation of cross section computation performed on the previous graph.
+
+		Keywords arguments: 
+		val -- list of transposition values for every coordinates of the nodes
+		"""
+
+		if self._topo_graph is None:
+			raise ValueError('Cannot transpose because no network was found.')
+
+		else:
+
+			G = self._topo_graph
+
+			for n in G.nodes: 
+				G.nodes[n]['coords'] = (G.nodes[n]['coords'] + np.array(val)).tolist()
+
+			for e in G.edges:
+				for i in range(len(G.edges[e]['coords'])):
+					G.edges[e]['coords'][i] = (G.edges[e]['coords'][i] + np.array(val)).tolist()
+
+
+		self.set_topo_graph(G)
+
+
+	def scale(self, val):
+
+		""" Cuts the original graph to a subgraph. 
+		Remove any spline approximation of cross section computation performed on the previous graph.
+
+		Keywords arguments: 
+		val -- list of transposition values for every coordinates of the nodes
+		"""
+
+		if self._topo_graph is None:
+			raise ValueError('Cannot scale because no network was found.')
+
+		else:
+
+			G = self._topo_graph
+
+			for n in G.nodes: 
+				G.nodes[n]['coords'] = (G.nodes[n]['coords'] * np.array(val)).tolist()
+
+			for e in G.edges:
+				for i in range(len(G.edges[e]['coords'])):
+					G.edges[e]['coords'][i] = (G.edges[e]['coords'][i] * np.array(val)).tolist()
+
+
+		self.set_topo_graph(G)
+		
+
 
 
 
