@@ -10,6 +10,8 @@ from ArterialTree import ArterialTree
 from Spline import Spline
 from utils import quality, distance
 
+from numpy.linalg import norm 
+
 
 def test_bifurcation_class():
 
@@ -97,35 +99,48 @@ def test_ogrid_pattern():
 
 def test_meshing():
 
-	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_part.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_part.swc")
 	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
 
 	#tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
 	#tree.show(True, False, False)
-	#tree.spline_approximation()
+	tree.spline_approximation(1)
+	tree.show(True, True, False)
 
-	file = open('Results/tree_spline_brava_part.obj', 'rb') 
+	#file = open('Results/tree_spline_brava_part.obj', 'rb') 
 	#pickle.dump(tree, file)
 	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
-	tree = pickle.load(file)
+	#tree = pickle.load(file)
 	#tree.show()
-
-	#tree.show(True, False, False)
 	#tree.subgraph([1,2,3])
 	#tree.show(True, False, False)
 
 
-	tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
+	tree.compute_cross_sections(24, 0.3, bifurcation_model=False)
 
 	mesh = tree.mesh_surface()
 
+	print("plot mesh")
 	mesh.plot(show_edges=True)
-	mesh.save("Results/surface_mesh_aneurisk.vtk")
+	mesh.save("Results/surface_mesh.vtk")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.plot(show_edges=True)
-	mesh.save("Results/volume_mesh_aneurisk.vtk")
+	mesh.save("Results/volume_mesh.vtk")
 
+
+
+def test_fitting():
+
+	D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
+	deriv = np.array([93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041]) - np.array([93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465]) 
+
+	tg  = deriv / norm(deriv)
+	spl = Spline()
+	n = int(len(D))
+
+	spl.pspline_approximation(D, n, [0, 0], clip = [[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]], deriv = [tg.tolist(), (-tg).tolist()])
+	spl.show(knot = True, control_points = True, data = D)
 
 
 #test_tree_class()
@@ -133,3 +148,4 @@ def test_meshing():
 test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
+#test_fitting()

@@ -21,7 +21,7 @@ class Bifurcation:
 	##########  CONSTRUCTOR  ############
 	#####################################
 
-	def __init__(self, S0, S1, S2, R, spl = []):
+	def __init__(self, S0, S1, S2, R, spl = [], AP = []):
 
 		# Check user parameters 
 
@@ -38,11 +38,17 @@ class Bifurcation:
 
 		else:
 			self.__set_spl()
-		
-		self.__set_AP() # Apex point
-		self.__set_SP() # Separation points
-		self.__set_B() # Geometric center
-		self.__set_CP() # Common points
+
+		if len(AP)!= 0:
+			self._AP = AP # Apex coords (np array)
+			self.__set_tAP() # Times at apex
+
+		else:
+			self.__set_AP() # Apex point (np array)
+
+		self.__set_SP() # Separation points (np array)
+		self.__set_B() # Geometric center (np array)
+		self.__set_CP() # Common points (np array)
 
 		self.__set_tspl()# Trajectory splines
 
@@ -118,6 +124,9 @@ class Bifurcation:
 
 		""" Set the coordinates of the apex point parameter and the times at apex. """
 
+		AP, tAP = self._spl[0].intersection_apex(self._spl[1])
+
+		"""
 		v = cross(self._endsec[1][1][:-1], np.array([1,0,0]))
 		v = v / norm(v)
 
@@ -135,10 +144,21 @@ class Bifurcation:
 
 				AP = ap
 				tAP = times
+		"""
 
-		self._AP = np.array(AP)
+		self._AP = AP #np.array(AP)
 		self._tAP = tAP
 
+
+	def __set_tAP(self):
+
+		""" Set the times at apex. """
+
+		tAP = []
+		for i in range(len(self._spl)):
+			tAP.append(self._spl[i].project_point_to_centerline(self._AP))
+
+		self._tAP = tAP
 
 
 
@@ -493,7 +513,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		#self.smooth()
+		self.smooth(100)
 		return self._crsec
 
 

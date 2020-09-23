@@ -185,22 +185,21 @@ class ArterialTree:
 	##########  APPROXIMATION  ##########
 	#####################################
 
-	def spline_approximation(self):
+	def spline_approximation(self, dist):
 
 		""" Approximate centerlines using splines and sets the attribute spline-graph.
 		"""
 
 		print('Modeling the network with splines...')
 
-		p = 3 # Spline order
-		G = self.__bifurcation_point_estimation(p)
+		G = self.__bifurcation_point_estimation(dist)
 		self._spline_graph = nx.DiGraph()
 
 		for e in G.edges():
 
 			pts = [G.nodes[e[0]]['coords']] + G.edges[e]['coords'] +  [G.nodes[e[1]]['coords']]
 			
-			while len(pts) < p:
+			while len(pts) < 3:
 				# Linearly interpolate data
 				pts = linear_interpolation(pts, 1)
 
@@ -216,7 +215,8 @@ class ArterialTree:
 				deriv[1] = G.nodes[e[1]]['tangent']
 
 			spl = Spline()
-			spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
+			#spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
+			spl.distance_constraint_approximation(np.array(pts), dist, clip, deriv)
 			#spl.show(False, False, data = pts)
 
 			# Add edges with spline attributes
@@ -226,7 +226,7 @@ class ArterialTree:
 
 
 
-	def __bifurcation_point_estimation(self, p):
+	def __bifurcation_point_estimation(self, dist):
 
 		""" Approximates the coordinates and tangent of the bifurcation points.
 
@@ -250,10 +250,12 @@ class ArterialTree:
 
 				# Fit splines from the main branch to the daughter branches
 				spl1 = Spline()
-				spl1.curvature_bounded_approximation(pts0 + pts1, 1) 
+				#spl1.curvature_bounded_approximation(pts0 + pts1, 1) 
+				spl1.distance_constraint_approximation(np.array(pts0 + pts1), dist)
 
 				spl2 = Spline()
-				spl2.curvature_bounded_approximation(pts0 + pts2, 1) 
+				#spl2.curvature_bounded_approximation(pts0 + pts2, 1) 
+				spl2.distance_constraint_approximation(np.array(pts0 + pts2), dist)
 		
 			
 				# Find the separation point between the splines
@@ -266,7 +268,7 @@ class ArterialTree:
 				t2 =  spl2.length_to_time(spl2.time_to_length(t2) - 2*r)	
 
 				# Get bifurcation coordinates and tangent
-				tg = (spl1.tangent(t1, True) + spl2.tangent(t2, True)) /2.0
+				tg = (spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 #(spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0 
 				pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
 
 				# Remove the points of the main branch further than the separation point
@@ -322,7 +324,7 @@ class ArterialTree:
 		#nx.set_node_attributes(G, None, name='id_crsec')
 
 		nmax = max(list(G.nodes())) + 1
-		
+		print('Meshing bifurcations')
 		# Bifurcation cross sections
 		for n in self._spline_graph.nodes():
 
@@ -332,11 +334,21 @@ class ArterialTree:
 
 				S = []
 				spl_bif = []
-				for e in self._spline_graph.out_edges(n): # Out splines
 
-					#Cut spline
-					spl = self._spline_graph.edges[e]['spline']
-					splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2))
+				spl_out = []
+				for e in self._spline_graph.out_edges(n): # Out splines
+					spl_out.append(self._spline_graph.edges[e]['spline'])
+
+				# Find apex
+				AP, times = spl_out[0].intersection_apex(spl_out[1], t1 = 0.5)
+
+				i = 0
+				for e in self._spline_graph.out_edges(n):
+
+					# Cut spline
+					spl = spl_out[i]
+					splb, spls = spl.split_length(spl.time_to_length(times[i]) + spl.radius(times[i]))  
+					#splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2))
 
 					spl_bif.append(splb)
 
@@ -351,13 +363,15 @@ class ArterialTree:
 					# Remove original edge
 					G.remove_edge(*e)
 
+					i+=1
+
 				S0 = [spl.point(0.0, True), spl.tangent(0.0, True)]
 			
 				# Compute bifurcation object
 				if bifurcation_model : 
-					bif = Bifurcation(S0, S[0], S[1], 0.5)
+					bif = Bifurcation(S0, S[0], S[1], 0.5, AP = AP)
 				else: 
-					bif = Bifurcation(S0, S[0], S[1], 0.5, spl = spl_bif)
+					bif = Bifurcation(S0, S[0], S[1], 0.5, spl = spl_bif, AP = AP)
 				
 				# Find cross sections
 				end_crsec, bif_crsec, nds, connect_index = bif.cross_sections(N, d)
@@ -381,8 +395,9 @@ class ArterialTree:
 				nmax = nmax + 1
 
 		self._crsec_graph = G
-		self.show_crsec_graph()
+		#self.show_crsec_graph()
 
+		print('Meshing edges')
 		# Connecting segments cross sections
 		for e in G.edges():
 
@@ -1187,6 +1202,7 @@ class ArterialTree:
 		self.set_topo_graph(G)
 
 
+
 	def scale(self, val):
 
 		""" Cuts the original graph to a subgraph. 
@@ -1360,7 +1376,8 @@ class ArterialTree:
 				# Display edge nodes
 				for key, value in coords.items():
 					v = np.array(value)
-					ax.scatter(v[:,0], v[:,1], v[:,2], c='red', depthshade=False, s= 40)
+					if v.shape[0]!=0:
+						ax.scatter(v[:,0], v[:,1], v[:,2], c='red', depthshade=False, s= 40)
 
 			if centerline:
 
