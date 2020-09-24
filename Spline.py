@@ -405,7 +405,7 @@ class Spline:
 
 		D = np.array(D)
 		# Number of control points
-		n = len(D) #int(len(D)/2)
+		n = int(len(D)/2)
 		if n < 4: # Minimum of 4 control points
 			n = 4
 		
@@ -420,7 +420,7 @@ class Spline:
 		#mean_dist = np.mean(self.distance(D))
 		
 		if True: #mean_dist > dist:
-			self.pspline_approximation(D, n, 0.5, clip=clip, deriv=deriv)
+			self.pspline_approximation(D, n, [0, 0.9], clip=clip, deriv=deriv)
 		else:
 
 			# Dichotomy on lambda
@@ -468,26 +468,45 @@ class Spline:
 				raise ValueError('The vector of smoothing parameters must have two values.')
 			else: 
 
-				lbd = [lbd[0]] * (dim -1) + [lbd[1]]
 				P = np.zeros((n, dim))
-				for i in range(dim):
 
-					c = [[], []]
-					if len(clip[0])!= 0:
-						c[0].append(clip[0][i]) 
-					if len(clip[1])!= 0:
-						c[1].append(clip[1][i])
+				# Spatial coordinates system
 
-					d = [[],[]]
-					if len(deriv[0])!= 0:
-						d[0].append(deriv[0][i]) 
-					if len(deriv[1])!= 0:
-						d[1].append(deriv[1][i])
+				c = [[], []]
+				if len(clip[0])!= 0:
+					c[0] = clip[0][:-1]
+				if len(clip[1])!= 0:
+					c[1] = clip[1][:-1]
 
-					if derivative:
-						P[:,i] = np.reshape(np.array(self.__solve_system_derivative(np.reshape(D[:,i], (len(D),1)), n, knot, t, lbd[i], c, d)), n)
-					else:
-						P[:,i] = np.reshape(np.array(self.__solve_system_tangent(np.reshape(D[:,i], (len(D),1)), n, knot, t, lbd[i], c, d)), n)
+				d = [[],[]]
+				if len(deriv[0])!= 0:
+					d[0] = deriv[0][:-1]
+				if len(deriv[1])!= 0:
+					d[1] = deriv[1][:-1]
+
+				if derivative:
+					P[:,:-1] = np.array(self.__solve_system_derivative(D[:,:-1], n, knot, t, lbd[0], c, d))
+				else: 
+					P[:,:-1] = np.array(self.__solve_system_tangent(D[:,:-1], n, knot, t, lbd[0], c, d))
+
+				# Radius system
+
+				c = [[], []]
+				if len(clip[0])!= 0:
+					c[0].append(clip[0][-1]) 
+				if len(clip[1])!= 0:
+					c[1].append(clip[1][-1])
+
+				d = [[],[]]
+				if len(deriv[0])!= 0:
+					d[0].append(deriv[0][-1]) 
+				if len(deriv[1])!= 0:
+					d[1].append(deriv[1][-1])
+
+				if derivative:
+					P[:,-1] = np.reshape(np.array(self.__solve_system_derivative(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d)), n)
+				else: 
+					P[:,-1] = np.reshape(np.array(self.__solve_system_tangent(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d)), n)
 
 				P = P.tolist()
 
