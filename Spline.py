@@ -404,6 +404,7 @@ class Spline:
 		"""
 
 		D = np.array(D)
+
 		# Number of control points
 		n = int(len(D)/2)
 		if n < 4: # Minimum of 4 control points
@@ -420,7 +421,7 @@ class Spline:
 		#mean_dist = np.mean(self.distance(D))
 		
 		if True: #mean_dist > dist:
-			self.pspline_approximation(D, n, [0, 0.9], clip=clip, deriv=deriv)
+			self.pspline_approximation(D, n, [0.3, 0.5], clip=clip, deriv=deriv, derivative = True)
 		else:
 
 			# Dichotomy on lambda
@@ -490,44 +491,38 @@ class Spline:
 					P[:,:-1] = np.array(self.__solve_system_tangent(D[:,:-1], n, knot, t, lbd[0], c, d))
 
 				# Radius system
-
 				c = [[], []]
 				if len(clip[0])!= 0:
-					c[0].append(clip[0][-1]) 
+					c[0] = np.array([clip[0][-1]]) 
 				if len(clip[1])!= 0:
-					c[1].append(clip[1][-1])
+					c[1] = np.array([clip[1][-1]])
 
 				d = [[],[]]
 				if len(deriv[0])!= 0:
-					d[0].append(deriv[0][-1]) 
+					d[0] = np.array([deriv[0][-1]]) 
 				if len(deriv[1])!= 0:
-					d[1].append(deriv[1][-1])
+					d[1] = np.array([deriv[1][-1]])
 
 				if derivative:
-					P[:,-1] = np.reshape(np.array(self.__solve_system_derivative(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d)), n)
+					P[:,-1] = np.reshape(self.__solve_system_derivative(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d), n)
 				else: 
-					P[:,-1] = np.reshape(np.array(self.__solve_system_tangent(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d)), n)
-
-				P = P.tolist()
+					P[:,-1] = np.reshape(self.__solve_system_tangent(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d), n)
 
 		else:
 			if derivative:
 				P = self.__solve_system_derivative(D, n, knot, t, lbd, clip, deriv)
 			else: 
 				P = self.__solve_system_tangent(D, n, knot, t, lbd, clip, deriv)
-	
+
 		# Create spline
 		spl = BSpline.Curve()
 		spl.order = p
-		spl.ctrlpts = P
+		spl.ctrlpts = P.tolist()
 		spl.knotvector = knot
 
 		self.set_spl(spl)
 		#print("tg 0", deriv[0], self.tangent(0, True))
 		#print("tg 1", deriv[1], self.tangent(1, True))
-
-
-
 
 
 	def __solve_system_derivative(self, D, n, knot, t, lbd, clip = [[], []], deriv = [[], []]):
@@ -545,13 +540,9 @@ class Spline:
 		clip -- list of end points 
 		deriv -- list of end derivatives
 		"""
+
 		p = self._spl.order
-
-		D = np.array(D)
-
-		k = D.shape[0]
-		k2 = D.shape[1]
-
+		m, x = D.shape
 
 		if (len(deriv[0]) != 0 and len(clip[0]) == 0) or (len(deriv[1]) != 0 and len(clip[1]) == 0):
 			raise ValueError("Please use clip ends to add tangent constraint.")
@@ -559,84 +550,57 @@ class Spline:
 		if len(deriv[0]) != 0 and len(deriv[1]) != 0 and n<4:
 			n = 4
 
-
 		# Definition of matrix N
-		N = []
-		for time in t:
-			N.append(self.__basis_functions(knot, time, p, n))
-		N = np.array(N)
+		N = np.zeros((len(t), n))
+		for i in range(len(t)):
+			N[i, :] = self.__basis_functions(knot, t[i], p, n)
+		
+		Pt = np.zeros((4, x))
+		d = [0, n]
 
-		P1 = np.array([0]*k2)
-		P2 = np.array([0]*k2)
-		P3 = np.array([0]*k2)
-		P4 = np.array([0]*k2)
-
-		h = [0, 0]
-
-		# Get fixed control points, if necessary
+		# Get fixed control points at the ends
 		if len(clip[0]) != 0:
-			P1 = np.array(clip[0])
-			h[0] = h[0] + 1
+			Pt[0,:] = clip[0]
+			d[0] += 1
 
 		if len(clip[1]) != 0:
-			P4 = np.array(clip[1])
-			h[1] = h[1] + 1
+			Pt[3,:] = clip[1]
+			d[1] -= 1
 
 		if len(deriv[0]) != 0:
-			derN0 = self.__basis_functions_derivative(knot, p, n, 0.0)
-			P2 = (1.0 / derN0[1]) * (deriv[0] - (derN0[0] * P1))
-			h[0] = h[0] + 1
+			der0 = self.__basis_functions_derivative(knot, p, n, 0.0)
+			Pt[1,:] = (1.0 / der0[1]) * (deriv[0] - (der0[0] * clip[0]))
+			d[0] += 1
 
 		if len(deriv[1]) != 0:
-			derN1 = self.__basis_functions_derivative(knot, p, n, 1.0)
-			derN0 = self.__basis_functions_derivative(knot, p, n, 0.0)
-			P3 = (1.0 / -derN0[1]) * (deriv[1] - (-derN0[0] * P4))
-			h[1] = h[1] + 1
+			#der1 = self.__basis_functions_derivative(knot, p, n, 1.0)
+			der0 = self.__basis_functions_derivative(knot, p, n, 0.0)
+			Pt[2,:] = (1.0 / -der0[1]) * (deriv[1] - (-der0[0] * clip[1]))
+			d[1] -= 1
 
 
 		# Definition of matrix Q1
-		Q1 = []
-		for i in range(0, k):
-			Q1.append(list(N[i, 0] * P1 + N[i, 1] * P2 + N[i, -2] * P3 + N[i, -1] * P4))
-		Q1 = np.array(Q1)
+		Q1 = np.zeros((m, x))
+		for i in range(m):
+			Q1[i, :] = N[i,0] * Pt[0,:] + N[i,1] * Pt[1,:] + N[i, -2] * Pt[2,:] + N[i, -1] * Pt[3,:]
 
 		# Resizing N if clipped ends
-		if h[1] == 0:
-			N = N[:, h[0]:]
-		else: 
-			N = N[:, h[0]:-h[1]]
-		
+		N = N[:, d[0]:d[1]]	
+
 
 		# Get matrix Delta = UtU of difference operator
-		U = []
-		for i in range(2, n):
-			u = [0]*n
-
-			u[i] = 1
-			u[i - 1] = -2
-			u[i - 2] = 1
-
-			U.append(u)
-		U = np.array(U)
+		U = np.zeros((n-2, n))
+		for i in range(n-2):
+			U[i, i:i+3] = [1.0, -2.0, 1.0]
 
 		Delta = np.dot(U.transpose(), U)
-		#print(Delta)
 
+		Q2 = np.zeros((d[1] - d[0], x))
+		for i in range(d[0], d[1]):
+			Q2[i - d[0], :] = Delta[i,0] * Pt[0,:] + Delta[i,1] * Pt[1,:] + Delta[i, -2] * Pt[2,:] + Delta[i, -1] * Pt[3,:]
 
-		# Definition of matrix Q2 -> Only for 2 clipped ends for the TEST :TO CHANGE
-		Q2 = []
-		for i in range(h[0], Delta.shape[0]-h[1]):
-			Q2.append(list(Delta[i, 0] * P1 + Delta[i, 1] * P2 + Delta[i, -2] * P3 + Delta[i,-1] * P4))
-		Q2 = np.array(Q2)
-
-
-		# Resize Delta if clipped ends and write columns to Q2
-		if h[1] == 0:
-			Delta = Delta[h[0]:, h[0]:]
-		else: 
-			Delta = Delta[h[0]:-h[1], h[0]:-h[1]]
+		Delta = Delta[d[0]:d[1], d[0]:d[1]]
 		
-
 		# Write matrix M1 = NtN + lbd * Delta
 		M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
 
@@ -644,46 +608,40 @@ class Spline:
 		M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
 
 		# Solve the system
-		P = np.dot(np.linalg.pinv(M1), M2).tolist()
+		P = np.dot(np.linalg.pinv(M1), M2)
 
 		# Add fixed points to the list
-		if h[0] == 1:
-			P = [P1.tolist()] + P	
-		elif h[0] == 2:
-			P = [P1.tolist()] + [P2.tolist()] + P
-
-		if h[1] == 1:
-			P = P + [P4.tolist()]	
-		elif h[1] == 2:
-			P = P + [P3.tolist()] + [P4.tolist()]
+		if len(deriv[0]) != 0:
+			P = np.concatenate([np.transpose(np.expand_dims(Pt[1,:], axis=1)), P])
+		if len(clip[0]) != 0:
+			P = np.concatenate([np.transpose(np.expand_dims(Pt[0,:], axis=1)), P])
+		if len(deriv[1]) != 0:
+			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[2,:], axis=1))])
+		if len(clip[1]) != 0:
+			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[3,:], axis=1))])
 
 		return P
-
 
 
 
 	def __solve_system_tangent(self, D, n, knot, t, lbd, clip = [[], []], tangent = [[], []]):
 
 		"""Approximate data points using a spline of degree p with n control_points.
-		Returns a geomdl.Bspline object
 
 		Keyword arguments:
 		D -- numpy array of coordinates for data points
-		p -- degree
 		n -- number of control points
 		knot -- knot vector
 		t -- time parametrization vector
 		lbd -- lambda coefficient that balances smoothness and accuracy
-		clip -- list of end points 
-		deriv -- list of end derivatives
+		clip -- list of end points as np arrays
+		tangent-- list of end tangents as np arrays
 		"""
+
 		p = self._spl.order
-
-		D = np.array(D)
-		m = D.shape[0]
-		x = D.shape[1]
-
-		D = D.reshape((m * x, 1))
+		m, x = D.shape
+		
+		D = D.reshape((m * x, 1)) 
 				
 		if (len(tangent[0]) != 0 and len(clip[0]) == 0) or (len(tangent[1]) != 0 and len(clip[1]) == 0):
 			raise ValueError("Please use clip ends to add tangent constraint.")
@@ -691,154 +649,113 @@ class Spline:
 		if len(tangent[0]) != 0 and len(tangent[1]) != 0 and n<4:
 			n = 4
 
+		# Definition of the basis function matrix
+		Nl = np.zeros((len(t), n))
+		for i in range(len(t)):
+			Nl[i, :] = self.__basis_functions(knot, t[i], p, n)
 
-		# Definition of light matrix N
-		Nl = []
-		for time in t:
-			Nl.append(self.__basis_functions(knot, time, p, n))
-		Nl = np.array(Nl)
-		
-
-		# Definition of full matrix N
-		N = []
-		for i in range(Nl.shape[0]):
-
-			for k in range(x):
-				line = []
-				for j in range(Nl.shape[1]):
-					elt = [0] * x
-					elt [k] = Nl[i, j]
-					line += elt
-				N.append(line)
-
-		N = np.array(N)
-				
-
-		P1 = np.array([0]*x)
-		P2 = np.array([0]*x)
-		P3 = np.array([0]*x)
-		P4 = np.array([0]*x)
-
-		h = [0, 0]
-
-		# Get fixed control points, if necessary
-		if len(clip[0]) != 0:
-			P1 = np.array(clip[0])
-			h[0] = h[0] + x
-
-		if len(clip[1]) != 0:
-			P4 = np.array(clip[1])
-			h[1] = h[1] + x
-
-		if len(tangent[0]) != 0:
-			P2 = np.array(clip[0])
-			h[0] = h[0] + x - 1
-
-		if len(tangent[1]) != 0:
-			P3 = np.array(clip[1])
-			h[1] = h[1] + x - 1
-
-		# Definition of matrix Q1
-		Q1 = []
-		for i in range(0, m):
-			Q1.append(list(Nl[i, 0] * P1 + Nl[i, 1] * P2 + Nl[i, -2] * P3 + Nl[i, -1] * P4))
-		Q1 = np.array(Q1)
-
-		Q1 = Q1.reshape((Q1.shape[0] * Q1.shape[1], 1))
-
-
-		# Resizing N if clipped ends and tangents
-		if h[1] == 0:
-			N = N[:, h[0]:]
-		else: 
-			N = N[:, h[0]:-h[1]]
-
-		# Fill first and last columns if tangents
-		if len(tangent[0]) != 0:
-			j = 0
-			for i in range(N.shape[0]):
-				if j == x:
-					j = 0
-
-				N[i, 0] = Nl[int(i/x), 1] * tangent[0][j]
-			
-				j +=1
-
-		if len(tangent[1]) != 0:
-			j = 0
-			for i in range(N.shape[0]):
-				if j == x:
-					j = 0
-
-				N[i, -1] = Nl[int(i/x), -2] * tangent[1][j]
-				j = j + 1
+		# Definition of matrix N
+		N = np.zeros((len(t) * x, n * x))
+		for i in range(len(t)):
+			for j in range(x):
+				N[i*x + j, j::x] = Nl[i]
 
 		# Definition of the smoothing matrix Delta
-		U = []
-		for i in range(2*x, n*x):
-			u = [0]*n*x
-
-			u[i] = 1.0
-			u[i - 1*x] = -2.0
-			u[i - 2*x] = 1.0
-
-			U.append(u)
-		U = np.array(U)
+		U = np.zeros((x*(n-2), n*x))
+		for i in range(x*(n-2)):
+			U[i, i:i+(x*2) +1:x] = [1.0, -2.0, 1.0]
 
 		Delta = np.dot(U.transpose(), U)
 
-		# Definition of matrix Q2
-		Q2 = []
-		for i in range(h[0], Delta.shape[0]-h[1]):
-			q2 = 0
-			for j in range(x):
-				q2 += Delta[i, j]* P1[j]
-				q2 += Delta[i, x + j]* P2[j]
-				q2 += Delta[i, - 2*x + j]* P3[j]
-				q2 += Delta[i, - x + j]* P4[j]
+		Q1 = np.zeros((x*m,))
+		d = [0, x*n]
+	
+		# Get fixed control points and adjust matrix N
+		if len(clip[0]) != 0:
+			Q1 += np.sum(N[:, :x], axis=1) * np.concatenate([clip[0]] * m)
+			N = N[:, x:]
+			d[0] += x
 
-			Q2.append(q2)
-		Q2 = np.array(Q2)
-		Q2 = Q2.reshape((len(Q2), 1))
+		if len(tangent[0]) != 0:
+			Q1 += np.sum(N[:, :x], axis=1) * np.concatenate([clip[0]] * m)
+			N0 = np.sum(N[:, :x], axis = 1) * np.concatenate([tangent[0]]*len(t))
+			N = N[:, x-1:]
+			N[:,0] = N0
+			d[0] += x - 1
+			
+		if len(clip[1]) != 0:
+			Q1 += np.sum(N[:, -x:], axis=1) * np.concatenate([clip[1]] * m)
+			N = N[:, :-x]
+			d[1] -= x
 
-		# Resize Delta if clipped ends and 
-		if h[1] == 0:
-			Delta = Delta[h[0]:, h[0]:]
-		else: 
-			Delta = Delta[h[0]:-h[1], h[0]:-h[1]]
+		if len(tangent[1]) != 0:
+			Q1 += np.sum(N[:, -x:], axis=1) * np.concatenate([clip[1]] * m)
+			N0 = np.sum(N[:, -x:], axis = 1) * np.concatenate([tangent[1]]*len(t))
+			if x-1 != 0:
+				N = N[:, :-x+1]
+				
+			N[:,-1] = N0
+			d[1] -= x - 1
 
-		# Write columns if tangent constraint
+		Q1 = np.expand_dims(Q1, axis=1)
+
+		# Store the sum of line and columns
+		Sc = np.zeros((Delta.shape[0], 4))
+		Sc[:,0] = np.sum(Delta[:, :x], axis=1)
+		Sc[:,1] = np.sum(Delta[:, x:2*x], axis=1)
+		Sc[:,2] = np.sum(Delta[:, -2*x:-x], axis=1)
+		Sc[:,3] = np.sum(Delta[:, -x:], axis=1)
+
+		Sl = np.zeros((2, Delta.shape[1]))
+		Sl[0,:] = np.sum(Delta[x:2*x, :], axis = 0)
+		Sl[1,:] = np.sum(Delta[-2*x:-x, :], axis = 0)
+
+		# Resize Delta
+		Delta = Delta[d[0]:d[1], d[0]:d[1]]
+
+		# Fill Delta if tangents
 		if len(tangent[0])!= 0:
-			Delta[0, 0] = 5 * dot(np.array(tangent[0]), np.array(tangent[0]))
+			Delta[0,:] = (Sl[0,:] * np.concatenate([tangent[0]]*n))[d[0]:d[1]]
+			Delta[:,0] = (Sc[:,1] * np.concatenate([tangent[0]]*n))[d[0]:d[1]]
+			Delta[0,0] = Sc[d[0],1]*np.dot(tangent[0], tangent[0])
 
-			for i in range(1, Delta.shape[0]):
-				if i<=x:
-					Delta[i, 0] = -4 * tangent[0][i -1]
-
-				elif i>x and i<=2*x:
-					Delta[i, 0] = 1 * tangent[0][i - x -1]
-
-				else: 
-					Delta[i, 0] = 0				
-
-		if len(tangent[1])!= 0:
-
-			Delta[-1, -1] = 5 * dot(np.array(tangent[1]), np.array(tangent[1]))
-
-			for i in range(1, Delta.shape[1]):
-
-				if i<=x:
-					Delta[Delta.shape[1] - i - 1, -1] = -4 * tangent[1][i-1]
-
-				elif i>x and i<=2*x:
-					Delta[Delta.shape[1] - i - 1, -1] = 1 * tangent[1][i - x -1]
-
-				else: 
-					Delta[Delta.shape[1] - i - 1, -1] = 0
+		if len(tangent[1])!=0:
+			Delta[-1,:] = (Sl[1,:] * np.concatenate([tangent[1]]*n))[d[0]:d[1]]
+			Delta[:,-1] = (Sc[:,2] * np.concatenate([tangent[1]]*n))[d[0]:d[1]]
+			Delta[-1,-1] = Sc[d[1],2]*np.dot(tangent[1], tangent[1])
 
 			if len(tangent[0])!= 0:
-				Delta[0, -1] = 0
-				Delta[-1, 0] = 0
+				Delta[0, -1] = Sc[d[0],2] * np.dot(tangent[0], tangent[1])
+				Delta[-1, 0] = Sc[d[1],0] * np.dot(tangent[0], tangent[1])
+
+		# Define Q2 
+		Q2 = np.zeros((x*n,))
+
+		if len(clip[0])!=0:
+			Q2 += Sc[:,0] * np.concatenate([clip[0]] * n) 
+		if len(clip[1])!=0:
+			Q2 += Sc[:,3] * np.concatenate([clip[1]] * n)
+		if len(tangent[0])!= 0:
+			Q2 += Sc[:,1] * np.concatenate([clip[0]] * n) 
+		if len(tangent[1])!= 0:
+			Q2 += Sc[:,2] * np.concatenate([clip[1]] * n) 
+
+		Q2 = Q2[d[0]:d[1]]
+
+		# Fell Q2 if tangents
+		if len(tangent[0])!= 0:
+			Q2[0] = (Sc[d[0],0] + Sc[d[0],1]) * np.dot(clip[0], tangent[0])
+			if len(tangent[1])!= 0:
+				Q2[-1] = (Sc[d[1],0] + Sc[d[1],1]) * np.dot(clip[0], tangent[1])
+
+		if len(tangent[1])!= 0:
+			if len(tangent[0])!= 0:
+				Q2[-1] += (Sc[d[1],2] + Sc[d[1],3]) * np.dot(clip[1], tangent[1])
+				Q2[0] += (Sc[d[0],2] + Sc[d[0],3]) * np.dot(clip[1], tangent[0])
+			else: 
+				Q2[-1] = (Sc[d[1],2] + Sc[d[1],3]) * np.dot(clip[1], tangent[1])
+
+		Q2 = np.expand_dims(Q2, axis=1)
 		
 		# Write matrix M1 = NtN + lbd * Delta
 		M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
@@ -846,7 +763,6 @@ class Spline:
 		# Write matrix M2 
 		M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
 	     
-
 		# Solve the system
 		P = np.dot(np.linalg.pinv(M1), M2)
 
@@ -858,26 +774,24 @@ class Spline:
 			beta = P[-1]
 			P = P[:-1]
 
-		P = P.reshape((int(len(P) / x), x))
-		P = P.tolist()
+		P = P.reshape((int(len(P) / x), x))	
 
 		# Add tangent points to the list
 		if len(tangent[0]) != 0:
-			P = [(clip[0] + alpha * np.array(tangent[0])).tolist()] + P
+			P = np.concatenate([np.transpose(np.expand_dims(clip[0] + alpha * tangent[0], axis=1)), P])
 			print("alpha : ", alpha)
 
 		if len(tangent[1]) != 0:
-			P = P + [(clip[1] + beta * np.array(tangent[1])).tolist()]
+			P = np.concatenate([P, np.transpose(np.expand_dims(clip[1] + beta * tangent[1], axis=1))])
 			print("beta : ", beta)
 
 		# Add fixed points to the list
 		if len(clip[0]) != 0:
-			P = [clip[0]] + P	
+			P = np.concatenate([np.transpose(np.expand_dims(clip[0], axis=1)), P])
 		if len(clip[1]) != 0:
-			P = P + [clip[1]]	
+			P = np.concatenate([P, np.transpose(np.expand_dims(clip[1], axis=1))])
 
 		return P
-
 
 
 	#####################################

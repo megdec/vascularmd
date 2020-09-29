@@ -207,12 +207,12 @@ class ArterialTree:
 			deriv = [[], []]
 
 			if G.nodes[e[0]]['type'] == "bif":
-				clip[0] = pts[0]
-				deriv[0] = G.nodes[e[0]]['tangent']
+				clip[0] = np.array(pts[0])
+				deriv[0] = np.array(G.nodes[e[0]]['tangent'])
  
 			if G.nodes[e[1]]['type'] == "bif":
-				clip[1] =  pts[-1]
-				deriv[1] = G.nodes[e[1]]['tangent']
+				clip[1] =  np.array(pts[-1])
+				deriv[1] = np.array(G.nodes[e[1]]['tangent'])
 
 			spl = Spline()
 			#spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
