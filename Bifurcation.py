@@ -124,7 +124,7 @@ class Bifurcation:
 
 		""" Set the coordinates of the apex point parameter and the times at apex. """
 
-		AP, tAP = self._spl[0].intersection_apex(self._spl[1])
+		AP, tAP = self._spl[0].first_intersection(self._spl[1])
 
 		"""
 		v = cross(self._endsec[1][1][:-1], np.array([1,0,0]))
@@ -324,16 +324,15 @@ class Bifurcation:
 				ax.scatter(nds[0,0,0], nds[0,0,1], nds[0,0,2],  c='blue')
 				ax.scatter(nds[0,-1,0], nds[0,-1,1], nds[0,-1,2],  c='red')
 
-				#end_crsec, bif_crsec, nds, ind = self.cross_sections(N, 0.1)
+				end_crsec, bif_crsec, nds, ind = self._crsec
 				
-				
-				#for i in range(3):
-				#	ndscr = np.array(nds[i])
-				#	for j in range(N):
-				#		ax.plot(ndscr[:, j, 0], ndscr[:,j, 1], ndscr[:, j, 2], c='black')
+				for i in range(3):
+					ndscr = np.array(nds[i])
+					for j in range(N):
+						ax.plot(ndscr[:, j, 0], ndscr[:,j, 1], ndscr[:, j, 2], c='black')
 
-				#	for k in range(len(ndscr)):
-				#		ax.plot(ndscr[k, :, 0], ndscr[k, :, 1], ndscr[k, :, 2], c='black')
+					for k in range(len(ndscr)):
+						ax.plot(ndscr[k, :, 0], ndscr[k, :, 1], ndscr[k, :, 2], c='black')
 
 
 		# Set the initial view
@@ -427,7 +426,7 @@ class Bifurcation:
 			pts = self._crsec
 
 		mesh = self.surface_mesh()
-		mesh = mesh.smooth(n_iter, boundary_smoothing=False, feature_angle=45, feature_smoothing= False, relaxation_factor=0.01) # Laplacian smooth
+		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
 
 		# Get points and re-order them in the original structure
 		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
@@ -513,7 +512,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		self.smooth(100)
+		#self.smooth(self.R)
 		return self._crsec
 
 

@@ -403,10 +403,8 @@ class Spline:
 		deriv -- end tangents to apply if constrainted tangents
 		"""
 
-		D = np.array(D)
-
 		# Number of control points
-		n = int(len(D)/2)
+		n = len(D)
 		if n < 4: # Minimum of 4 control points
 			n = 4
 		
@@ -417,26 +415,35 @@ class Spline:
 		lbd1 = 0
 		lbd2 = 1
 
-		#self.pspline_approximation(D, 3, n, knot, t, 0, clip, deriv)
-		#mean_dist = np.mean(self.distance(D))
-		
-		if True: #mean_dist > dist:
-			self.pspline_approximation(D, n, [0.3, 0.5], clip=clip, deriv=deriv, derivative = True)
+		self.pspline_approximation(D, n, 0.0, clip=clip, deriv=deriv)
+		mean_dist = np.mean(self.distance(t, D))
+		max_dist = np.max(self.distance(t, D))
+
+		if mean_dist > dist:
+			print('Not enough control points')
+			self.pspline_approximation(D, n, 0.0, clip=clip, deriv=deriv)
 		else:
 
 			# Dichotomy on lambda
 			while abs(lbd2-lbd1) > 0.001 :
 				
-				self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip, deriv)
-				mean_dist = np.mean(self.distance(D))
-				
+				self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip=clip, deriv=deriv)
+				mean_dist = np.mean(self.distance(t, D))
+				max_dist = np.max(self.distance(t, D))
 
 				if mean_dist > dist:
 					lbd2 =  (lbd2 + lbd1)/2
 				else: 
 					lbd1 =  (lbd2 + lbd1)/2
 	
-			self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip, deriv)
+			self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip=clip, deriv=deriv)
+
+			if len(deriv[0]) != 0:
+				print(self.get_control_points()[1], deriv[0])
+				print("alpha : ", ((self.get_control_points()[1] - self.get_control_points()[0]) / deriv[0])[0])
+
+			if len(deriv[1]) != 0:
+				print("beta : ", ((self.get_control_points()[-2] - self.get_control_points()[-1]) / deriv[1])[0])
 
 		
 
@@ -458,8 +465,10 @@ class Spline:
 
 		if knot is None:
 			knot = self.__uniform_knot(p, n)
+
 		if t is None:
 			t = self.__chord_length_parametrization(D)
+
 
 		dim = len(D[0])
 		D = np.array(D)
@@ -523,6 +532,7 @@ class Spline:
 		self.set_spl(spl)
 		#print("tg 0", deriv[0], self.tangent(0, True))
 		#print("tg 1", deriv[1], self.tangent(1, True))
+
 
 
 	def __solve_system_derivative(self, D, n, knot, t, lbd, clip = [[], []], deriv = [[], []]):
@@ -779,11 +789,9 @@ class Spline:
 		# Add tangent points to the list
 		if len(tangent[0]) != 0:
 			P = np.concatenate([np.transpose(np.expand_dims(clip[0] + alpha * tangent[0], axis=1)), P])
-			print("alpha : ", alpha)
 
 		if len(tangent[1]) != 0:
 			P = np.concatenate([P, np.transpose(np.expand_dims(clip[1] + beta * tangent[1], axis=1))])
-			print("beta : ", beta)
 
 		# Add fixed points to the list
 		if len(clip[0]) != 0:
@@ -1019,7 +1027,7 @@ class Spline:
 
 		distance = abs(self.time_to_length(t1) - self.time_to_length(t0))
 		times = np.linspace(t0, t1, int(distance) + 2)
-
+		
 		tg = self.tangent(t0)
 
 		if dot(v, tg) > 0.001:
@@ -1146,7 +1154,32 @@ class Spline:
 
 
 
-	def distance(self, D):
+	def distance(self, t, D):
+
+
+		""" Compute the minimum distance between the spline and a list of points.
+
+		Keyword arguments: 
+			D -- numpy array of data points
+			t -- numpy array of times
+		"""
+
+		if len(D.shape) == 1:
+			proj = self.point(t)
+			dist =  norm(D[:-1] - proj)
+
+		else: 
+
+			dist = np.zeros((D.shape[0],))
+
+			for i in range(D.shape[0]):
+				proj = self.point(t[i])
+				dist[i] = norm(D[i, :-1] - proj)
+
+		return dist
+
+
+	def estimated_distance(self, D):
 
 		""" Compute the minimum distance between the spline and a list of points.
 
@@ -1170,9 +1203,9 @@ class Spline:
 
 
 
-	def intersection_apex(self, spl, t0=0.0, t1=1.0):
+	def first_intersection(self, spl, t0=0.0, t1=1.0):
 
-		""" Returns the coordinates and time of the furthest intersection point (apex of the bifurcation) 
+		""" Returns the coordinates and time of the furthest intersection point
 
 		Keyword arguments: 
 		spl -- Spline object
@@ -1192,8 +1225,8 @@ class Spline:
 			vrot = rotate_vector(v, tg1, a)
 			ap, times = self.intersection(spl, vrot, t0, t1)
 
-			if times[1] > tmax:
-				tmax = times[1]
+			if max(times) > tmax:
+				tmax = max(times)
 
 				AP = ap
 				tAP = times

@@ -24,7 +24,7 @@ def test_bifurcation_class():
 	bif = Bifurcation(S0, S1, S2, 0.5)
 
 	mesh = bif.surface_mesh()
-	mesh.plot()
+	mesh.plot(show_edges=True)
 	mesh.save("Results/bifurcation.vtk")
 
 
@@ -49,7 +49,7 @@ def test_bifurcation_smoothing():
 		mean_distance.append(distance(mesh, mesh_ref, True)[0])
 		mean_quality.append(quality(mesh, True)[0])
 		n_iter.append(n_iter[-1] + 100)
-
+ 
 	fig, ax = plt.subplots() 
 	ax.set_ylabel('distance', fontsize=60) 
 	ax.set_xlabel('n_iter', fontsize=60) 
@@ -96,30 +96,34 @@ def test_ogrid_pattern():
 
 def test_meshing():
 
-	tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_part.swc")
-	#tree = ArterialTree("TestPatient", "BraVa", "Results/refence_mesh_simplified_centerline.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_full.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
-	#tree.deteriorate_centerline(0.05, [0, 0, 0, 0])
-	#tree.show(True, False, False)
-	tree.spline_approximation(1)
+	#tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
+	tree.show(True, False, False)
+	tree.spline_approximation(0.05)
 	tree.show(True, True, False)
 
-	#file = open('Results/tree_spline_brava_part.obj', 'rb') 
-	#pickle.dump(tree, file)
+
 	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
 	#tree = pickle.load(file)
 	#tree.show()
-	#tree.subgraph([1,2,3])
-	#tree.show(True, False, False)
+	
+	tree.subgraph([4,5])
+	tree.show(True, False, False)
 
 
 	tree.compute_cross_sections(24, 0.3, bifurcation_model=False)
+
+	file = open('Results/tube_tree.obj', 'wb') 
+	pickle.dump(tree, file)
 
 	mesh = tree.mesh_surface()
 
 	print("plot mesh")
 	mesh.plot(show_edges=True)
 	mesh.save("Results/surface_mesh.vtk")
+	mesh.save("Results/surface_mesh.stl")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.plot(show_edges=True)
@@ -130,15 +134,46 @@ def test_meshing():
 def test_fitting():
 
 	D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
-	D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
-	deriv = [[], np.array([-0.16972560216240687, -0.9622898920852456, 0.06947284408515897, -0.011538087187604438])]
-	clip = [np.array([ 95.17, 184.3606, 213.4994, 0.93]), np.array([ 88.01283199, 172.01515466, 213.12311999, 1.26105746])]
+	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
+	deriv = [D[1] - D[0], D[-2] - D[-1]]
+	clip = [D[0], D[-1]]
 
-	spl = Spline()
 	n = len(D)
+	lbd = [0.0, 0.01, 0.02, 0.05, 0.1]
+	#lbd = [0.0]
+	spl = Spline()
+	spl.distance_constraint_approximation(D, 0.0, clip=clip, deriv=deriv)
+	spl.show(data=D)
 
-	spl.pspline_approximation(D, 6, 0.0, clip = clip, deriv=deriv, derivative = True)
-	spl.show(knot = True, control_points = True, data = D)
+	"""
+	for l in lbd:
+
+		fig = plt.figure(figsize=(10,7))
+		ax = Axes3D(fig)
+		ax.set_facecolor('white')
+
+		spl.pspline_approximation(D, n, l, clip = clip, deriv=deriv, derivative = False)
+
+		points = spl.get_points()
+		dist = spl.distance(D)
+		print(np.mean(dist))
+		for pt in D : 
+			t = spl.project_point_to_centerline(pt[:-1])
+			proj = spl.point(t)
+			ax.scatter(proj[0], proj[1], proj[2],  c='red', s = 40)
+			ax.plot([proj[0], pt[0]], [proj[1], pt[1]], [proj[2], pt[2]])
+
+		ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
+		ax.scatter(D[:,0], D[:,1], D[:,2],  c='blue', s = 40)
+
+		# Set the initial view
+		ax.view_init(90, -90) # 0 is the initial angle
+
+		# Hide the axes
+		ax.set_axis_off()
+		plt.show()
+	"""
+
 
 
 #test_tree_class()
