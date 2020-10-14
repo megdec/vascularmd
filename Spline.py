@@ -10,7 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D # 3D display
 
 from utils import *
 from termcolor import colored
-
+import math
 
 class Spline:
 
@@ -438,14 +438,109 @@ class Spline:
 	
 			self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip=clip, deriv=deriv)
 
-			if len(deriv[0]) != 0:
-				print(self.get_control_points()[1], deriv[0])
-				print("alpha : ", ((self.get_control_points()[1] - self.get_control_points()[0]) / deriv[0])[0])
 
-			if len(deriv[1]) != 0:
-				print("beta : ", ((self.get_control_points()[-2] - self.get_control_points()[-1]) / deriv[1])[0])
 
-		
+	def automatic_approximation(self, D, clip = [[],[]], deriv=[[],[]]):
+
+		lbd = np.linspace(0.05,20, 100)
+		quality_min = 400
+
+		n = len(D)
+		if n < 4: # Minimum of 4 control points
+			n = 4
+			
+		quality_list = []
+
+		for l in lbd: 
+			self.pspline_approximation(D, n, l)
+			quality = self.model_quality(D, n, l)
+
+			quality_list.append(quality)
+			
+			if quality < quality_min:
+				lbd_min = l
+				quality_min = quality
+		#plt.plot(lbd, quality_list)
+		#plt.show()
+		print("lbd automatic : ", lbd_min)
+		self.pspline_approximation(D, n, lbd_min, clip=clip, deriv=deriv, derivative= False)
+
+
+	def model_quality(self, D, n, lbd, criteria ="AICC"):
+
+		""" Returns the smoothing criteria value (AIC, AICC, SBC, CV, GCV) for the given data."""
+
+		"""
+		Keyword arguments:
+		D -- numpy array of coordinates for data points
+		n -- number of control points
+		lbd -- smoothing parameter lambda
+		criteria -- string of the chosen criteria ("AIC", "AICC", "SBC", "CV", "GCV")
+		"""
+
+		p = self._spl.order
+		m, x = D.shape
+
+		t = self.__chord_length_parametrization(D)
+		knot = self.__uniform_knot(p, n)
+
+		De = np.zeros((m, x))
+
+		for i in range(m):
+			De[i, :] = self.point(t[i], True)
+
+		# Definition of matrix N
+		N = np.zeros((len(t), n))
+		for i in range(len(t)):
+			N[i, :] = self.__basis_functions(knot, t[i], p, n)
+
+		# Definition of smoothing matrix U
+		U = np.zeros((n-2, n))
+		for i in range(n-2):
+			U[i, i:i+3] = [1.0, -2.0, 1.0]
+
+		# Hat matrix H
+		M = np.linalg.pinv(np.dot(N.transpose(), N) + lbd * np.dot(U.transpose(), U))
+		H = np.dot(np.dot(N,M), N.transpose())
+		t = np.trace(H)
+
+
+		if criteria == "CV":
+			res = 0
+			for i in range(m):
+				res += (norm((D[i] - De[i])) / (1 - H[i, i]))**2
+
+		elif criteria == "GCV":
+			res = 0
+			for i in range(m):
+				res += (norm(D[i] - De[i]) / (m - t))**2
+
+		elif criteria == "AIC":
+			sse = 0
+			for i in range(m):
+				sse += norm(D[i] - De[i])**2
+			res = m * math.log(sse/m) + 2 * t
+			print("t :", t,"sse :", sse, "res :", res)
+
+		elif criteria == "AICC":
+			sse = 0
+			for i in range(m):
+				sse += norm(D[i] - De[i])**2
+			res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
+
+		elif criteria == "SBC":
+
+			sse = 0
+			for i in range(m):
+				sse += norm(D[i] - De[i])**2
+			res = m * math.log(sse/m) + math.log(m)*t
+
+		else: 
+			raise ValueError('Invalid criteria name')
+
+		return res
+
+
 
 	def pspline_approximation(self, D, n, lbd, knot=None, t=None, clip = [[], []], deriv = [[], []], derivative=False):
 
@@ -551,6 +646,9 @@ class Spline:
 		deriv -- list of end derivatives
 		"""
 
+		#if lbd < 0 or lbd > 1:
+		#	raise ValueError('The smoothing parameter must be between 0 and 1')
+
 		p = self._spl.order
 		m, x = D.shape
 
@@ -612,10 +710,12 @@ class Spline:
 		Delta = Delta[d[0]:d[1], d[0]:d[1]]
 		
 		# Write matrix M1 = NtN + lbd * Delta
-		M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+		#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+		M1 = np.dot(N.transpose(), N) + lbd * Delta
 
 		# Write matrix M2 
-		M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
+		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
+		M2 = np.dot(N.transpose(), D - Q1) - lbd * Q2
 
 		# Solve the system
 		P = np.dot(np.linalg.pinv(M1), M2)
@@ -647,6 +747,9 @@ class Spline:
 		clip -- list of end points as np arrays
 		tangent-- list of end tangents as np arrays
 		"""
+
+		#if lbd < 0 or lbd > 1:
+			#raise ValueError('The smoothing parameter must be between 0 and 1')
 
 		p = self._spl.order
 		m, x = D.shape
@@ -768,11 +871,14 @@ class Spline:
 		Q2 = np.expand_dims(Q2, axis=1)
 		
 		# Write matrix M1 = NtN + lbd * Delta
-		M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+		#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+		M1 = np.dot(N.transpose(), N) + lbd * Delta
+		
 
 		# Write matrix M2 
-		M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
-	     
+		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
+		M2 = np.dot(N.transpose(), D - Q1) - lbd * Q2
+
 		# Solve the system
 		P = np.dot(np.linalg.pinv(M1), M2)
 
@@ -1225,8 +1331,8 @@ class Spline:
 			vrot = rotate_vector(v, tg1, a)
 			ap, times = self.intersection(spl, vrot, t0, t1)
 
-			if max(times) > tmax:
-				tmax = max(times)
+			if sum(times)/2 > tmax:
+				tmax = sum(times)/2
 
 				AP = ap
 				tAP = times

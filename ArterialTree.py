@@ -101,7 +101,7 @@ class ArterialTree:
 
 	def set_topo_graph(self, G):
 
-		""" Set the full graph of the arterial tree."""
+		""" Set the topo graph of the arterial tree."""
 
 		self._topo_graph = G
 		self._full_graph = self.topo_to_full()
@@ -111,7 +111,7 @@ class ArterialTree:
 
 	def set_spline_graph(self, G):
 
-		""" Set the full graph of the arterial tree."""
+		""" Set the spline graph of the arterial tree."""
 
 		self._spline_graph = G
 		self._full_graph = self.spline_to_full()
@@ -119,6 +119,11 @@ class ArterialTree:
 		self._crsec_graph = None
 
 
+	def set_crsec_graph(self, G):
+
+		""" Set the spline graph of the arterial tree."""
+
+		self._crsec_graph = G
 
 
 	def __load_file(self, filename):
@@ -152,7 +157,7 @@ class ArterialTree:
 
 
 		for n in self._full_graph.nodes():
-			print(n, self._topo_graph.in_degree(n), self._topo_graph.out_degree(n))
+
 			# If regular nodes
 			if self._full_graph.in_degree(n) == 1 and self._full_graph.out_degree(n) == 1:
 
@@ -180,6 +185,7 @@ class ArterialTree:
 	#####################################
 	##########  APPROXIMATION  ##########
 	#####################################
+	
 
 	def spline_approximation(self, dist):
 
@@ -212,14 +218,8 @@ class ArterialTree:
 
 			spl = Spline()
 			#spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
-			spl.distance_constraint_approximation(pts, dist, clip, deriv)
-
-			if len(deriv[0]) != 0:
-				print("alpha : ", ((spl.get_control_points()[1] - spl.get_control_points()[0]) / deriv[0])[0])
-
-			if len(deriv[1]) != 0:
-				print("beta : ", ((spl.get_control_points()[-2] - spl.get_control_points()[-1]) / deriv[1])[0])
-			#spl.show(False, False, data = pts)
+			#spl.distance_constraint_approximation(pts, dist, clip, deriv)
+			spl.automatic_approximation(pts, clip, deriv)
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
@@ -321,12 +321,13 @@ class ArterialTree:
 		# Fit splines from the main branch to the daughter branches
 		spl1 = Spline()
 		#spl1.curvature_bounded_approximation(pts0 + pts1, 1) 
-		spl1.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords'])), dist)
+		#spl1.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords'])), dist)
+		spl1.automatic_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords'])))
 
 		spl2 = Spline()
 		#spl2.curvature_bounded_approximation(pts0 + pts2, 1) 
-		spl2.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords'])), dist)
-		
+		#spl2.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords'])), dist)
+		spl2.automatic_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords'])))
 			
 		# Find the separation point between the splines
 		r = np.mean(pts0[:,-1])
@@ -338,7 +339,7 @@ class ArterialTree:
 		t2 =  spl2.length_to_time(spl2.time_to_length(t2) - r)	
 
 		# Get bifurcation coordinates and tangent
-		tg = (spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 #(spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0 
+		tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
 		pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
 
 		# Remove the points of the main branch further than the separation point
@@ -436,7 +437,7 @@ class ArterialTree:
 				
 				# Find cross sections
 				end_crsec, bif_crsec, nds, connect_index = bif.cross_sections(N, d)
-				bif.show(nodes=True)
+				#bif.show(nodes=True)
 				B = bif.get_B()
 				tspl = bif.get_tspl()
 

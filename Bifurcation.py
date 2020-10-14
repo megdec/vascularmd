@@ -126,27 +126,7 @@ class Bifurcation:
 
 		AP, tAP = self._spl[0].first_intersection(self._spl[1])
 
-		"""
-		v = cross(self._endsec[1][1][:-1], np.array([1,0,0]))
-		v = v / norm(v)
-
-
-		tmax = 0.0
-		angle = np.linspace(0,2*pi, 100)
-
-		for a in angle:
-
-			vrot = rotate_vector(v, self._endsec[1][1][:-1], a)
-			ap, times = self.__find_intersection(vrot)
-
-			if times[1] > tmax:
-				tmax = times[1]
-
-				AP = ap
-				tAP = times
-		"""
-
-		self._AP = AP #np.array(AP)
+		self._AP = AP 
 		self._tAP = tAP
 
 
@@ -200,7 +180,9 @@ class Bifurcation:
 		SP = []
 		for ind in [[0, 1], [1, 0]]:
 		
-			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
+			#t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
+			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() -  self._spl[ind[0]].radius(self._tAP[ind[0]]))
+			#t = self._tAP[ind[0]]
 
 			ptAP = self._spl[ind[0]].point(self._tAP[ind[0]])
 			nAP = self._AP - ptAP
@@ -512,7 +494,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		#self.smooth(self.R)
+		#self.smooth(10)#self.R
 		return self._crsec
 
 

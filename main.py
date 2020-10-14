@@ -96,12 +96,12 @@ def test_ogrid_pattern():
 
 def test_meshing():
 
-	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p2_full.swc")
-	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
-	#tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
+	#tree.deteriorate_centerline(1, [0.00, 0.00, 0.00, 0.00])
 	tree.show(True, False, False)
-	tree.spline_approximation(0.05)
+	tree.spline_approximation(0.5)
 	tree.show(True, True, False)
 
 
@@ -109,11 +109,11 @@ def test_meshing():
 	#tree = pickle.load(file)
 	#tree.show()
 	
-	tree.subgraph([4,5])
-	tree.show(True, False, False)
+	#tree.subgraph([4,5])
+	#tree.show(True, False, False)
 
 
-	tree.compute_cross_sections(24, 0.3, bifurcation_model=False)
+	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
 
 	file = open('Results/tube_tree.obj', 'wb') 
 	pickle.dump(tree, file)
@@ -126,7 +126,9 @@ def test_meshing():
 	mesh.save("Results/surface_mesh.stl")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
-	mesh.plot(show_edges=True)
+	mesh = mesh.compute_cell_quality()
+	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
+	mesh.plot(show_edges=True, scalars= 'CellQuality')
 	mesh.save("Results/volume_mesh.vtk")
 
 
@@ -142,7 +144,7 @@ def test_fitting():
 	lbd = [0.0, 0.01, 0.02, 0.05, 0.1]
 	#lbd = [0.0]
 	spl = Spline()
-	spl.distance_constraint_approximation(D, 0.0, clip=clip, deriv=deriv)
+	spl.distance_constraint_approximation(D, 0.0, clip=[], deriv=deriv)
 	spl.show(data=D)
 
 	"""
@@ -174,6 +176,31 @@ def test_fitting():
 		plt.show()
 	"""
 
+def test_quality_model():
+
+	N = 50 # number of data points
+	t = np.linspace(0, 4*np.pi, N)
+	f = 1.15247
+	data = 3.0*np.sin(f*t+0.001) + 0.5 + np.random.randn(N) # create artificial data with noise
+
+
+	D = np.zeros((N, 2))
+	D[:,0] = t
+	D[:,1] = data
+	plt.scatter(D[:,0], D[:,1],  c='blue', s = 40)
+	plt.show()
+
+	n = 20
+	spl = Spline()
+	spl.automatic_approximation(D, clip = [D[0], D[-1]])
+
+	points = spl.get_points()
+
+	plt.plot(points[:,0], points[:,1],  c='black')
+	plt.scatter(D[:,0], D[:,1],  c='blue', s = 40)
+	plt.show()
+
+
 
 
 #test_tree_class()
@@ -182,3 +209,4 @@ test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()
+#test_quality_model()
