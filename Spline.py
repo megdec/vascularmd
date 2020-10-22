@@ -10,7 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D # 3D display
 
 from utils import *
 from termcolor import colored
-import math
+
 
 class Spline:
 
@@ -26,8 +26,8 @@ class Spline:
 
 		if control_points is not None: 
 
-			if len(control_points[0]) != 3 and len(control_points[0]) != 4:
-				raise ValueError ('The spline control points must have dimension 3 (x, y, z) or  (x, y, z, r).')
+			#if len(control_points[0]) != 3 and len(control_points[0]) != 4:
+			#	raise ValueError ('The spline control points must have dimension 3 (x, y, z) or  (x, y, z, r).')
 
 			self._spl.ctrlpts = control_points
 
@@ -191,9 +191,74 @@ class Spline:
 		return radius
 
 
+
 	#####################################
-	#############  UTILS  ###############
+	########## APPROXIMATION  ###########
 	#####################################
+	
+
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model, criterion= "AICC"):
+
+		"""Approximate data points using a spline with given end constraints.
+
+		Keyword arguments:
+		D -- numpy array of coordinates for data points
+		end_constraint -- list of booleans for end points and tangent constraints
+		end_values -- np array of values for end points and tangent constraints
+		derivatives -- True for fixed derivatives at the end, False for fixed tangent
+		criterion -- smoothing criterion
+		"""
+
+		from Model import Model
+
+		n = len(D)
+		if n < 4: # Minimum of 4 control points
+			n = 4
+
+		if radius_model: 
+
+			# Spatial model
+			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], False, 0)
+			spatial_model = self.__optimize_model(spatial_model, criterion)
+
+			# Radius model
+			radius_model = Model(np.reshape(D[:,-1], (len(D),1)), n, 3, end_constraint, np.reshape(end_values[:,-1], (4,1)), False, 0)
+			radius_model = self.__optimize_model(radius_model, criterion)
+		
+			self._spl.ctrlpts = np.hstack((spatial_model.P, radius_model.P)).tolist()
+			self._spl.knotvector = global_model.get_knot()
+			self.__set_length_tab()
+
+
+		else:
+			global_model = Model(D, n, 3, end_constraint, end_values, False, 0)
+			global_model = self.__optimize_model(global_model, criterion)
+
+			self._spl.ctrlpts = global_model.P.tolist()
+			self._spl.knotvector = global_model.get_knot()
+			self.__set_length_tab()
+
+
+
+	def __optimize_model(self, model, criterion):
+
+		""" Optimise a given model according to the given criterion."""
+
+		lbd = np.linspace(0.01,10, 100)
+		quality_min = 400
+
+		for l in lbd: 
+			model.set_lambda(l)
+			quality = model.quality(criterion)
+
+			if quality < quality_min:
+				lbd_min = l
+				quality_min = quality
+
+		model.set_lambda(lbd_min)
+		print("optimized lambda : ", lbd_min)
+
+		return model
 
 
 	def __uniform_knot(self, p, n):
@@ -211,701 +276,6 @@ class Spline:
 				knot.append(float(n-p+1))
 
 		return (np.array(knot) / knot[-1]).tolist()
-
-
-
-	def __averaging_knot(self, t, p, n):
-
-		""" Returns a B-spline averaging knot vector.
-
-		Keyword arguments:
-		t -- time parametrization vector
-		"""
-
-		knot = [0.0] * p # First knot of multiplicity p
-
-		for i in range(p, n):
-			knot.append((1.0 / (p - 1.0)) * sum(t[i-p+1:i]))
-
-		knot = knot + [1.0] * p
-
-		return knot
-
-
-
-	def __chord_length_parametrization(self, D):
-
-		""" Returns the chord length parametrization for data D.
-
-		Keyword arguments:
-		D -- data points
-		"""
-
-		D = np.array(D)
-		
-		t = [0.0]
-		for i in range(1, len(D)):
-			t.append(t[i-1] + np.linalg.norm(D[i] - D[i-1]))
-		t = [time / max(t) for time in t]
-
-		return t
-
-
-
-	def __basis_functions(self, knot, t, p, n):
-
-
-		"""Computes the value of B-spline basis functions evaluated at t
-
-		Keyword arguments:
-		knot -- knot vector
-		t -- time parameter 
-		p -- B-spline degree
-		n -- number of control points
-
-		"""
-
-		N = [0.0]*n # list of basis function values 
-
-		# Handle special cases for t 
-		if t == knot[0]:
-			N[0] = 1.0
-
-		elif t == knot[-1]:
-			N[-1] = 1.0
-		else:
-
-			# Find the bounding knots for t
-			k = 0
-			for kn in range(len(knot)-1):
-				if knot[kn] <= t < knot[kn+1]:
-					k = kn
-		
-			N[k] = 1.0 # Basis function of order 0
-			
-			# Compute basis functions = recurrence??!!
-			for d in range(1, p): 
-
-				if knot[k + 1] == knot[k- d + 1]:
-					N[k-d] = 0
-				else:
-					N[k-d] = (knot[k + 1] - t) / (knot[k + 1] - knot[k- d + 1]) * N[k- d + 1]
-
-				for i in range(k-d + 1, k):
-
-					if knot[i+d] == knot[i]:
-						c1 = 0
-					else:
-						c1 = (t - knot[i]) / (knot[i+d] - knot[i]) * N[i]
-
-					if knot[i + d + 1] == knot[i + 1]:
-						c2 = 0
-					else:
-						c2 = (knot[i + d + 1] - t) / (knot[i + d + 1] - knot[i + 1]) * N[i + 1]
-
-					N[i] =  c1 + c2
-
-				if knot[k+d] == knot[k]:
-					N[k] = 0
-				else:
-					N[k] = (t - knot[k]) / (knot[k+d] - knot[k]) * N[k]
-			
-
-		# Return array of n basis function values at t 
-		return N
-
-
-
-	def __basis_functions_derivative(self, knot, p, n, t):
-
-
-		""" Computes the value of the first derivative of a B-spline basis functions.
-
-		Keyword arguments:
-		knot -- knot vector
-		t -- time parameter
-		n -- number of control points
-		i -- index of the basis function
-		p -- spline degree
-
-		"""
-
-		# Compute the basis function at time t for degree p - 1
-
-		N = self.__basis_functions(knot, t, p - 1, n)
-
-
-		# Compute the derivative of basis function i at time t (The NURBS Book p.62)
-		#derN = []
-		#for i in range(0, n-1):
-		#	derN.append(((p / (knot[i + p] - knot[i])) * N[i]) - ((p / (knot[i + p + 1] - knot[i + 1])) * N[i + 1]))
-
-		derN = []
-		for i in range(n):
-			derN.append(helpers.basis_function_ders_one(2, knot, i, t, 2)[1])
-
-		return derN
-
-
-	#####################################
-	########## APPROXIMATION  ###########
-	#####################################
-	
-
-	def curvature_bounded_approximation(self, D, ratio, clip = [[],[]], deriv=[[],[]]): 
-
-
-		"""Approximate data points using a spline of degree p with n control_points, 
-		using constraint on the error of the fitting to find the optimal number of control points.
-
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		ratio -- curvature radius / radius minimum ratio
-		clip -- end points if clipped ends
-		deriv -- end tangents to apply if constrainted tangents
-		"""
-
-		n = int(len(D) / 2)
-		if n < 4:
-			n = 4
-		
-		t = self.__chord_length_parametrization(D)
-		knot =  self.__uniform_knot(3, n)
-		
-		search = True
-		lbd = 0
-
-		while (search and lbd < 1):
-			
-			self._spl = self.__solve_system(D, 3, n, knot, t, lbd, clip, deriv) 
-			rad_curv = self.curvature_radius(np.arange(0, 1, self._spl.delta).tolist()) # + [1.0]
-			rad = (self.get_points()[:,-1] / ratio).tolist()
-
-			if all(rad_curv > rad):
-				search = False
-			else:
-				lbd = lbd + 0.001
-
-		self.set_spl(self.__solve_system(D, 3, n, knot, t, lbd, clip, deriv))
-
-
-
-	def distance_constraint_approximation(self, D, dist, clip = [[],[]], deriv=[[],[]]): 
-
-
-		"""Approximate data points using a spline of degree p with n control_points, 
-		using constraint on the error of the fitting to find the optimal number of control points.
-
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		dist -- The maximum distance allowed from the original points
-		clip -- end points if clipped ends
-		deriv -- end tangents to apply if constrainted tangents
-		"""
-
-		# Number of control points
-		n = len(D)
-		if n < 4: # Minimum of 4 control points
-			n = 4
-		
-		t = self.__chord_length_parametrization(D)
-		knot =  self.__uniform_knot(3, n)
-		
-		search = True
-		lbd1 = 0
-		lbd2 = 1
-
-		self.pspline_approximation(D, n, 0.0, clip=clip, deriv=deriv)
-		mean_dist = np.mean(self.distance(t, D))
-		max_dist = np.max(self.distance(t, D))
-
-		if mean_dist > dist:
-			print('Not enough control points')
-			self.pspline_approximation(D, n, 0.0, clip=clip, deriv=deriv)
-		else:
-
-			# Dichotomy on lambda
-			while abs(lbd2-lbd1) > 0.001 :
-				
-				self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip=clip, deriv=deriv)
-				mean_dist = np.mean(self.distance(t, D))
-				max_dist = np.max(self.distance(t, D))
-
-				if mean_dist > dist:
-					lbd2 =  (lbd2 + lbd1)/2
-				else: 
-					lbd1 =  (lbd2 + lbd1)/2
-	
-			self.pspline_approximation(D, n, (lbd2 + lbd1)/2, clip=clip, deriv=deriv)
-
-
-
-	def automatic_approximation(self, D, clip = [[],[]], deriv=[[],[]]):
-
-		lbd = np.linspace(0.05,20, 100)
-		quality_min = 400
-
-		n = len(D)
-		if n < 4: # Minimum of 4 control points
-			n = 4
-			
-		quality_list = []
-
-		for l in lbd: 
-			self.pspline_approximation(D, n, l)
-			quality = self.model_quality(D, n, l)
-
-			quality_list.append(quality)
-			
-			if quality < quality_min:
-				lbd_min = l
-				quality_min = quality
-		#plt.plot(lbd, quality_list)
-		#plt.show()
-		print("lbd automatic : ", lbd_min)
-		self.pspline_approximation(D, n, lbd_min, clip=clip, deriv=deriv, derivative= False)
-
-
-	def model_quality(self, D, n, lbd, criteria ="AICC"):
-
-		""" Returns the smoothing criteria value (AIC, AICC, SBC, CV, GCV) for the given data."""
-
-		"""
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		n -- number of control points
-		lbd -- smoothing parameter lambda
-		criteria -- string of the chosen criteria ("AIC", "AICC", "SBC", "CV", "GCV")
-		"""
-
-		p = self._spl.order
-		m, x = D.shape
-
-		t = self.__chord_length_parametrization(D)
-		knot = self.__uniform_knot(p, n)
-
-		De = np.zeros((m, x))
-
-		for i in range(m):
-			De[i, :] = self.point(t[i], True)
-
-		# Definition of matrix N
-		N = np.zeros((len(t), n))
-		for i in range(len(t)):
-			N[i, :] = self.__basis_functions(knot, t[i], p, n)
-
-		# Definition of smoothing matrix U
-		U = np.zeros((n-2, n))
-		for i in range(n-2):
-			U[i, i:i+3] = [1.0, -2.0, 1.0]
-
-		# Hat matrix H
-		M = np.linalg.pinv(np.dot(N.transpose(), N) + lbd * np.dot(U.transpose(), U))
-		H = np.dot(np.dot(N,M), N.transpose())
-		t = np.trace(H)
-
-
-		if criteria == "CV":
-			res = 0
-			for i in range(m):
-				res += (norm((D[i] - De[i])) / (1 - H[i, i]))**2
-
-		elif criteria == "GCV":
-			res = 0
-			for i in range(m):
-				res += (norm(D[i] - De[i]) / (m - t))**2
-
-		elif criteria == "AIC":
-			sse = 0
-			for i in range(m):
-				sse += norm(D[i] - De[i])**2
-			res = m * math.log(sse/m) + 2 * t
-			print("t :", t,"sse :", sse, "res :", res)
-
-		elif criteria == "AICC":
-			sse = 0
-			for i in range(m):
-				sse += norm(D[i] - De[i])**2
-			res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
-
-		elif criteria == "SBC":
-
-			sse = 0
-			for i in range(m):
-				sse += norm(D[i] - De[i])**2
-			res = m * math.log(sse/m) + math.log(m)*t
-
-		else: 
-			raise ValueError('Invalid criteria name')
-
-		return res
-
-
-
-	def pspline_approximation(self, D, n, lbd, knot=None, t=None, clip = [[], []], deriv = [[], []], derivative=False):
-
-
-		"""Approximate data points using a spline with n control_points, 
-		using constraint on the error of the fitting to find the optimal number of control points.
-
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		n -- number of control points
-		clip -- end points if clipped ends
-		deriv -- end tangents to apply if constrainted tangents
-		derivatives -- True for fixed derivatives at the end, False for fixed tangent
-		"""
-
-		p = self._spl.order
-
-		if knot is None:
-			knot = self.__uniform_knot(p, n)
-
-		if t is None:
-			t = self.__chord_length_parametrization(D)
-
-
-		dim = len(D[0])
-		D = np.array(D)
-
-		if type(lbd) == list:
-			if len(lbd) != 2:
-				raise ValueError('The vector of smoothing parameters must have two values.')
-			else: 
-
-				P = np.zeros((n, dim))
-
-				# Spatial coordinates system
-
-				c = [[], []]
-				if len(clip[0])!= 0:
-					c[0] = clip[0][:-1]
-				if len(clip[1])!= 0:
-					c[1] = clip[1][:-1]
-
-				d = [[],[]]
-				if len(deriv[0])!= 0:
-					d[0] = deriv[0][:-1]
-				if len(deriv[1])!= 0:
-					d[1] = deriv[1][:-1]
-
-				if derivative:
-					P[:,:-1] = np.array(self.__solve_system_derivative(D[:,:-1], n, knot, t, lbd[0], c, d))
-				else: 
-					P[:,:-1] = np.array(self.__solve_system_tangent(D[:,:-1], n, knot, t, lbd[0], c, d))
-
-				# Radius system
-				c = [[], []]
-				if len(clip[0])!= 0:
-					c[0] = np.array([clip[0][-1]]) 
-				if len(clip[1])!= 0:
-					c[1] = np.array([clip[1][-1]])
-
-				d = [[],[]]
-				if len(deriv[0])!= 0:
-					d[0] = np.array([deriv[0][-1]]) 
-				if len(deriv[1])!= 0:
-					d[1] = np.array([deriv[1][-1]])
-
-				if derivative:
-					P[:,-1] = np.reshape(self.__solve_system_derivative(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d), n)
-				else: 
-					P[:,-1] = np.reshape(self.__solve_system_tangent(np.reshape(D[:,-1], (len(D),1)), n, knot, t, lbd[1], c, d), n)
-
-		else:
-			if derivative:
-				P = self.__solve_system_derivative(D, n, knot, t, lbd, clip, deriv)
-			else: 
-				P = self.__solve_system_tangent(D, n, knot, t, lbd, clip, deriv)
-
-		# Create spline
-		spl = BSpline.Curve()
-		spl.order = p
-		spl.ctrlpts = P.tolist()
-		spl.knotvector = knot
-
-		self.set_spl(spl)
-		#print("tg 0", deriv[0], self.tangent(0, True))
-		#print("tg 1", deriv[1], self.tangent(1, True))
-
-
-
-	def __solve_system_derivative(self, D, n, knot, t, lbd, clip = [[], []], deriv = [[], []]):
-
-		"""Approximate data points using a spline of degree p with n control_points.
-		Returns a geomdl.Bspline object
-
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		p -- degree
-		n -- number of control points
-		knot -- knot vector
-		t -- time parametrization vector
-		lbd -- lambda coefficient that balances smoothness and accuracy
-		clip -- list of end points 
-		deriv -- list of end derivatives
-		"""
-
-		#if lbd < 0 or lbd > 1:
-		#	raise ValueError('The smoothing parameter must be between 0 and 1')
-
-		p = self._spl.order
-		m, x = D.shape
-
-		if (len(deriv[0]) != 0 and len(clip[0]) == 0) or (len(deriv[1]) != 0 and len(clip[1]) == 0):
-			raise ValueError("Please use clip ends to add tangent constraint.")
-
-		if len(deriv[0]) != 0 and len(deriv[1]) != 0 and n<4:
-			n = 4
-
-		# Definition of matrix N
-		N = np.zeros((len(t), n))
-		for i in range(len(t)):
-			N[i, :] = self.__basis_functions(knot, t[i], p, n)
-		
-		Pt = np.zeros((4, x))
-		d = [0, n]
-
-		# Get fixed control points at the ends
-		if len(clip[0]) != 0:
-			Pt[0,:] = clip[0]
-			d[0] += 1
-
-		if len(clip[1]) != 0:
-			Pt[3,:] = clip[1]
-			d[1] -= 1
-
-		if len(deriv[0]) != 0:
-			der0 = self.__basis_functions_derivative(knot, p, n, 0.0)
-			Pt[1,:] = (1.0 / der0[1]) * (deriv[0] - (der0[0] * clip[0]))
-			d[0] += 1
-
-		if len(deriv[1]) != 0:
-			#der1 = self.__basis_functions_derivative(knot, p, n, 1.0)
-			der0 = self.__basis_functions_derivative(knot, p, n, 0.0)
-			Pt[2,:] = (1.0 / -der0[1]) * (deriv[1] - (-der0[0] * clip[1]))
-			d[1] -= 1
-
-
-		# Definition of matrix Q1
-		Q1 = np.zeros((m, x))
-		for i in range(m):
-			Q1[i, :] = N[i,0] * Pt[0,:] + N[i,1] * Pt[1,:] + N[i, -2] * Pt[2,:] + N[i, -1] * Pt[3,:]
-
-		# Resizing N if clipped ends
-		N = N[:, d[0]:d[1]]	
-
-
-		# Get matrix Delta = UtU of difference operator
-		U = np.zeros((n-2, n))
-		for i in range(n-2):
-			U[i, i:i+3] = [1.0, -2.0, 1.0]
-
-		Delta = np.dot(U.transpose(), U)
-
-		Q2 = np.zeros((d[1] - d[0], x))
-		for i in range(d[0], d[1]):
-			Q2[i - d[0], :] = Delta[i,0] * Pt[0,:] + Delta[i,1] * Pt[1,:] + Delta[i, -2] * Pt[2,:] + Delta[i, -1] * Pt[3,:]
-
-		Delta = Delta[d[0]:d[1], d[0]:d[1]]
-		
-		# Write matrix M1 = NtN + lbd * Delta
-		#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
-		M1 = np.dot(N.transpose(), N) + lbd * Delta
-
-		# Write matrix M2 
-		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
-		M2 = np.dot(N.transpose(), D - Q1) - lbd * Q2
-
-		# Solve the system
-		P = np.dot(np.linalg.pinv(M1), M2)
-
-		# Add fixed points to the list
-		if len(deriv[0]) != 0:
-			P = np.concatenate([np.transpose(np.expand_dims(Pt[1,:], axis=1)), P])
-		if len(clip[0]) != 0:
-			P = np.concatenate([np.transpose(np.expand_dims(Pt[0,:], axis=1)), P])
-		if len(deriv[1]) != 0:
-			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[2,:], axis=1))])
-		if len(clip[1]) != 0:
-			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[3,:], axis=1))])
-
-		return P
-
-
-
-	def __solve_system_tangent(self, D, n, knot, t, lbd, clip = [[], []], tangent = [[], []]):
-
-		"""Approximate data points using a spline of degree p with n control_points.
-
-		Keyword arguments:
-		D -- numpy array of coordinates for data points
-		n -- number of control points
-		knot -- knot vector
-		t -- time parametrization vector
-		lbd -- lambda coefficient that balances smoothness and accuracy
-		clip -- list of end points as np arrays
-		tangent-- list of end tangents as np arrays
-		"""
-
-		#if lbd < 0 or lbd > 1:
-			#raise ValueError('The smoothing parameter must be between 0 and 1')
-
-		p = self._spl.order
-		m, x = D.shape
-		
-		D = D.reshape((m * x, 1)) 
-				
-		if (len(tangent[0]) != 0 and len(clip[0]) == 0) or (len(tangent[1]) != 0 and len(clip[1]) == 0):
-			raise ValueError("Please use clip ends to add tangent constraint.")
-
-		if len(tangent[0]) != 0 and len(tangent[1]) != 0 and n<4:
-			n = 4
-
-		# Definition of the basis function matrix
-		Nl = np.zeros((len(t), n))
-		for i in range(len(t)):
-			Nl[i, :] = self.__basis_functions(knot, t[i], p, n)
-
-		# Definition of matrix N
-		N = np.zeros((len(t) * x, n * x))
-		for i in range(len(t)):
-			for j in range(x):
-				N[i*x + j, j::x] = Nl[i]
-
-		# Definition of the smoothing matrix Delta
-		U = np.zeros((x*(n-2), n*x))
-		for i in range(x*(n-2)):
-			U[i, i:i+(x*2) +1:x] = [1.0, -2.0, 1.0]
-
-		Delta = np.dot(U.transpose(), U)
-
-		Q1 = np.zeros((x*m,))
-		d = [0, x*n]
-	
-		# Get fixed control points and adjust matrix N
-		if len(clip[0]) != 0:
-			Q1 += np.sum(N[:, :x], axis=1) * np.concatenate([clip[0]] * m)
-			N = N[:, x:]
-			d[0] += x
-
-		if len(tangent[0]) != 0:
-			Q1 += np.sum(N[:, :x], axis=1) * np.concatenate([clip[0]] * m)
-			N0 = np.sum(N[:, :x], axis = 1) * np.concatenate([tangent[0]]*len(t))
-			N = N[:, x-1:]
-			N[:,0] = N0
-			d[0] += x - 1
-			
-		if len(clip[1]) != 0:
-			Q1 += np.sum(N[:, -x:], axis=1) * np.concatenate([clip[1]] * m)
-			N = N[:, :-x]
-			d[1] -= x
-
-		if len(tangent[1]) != 0:
-			Q1 += np.sum(N[:, -x:], axis=1) * np.concatenate([clip[1]] * m)
-			N0 = np.sum(N[:, -x:], axis = 1) * np.concatenate([tangent[1]]*len(t))
-			if x-1 != 0:
-				N = N[:, :-x+1]
-				
-			N[:,-1] = N0
-			d[1] -= x - 1
-
-		Q1 = np.expand_dims(Q1, axis=1)
-
-		# Store the sum of line and columns
-		Sc = np.zeros((Delta.shape[0], 4))
-		Sc[:,0] = np.sum(Delta[:, :x], axis=1)
-		Sc[:,1] = np.sum(Delta[:, x:2*x], axis=1)
-		Sc[:,2] = np.sum(Delta[:, -2*x:-x], axis=1)
-		Sc[:,3] = np.sum(Delta[:, -x:], axis=1)
-
-		Sl = np.zeros((2, Delta.shape[1]))
-		Sl[0,:] = np.sum(Delta[x:2*x, :], axis = 0)
-		Sl[1,:] = np.sum(Delta[-2*x:-x, :], axis = 0)
-
-		# Resize Delta
-		Delta = Delta[d[0]:d[1], d[0]:d[1]]
-
-		# Fill Delta if tangents
-		if len(tangent[0])!= 0:
-			Delta[0,:] = (Sl[0,:] * np.concatenate([tangent[0]]*n))[d[0]:d[1]]
-			Delta[:,0] = (Sc[:,1] * np.concatenate([tangent[0]]*n))[d[0]:d[1]]
-			Delta[0,0] = Sc[d[0],1]*np.dot(tangent[0], tangent[0])
-
-		if len(tangent[1])!=0:
-			Delta[-1,:] = (Sl[1,:] * np.concatenate([tangent[1]]*n))[d[0]:d[1]]
-			Delta[:,-1] = (Sc[:,2] * np.concatenate([tangent[1]]*n))[d[0]:d[1]]
-			Delta[-1,-1] = Sc[d[1],2]*np.dot(tangent[1], tangent[1])
-
-			if len(tangent[0])!= 0:
-				Delta[0, -1] = Sc[d[0],2] * np.dot(tangent[0], tangent[1])
-				Delta[-1, 0] = Sc[d[1],0] * np.dot(tangent[0], tangent[1])
-
-		# Define Q2 
-		Q2 = np.zeros((x*n,))
-
-		if len(clip[0])!=0:
-			Q2 += Sc[:,0] * np.concatenate([clip[0]] * n) 
-		if len(clip[1])!=0:
-			Q2 += Sc[:,3] * np.concatenate([clip[1]] * n)
-		if len(tangent[0])!= 0:
-			Q2 += Sc[:,1] * np.concatenate([clip[0]] * n) 
-		if len(tangent[1])!= 0:
-			Q2 += Sc[:,2] * np.concatenate([clip[1]] * n) 
-
-		Q2 = Q2[d[0]:d[1]]
-
-		# Fell Q2 if tangents
-		if len(tangent[0])!= 0:
-			Q2[0] = (Sc[d[0],0] + Sc[d[0],1]) * np.dot(clip[0], tangent[0])
-			if len(tangent[1])!= 0:
-				Q2[-1] = (Sc[d[1],0] + Sc[d[1],1]) * np.dot(clip[0], tangent[1])
-
-		if len(tangent[1])!= 0:
-			if len(tangent[0])!= 0:
-				Q2[-1] += (Sc[d[1],2] + Sc[d[1],3]) * np.dot(clip[1], tangent[1])
-				Q2[0] += (Sc[d[0],2] + Sc[d[0],3]) * np.dot(clip[1], tangent[0])
-			else: 
-				Q2[-1] = (Sc[d[1],2] + Sc[d[1],3]) * np.dot(clip[1], tangent[1])
-
-		Q2 = np.expand_dims(Q2, axis=1)
-		
-		# Write matrix M1 = NtN + lbd * Delta
-		#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
-		M1 = np.dot(N.transpose(), N) + lbd * Delta
-		
-
-		# Write matrix M2 
-		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
-		M2 = np.dot(N.transpose(), D - Q1) - lbd * Q2
-
-		# Solve the system
-		P = np.dot(np.linalg.pinv(M1), M2)
-
-		if len(tangent[0]) != 0:
-			alpha = P[0]
-			P = P[1:]
-			
-		if len(tangent[1]) != 0:
-			beta = P[-1]
-			P = P[:-1]
-
-		P = P.reshape((int(len(P) / x), x))	
-
-		# Add tangent points to the list
-		if len(tangent[0]) != 0:
-			P = np.concatenate([np.transpose(np.expand_dims(clip[0] + alpha * tangent[0], axis=1)), P])
-
-		if len(tangent[1]) != 0:
-			P = np.concatenate([P, np.transpose(np.expand_dims(clip[1] + beta * tangent[1], axis=1))])
-
-		# Add fixed points to the list
-		if len(clip[0]) != 0:
-			P = np.concatenate([np.transpose(np.expand_dims(clip[0], axis=1)), P])
-		if len(clip[1]) != 0:
-			P = np.concatenate([P, np.transpose(np.expand_dims(clip[1], axis=1))])
-
-		return P
 
 
 	#####################################
@@ -1386,37 +756,60 @@ class Spline:
 		knot -- True to display the knots position
 		control_points -- True to display control polygon
 		"""
+		points = self.get_points()
 
-		# 3D plot
-		with plt.style.context(('ggplot')):
-		
-			fig = plt.figure(figsize=(10,7))
-			ax = Axes3D(fig)
-			ax.set_facecolor('white')
+		if points.shape[1] <3:
 
-			points = self.get_points()
-			ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
+			plt.plot(points[:,0], points[:,1],  c='black')
 
 			if knot:
 				knots = self.get_knot()
 				for k in knots:
 					pt = self.point(k)
-					ax.scatter(pt[0], pt[1], pt[2],  c='black', s = 20)
+					plt.scatter(pt[0], pt[1],  c='black', s = 20)
 
 			if control_points:
 				points = self.get_control_points()
-				ax.plot(points[:,0], points[:,1], points[:,2],  c='grey')
-				ax.scatter(points[:,0], points[:,1], points[:,2],  c='grey', s = 40)
+				plt.plot(points[:,0], points[:,1],  c='grey')
+				plt.scatter(points[:,0], points[:,1],  c='grey', s = 40)
 
 			if len(data) != 0:
 				data = np.array(data)
-				ax.scatter(data[:,0], data[:,1], data[:,2],  c='blue', s = 40)
+				ax.scatter(data[:,0], data[:,1],  c='blue', s = 40)
 
-		# Set the initial view
-		ax.view_init(90, -90) # 0 is the initial angle
+			plt.show()
 
-		# Hide the axes
-		ax.set_axis_off()
-		plt.show()
+		else:
+			# 3D plot
+			with plt.style.context(('ggplot')):
+			
+				fig = plt.figure(figsize=(10,7))
+				ax = Axes3D(fig)
+				ax.set_facecolor('white')
 
-	
+				
+				ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
+
+				if knot:
+					knots = self.get_knot()
+					for k in knots:
+						pt = self.point(k)
+						ax.scatter(pt[0], pt[1], pt[2],  c='black', s = 20)
+
+				if control_points:
+					points = self.get_control_points()
+					ax.plot(points[:,0], points[:,1], points[:,2],  c='grey')
+					ax.scatter(points[:,0], points[:,1], points[:,2],  c='grey', s = 40)
+
+				if len(data) != 0:
+					data = np.array(data)
+					ax.scatter(data[:,0], data[:,1], data[:,2],  c='blue', s = 40)
+
+			# Set the initial view
+			ax.view_init(90, -90) # 0 is the initial angle
+
+			# Hide the axes
+			ax.set_axis_off()
+			plt.show()
+
+

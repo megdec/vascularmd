@@ -8,6 +8,7 @@ from geomdl import BSpline, operations
 from Bifurcation import Bifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
+from Model import Model
 from utils import quality, distance
 
 from numpy.linalg import norm 
@@ -96,12 +97,12 @@ def test_ogrid_pattern():
 
 def test_meshing():
 
-	tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
-	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
-	#tree.deteriorate_centerline(1, [0.00, 0.00, 0.00, 0.00])
+	tree.deteriorate_centerline(1, [0.01, 0.01, 0.01, 0.00])
 	tree.show(True, False, False)
-	tree.spline_approximation(0.5)
+	tree.spline_approximation()
 	tree.show(True, True, False)
 
 
@@ -137,14 +138,13 @@ def test_fitting():
 
 	D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
 	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
-	deriv = [D[1] - D[0], D[-2] - D[-1]]
-	clip = [D[0], D[-1]]
 
-	n = len(D)
-	lbd = [0.0, 0.01, 0.02, 0.05, 0.1]
-	#lbd = [0.0]
+	values = np.vstack((D[0], D[1] - D[0], D[-2] - D[-1], D[-1]))
+
+	n = len(D) -2
+	
 	spl = Spline()
-	spl.distance_constraint_approximation(D, 0.0, clip=[], deriv=deriv)
+	spl.approximation(D, [True, False, True, True], values, False, False, criterion= "AICC")
 	spl.show(data=D)
 
 	"""
@@ -176,7 +176,7 @@ def test_fitting():
 		plt.show()
 	"""
 
-def test_quality_model():
+def test_quality_model2D():
 
 	N = 50 # number of data points
 	t = np.linspace(0, 4*np.pi, N)
@@ -198,10 +198,92 @@ def test_quality_model():
 
 	plt.plot(points[:,0], points[:,1],  c='black')
 	plt.scatter(D[:,0], D[:,1],  c='blue', s = 40)
+	plt.plot(D[:,0], D[:,1],  c='blue')
+	plt.show()
+
+
+def test_quality_model3D():
+
+	# Import reference network
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+
+	# Extract one vessel
+	e = [4,5]
+
+	# Get data
+	pts = tree.get_topo_graph().edges[e]['coords'][:, :-1]
+	spl_ref = Spline()
+	spl_ref.automatic_approximation(pts)
+	print(len(pts))
+	pts = spl_ref.get_points()
+	print(len(pts))
+
+	# Add noise or resample
+	noise = [0.02, 0.02, 0.02]
+	p = 0.2
+
+	if p != 0:
+		# Resampling
+		step = int(pts.shape[0]/(p*pts.shape[0]))
+		if step > 0:
+			pts =  pts[:-1:step]
+		else:
+			pts = pts[int(pts.shape[0]/2)]
+	else: 
+		pts = pts[int(pts.shape[0]/2)]
+
+	rand = np.hstack((np.random.normal(0, noise[0], (pts.shape[0], 1)), np.random.normal(0, noise[1], (pts.shape[0], 1)), np.random.normal(0, noise[2], (pts.shape[0], 1)))) #np.random.normal(0, noise[3], (pts.shape[0], 1))))
+	pts += pts * rand
+
+	spl_aicc = Spline()
+	spl_aicc.automatic_approximation(pts, criteria="AICC")
+
+
+	spl_cv = Spline()
+	spl_cv.automatic_approximation(pts, criteria="CV")
+
+
+	# Compare the splines 
+	fig = plt.figure(figsize=(10,7))
+	ax = Axes3D(fig)
+	ax.set_facecolor('white')
+
+	points = spl_ref.get_points()
+	ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
+
+	points = spl_aicc.get_points()
+	ax.plot(points[:,0], points[:,1], points[:,2],  c='red')
+
+	points = spl_cv.get_points()
+	ax.plot(points[:,0], points[:,1], points[:,2],  c='green')
+
+	ax.scatter(pts[:,0], pts[:,1], pts[:,2],  c='blue', s = 40)
+
+	# Set the initial view
+	ax.view_init(90, -90) # 0 is the initial angle
+
+	# Hide the axes
+	ax.set_axis_off()
 	plt.show()
 
 
 
+def test_Model():
+
+	D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
+	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
+	values = np.vstack((D[0], D[1] - D[0], D[-2] - D[-1], D[-1]))
+
+	n = len(D)
+	lbd = 0
+	#lbd = [0.0]
+	model = Model(D, n, 3, [True, True, True, True], values, False, lbd)
+	model.spl.show(data=D)
+	print(model.quality("SSE"))
+	model.set_lambda(1)
+	print(model.quality("SSE"))
+	model.spl.show(data=D)
+	print(model.get_magnitude())
 
 #test_tree_class()
 #test_ogrid_pattern()
@@ -209,4 +291,6 @@ test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()
-#test_quality_model()
+#test_quality_model2D()
+#test_quality_model3D()
+#test_Model()

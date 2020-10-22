@@ -172,7 +172,6 @@ class Bifurcation:
 
 
 
-
 	def __set_SP(self):
 
 		""" Set the coordinates of the separation points SP of the bifurcation. """
@@ -180,9 +179,10 @@ class Bifurcation:
 		SP = []
 		for ind in [[0, 1], [1, 0]]:
 		
-			#t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
-			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() -  self._spl[ind[0]].radius(self._tAP[ind[0]]))
-			#t = self._tAP[ind[0]]
+			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
+			#t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() -  2*self._spl[ind[0]].radius(self._tAP[ind[0]]))
+			#if t<0:
+			#	t = 0.5
 
 			ptAP = self._spl[ind[0]].point(self._tAP[ind[0]])
 			nAP = self._AP - ptAP
@@ -197,7 +197,7 @@ class Bifurcation:
 
 		self._SP = np.array(SP)
 
- 
+
 
 
 	def __set_B(self):
@@ -498,6 +498,7 @@ class Bifurcation:
 		return self._crsec
 
 
+
 	def __bifurcation_connect(self, tind, ind, P0, P1, n):
 
 
@@ -530,10 +531,10 @@ class Bifurcation:
 		pts = np.array(pts)
 
 		# Method 2 using linear interpolation
-		#pts = []
-		#for i in range(len(P0)):
-		#	pts.append(np.linspace(P0[i], P1[i], n + 2)[1:-1].tolist())
-		#pts = np.array(pts).transpose()
+		pts = []
+		for i in range(len(P0)):
+			pts.append(np.linspace(P0[i], P1[i], n + 2)[1:-1].tolist())
+		pts = np.array(pts).transpose()
 
 		nds = []
 		for i in range(n):

@@ -187,14 +187,14 @@ class ArterialTree:
 	#####################################
 	
 
-	def spline_approximation(self, dist):
+	def spline_approximation(self):
 
 		""" Approximate centerlines using splines and sets the attribute spline-graph.
 		"""
 
 		print('Modeling the network with splines...')
 
-		G = self.__end_conditions(dist)
+		G = self.__end_conditions()
 		self._spline_graph = nx.DiGraph()
 
 		for e in G.edges():
@@ -205,21 +205,23 @@ class ArterialTree:
 				# Linearly interpolate data
 				pts = np.array(linear_interpolation(pts, 1))
 
-			clip = [[], []]
-			deriv = [[], []]
+			values = np.zeros((4,4))
+			constraint = [False] * 4
 
 			if G.nodes[e[0]]['type'] == "bif":
-				clip[0] = pts[0]
-				deriv[0] = G.nodes[e[0]]['tangent']
- 
+				values[0,:] = pts[0]
+				constraint[0] = True
+				values[1,:] = G.nodes[e[0]]['tangent']
+				constraint[1] = True
+	
 			if G.nodes[e[1]]['type'] == "bif":
-				clip[1] =  pts[-1]
-				deriv[1] = G.nodes[e[1]]['tangent']
+				values[-1,:] =  pts[-1]
+				constraint[-1] = True
+				values[-2,:] = G.nodes[e[1]]['tangent']
+				constraint[-2] = True
 
 			spl = Spline()
-			#spl.curvature_bounded_approximation(pts, 1, clip, deriv) 
-			#spl.distance_constraint_approximation(pts, dist, clip, deriv)
-			spl.automatic_approximation(pts, clip, deriv)
+			spl.approximation(pts, constraint, values, False, False, criterion= "AICC")
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
@@ -228,75 +230,15 @@ class ArterialTree:
 
 
 
-	def __end_conditions(self, dist):
+	def __end_conditions(self):
 
-		""" Approximates the coordinates and tangent of the bifurcation points.
-
-		Keyword arguments:
-		p -- spline order
-		"""
-
-		"""
 		G = self._topo_graph.copy()
 
 		for n in self._topo_graph.nodes():
 			if self._topo_graph.nodes[n]['type'] == "bif":
 
 				edges = list(self._topo_graph.in_edges(n)) + list(self._topo_graph.out_edges(n))
-
-				best_pos = 1
-				ratio_list = []
-				mag_list = []
-				for pos in [1.5, 1.8, 2, 2.2, 2.5, 3, 3.5]:
-		
-					pts, pt, tg = self.__bifurcation_point_estimation(dist, edges, n, pos)
-
-					mag = []
-					for i in range(3):
-						if i == 0:
-							clip = [[], pt]
-							deriv = [[], tg]
-						else: 
-							clip = [pt, []]
-							deriv = [tg, []]
-
-						spl = Spline()
-						spl.distance_constraint_approximation(pts[i], dist, clip, deriv)
-
-						if len(deriv[0]) != 0:
-							mag.append(abs(((spl.get_control_points()[1] - spl.get_control_points()[0]) / deriv[0])[0]))
-
-						if len(deriv[1]) != 0:
-							mag.append(abs(((spl.get_control_points()[-2] - spl.get_control_points()[-1]) / deriv[1])[0]))
-
-					diff = min([mag[1]-mag[0], mag[2]-mag[0]])
-					ratio_list.append(diff)
-					mag_list.append(mag)
-
-					if diff >= 0:
-						best_ratio = diff
-						best_pos = pos
-						best_mag = mag
-						break
-
-				print(ratio_list, best_pos)
-				
-				pts, pt, tg = self.__bifurcation_point_estimation(dist, edges, n, best_pos)
-
-				# Update bifurcation point information
-				G.add_node(n, coords = pt, tangent = tg, type = "bif")
-
-				G.add_edge(*edges[0], coords = pts[0])
-				G.add_edge(*edges[1], coords = pts[1])
-				G.add_edge(*edges[2], coords = pts[2])
-		"""
-		G = self._topo_graph.copy()
-
-		for n in self._topo_graph.nodes():
-			if self._topo_graph.nodes[n]['type'] == "bif":
-
-				edges = list(self._topo_graph.in_edges(n)) + list(self._topo_graph.out_edges(n))
-				pts, pt, tg = self.__bifurcation_point_estimation(dist, edges, n, 0)
+				pts, pt, tg = self.__bifurcation_point_estimation(edges, n, 0)
 			
 				# Update bifurcation point information
 				G.add_node(n, coords = pt, tangent = tg, type = "bif")
@@ -309,7 +251,7 @@ class ArterialTree:
 
 
 
-	def __bifurcation_point_estimation(self, dist, edges, node, pos):
+	def __bifurcation_point_estimation(self, edges, node, pos):
 
 		B = self._topo_graph.nodes[node]['coords'][:-1]
 
@@ -319,15 +261,13 @@ class ArterialTree:
 
 
 		# Fit splines from the main branch to the daughter branches
+		D1 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords']))
 		spl1 = Spline()
-		#spl1.curvature_bounded_approximation(pts0 + pts1, 1) 
-		#spl1.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords'])), dist)
-		spl1.automatic_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords'])))
+		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False, False, criterion= "AICC")
 
+		D2 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords']))
 		spl2 = Spline()
-		#spl2.curvature_bounded_approximation(pts0 + pts2, 1) 
-		#spl2.distance_constraint_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords'])), dist)
-		spl2.automatic_approximation(np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords'])))
+		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False, False, criterion= "AICC")
 			
 		# Find the separation point between the splines
 		r = np.mean(pts0[:,-1])
