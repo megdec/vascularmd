@@ -39,6 +39,11 @@ class Model:
 		self._derivatives = derivatives
 		self._lbd = lbd
 
+		if self._n <= 3:
+			self._smoothing_order = n-1
+		else:
+			self._smoothing_order = 3
+
 		self._N, self._Q1, self._Delta, self._Q2, self._Pt = self.__compute_matrices()
 		self.P = self.__solve_system()
 	
@@ -64,11 +69,11 @@ class Model:
 	def get_magnitude(self):
 
 		"""Return the magnitudes alpha and beta of the tangents"""
-		alpha = (self.P[1] - self.P[0]) / self._end_values[1]
-		beta = (self.P[-2] - self.P[-1]) / self._end_values[-2]
 
-		return alpha[0], beta[0]
+		tg0 = self.spl.first_derivative(0) 
+		tg1 = self.spl.first_derivative(1) 
 
+		return norm(tg0), norm(tg1)
 
 
 	def quality(self, criteria="AICC"):
@@ -230,9 +235,12 @@ class Model:
 
 
 			# Get matrix Delta = UtU of difference operator
-			U = np.zeros((n-2, n))
-			for i in range(n-2):
-				U[i, i:i+3] = [1.0, -2.0, 1.0]
+			coefs = [[1.0, -2.0, 1.0], [1.0, -3.0, 3.0, -1.0], [1.0, -4.0, 6.0, -4.0, 1.0]]
+
+			U = np.zeros((n-self._smoothing_order, n))
+			for i in range(n-self._smoothing_order):
+				U[i, i:i+self._smoothing_order + 1] = coefs[self._smoothing_order-2]
+
 
 			Delta = np.dot(U.transpose(), U)
 
@@ -259,9 +267,15 @@ class Model:
 					N[i*x + j, j::x] = Nl[i]
 
 			# Definition of the smoothing matrix Delta
-			U = np.zeros((x*(n-2), n*x))
-			for i in range(x*(n-2)):
-				U[i, i:i+(x*2) +1:x] = [1.0, -2.0, 1.0]
+			coefs = [[1.0, -2.0, 1.0], [1.0, -3.0, 3.0, -1.0], [1.0, -4.0, 6.0, -4.0, 1.0]]
+
+			U = np.zeros((x*(n-self._smoothing_order), n*x))
+			for i in range(x*(n-self._smoothing_order)):
+				U[i, i:i+(x*self._smoothing_order) +1:x] = coefs[self._smoothing_order - 2]
+
+			#U = np.zeros((x*(n-2), n*x))
+			#for i in range(x*(n-2)):
+			#	U[i, i:i+(x*2) +1:x] = [1.0, -2.0, 1.0]
 
 			Delta = np.dot(U.transpose(), U)
 
@@ -488,7 +502,7 @@ class Model:
 		"""
 
 		derN = []
-		for i in range(n):
+		for i in range(self._n):
 			derN.append(helpers.basis_function_ders_one(2, self._knot, i, t, 2)[1])
 
 		return derN

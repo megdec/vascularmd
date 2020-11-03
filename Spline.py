@@ -7,6 +7,7 @@ from numpy.linalg import norm
 from numpy import dot, cross
 import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
+import math
 
 from utils import *
 from termcolor import colored
@@ -113,7 +114,7 @@ class Spline:
 
 		der = self._spl.derivatives(t, order=1)[1]
 
-		if self._spl.dimension == 3:
+		if self._spl.dimension <= 3:
 			der = np.array(der)
 		else:
 			if radius:
@@ -130,7 +131,7 @@ class Spline:
 
 		der = self._spl.derivatives(t, order=2)[2]
 
-		if self._spl.dimension == 3:
+		if self._spl.dimension <= 3:
 			der = np.array(der)
 		else:
 			if radius:
@@ -148,7 +149,7 @@ class Spline:
 		# tg = self._spl.tangent(t)[1]
 		tg = operations.tangent(self._spl, t)[1]
 
-		if self._spl.dimension == 3:
+		if self._spl.dimension <= 3:
 			tg = np.array(tg)
 		else:
 			if radius:
@@ -166,7 +167,7 @@ class Spline:
 
 		pt = self._spl.evaluate_single(t)
 
-		if self._spl.dimension == 3:
+		if self._spl.dimension <= 3:
 			pt = np.array(pt)
 		else:
 			if radius:
@@ -197,7 +198,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model, criterion= "AICC"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model, curvature=True, min_tangent=False, lbd = 0.0, criterion= "CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -211,18 +212,27 @@ class Spline:
 
 		from Model import Model
 
-		n = len(D)
+		# Estimate length of the vessel 
+
+		length = 0.0
+		for i in range(1, len(D)):
+			length += norm(D[i] - D[i-1])
+
+		
+		n = int(length)
+		#n = len(D)
+	
 		if n < 4: # Minimum of 4 control points
 			n = 4
 
 		if radius_model: 
 
 			# Spatial model
-			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], False, 0)
+			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd)
 			spatial_model = self.__optimize_model(spatial_model, criterion)
 
 			# Radius model
-			radius_model = Model(np.reshape(D[:,-1], (len(D),1)), n, 3, end_constraint, np.reshape(end_values[:,-1], (4,1)), False, 0)
+			radius_model = Model(np.reshape(D[:,-1], (len(D),1)), n, 3, end_constraint, np.reshape(end_values[:,-1], (4,1)), derivatives, lbd)
 			radius_model = self.__optimize_model(radius_model, criterion)
 		
 			self._spl.ctrlpts = np.hstack((spatial_model.P, radius_model.P)).tolist()
@@ -231,32 +241,115 @@ class Spline:
 
 
 		else:
-			global_model = Model(D, n, 3, end_constraint, end_values, False, 0)
+			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd)
 			global_model = self.__optimize_model(global_model, criterion)
+
+			if min_tangent:
+
+				alpha, beta = global_model.get_magnitude()
+				print(alpha, beta)
+				thres = 15
+
+				if (alpha < thres or beta < thres) and not derivatives:
+
+					end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * beta
+					end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * alpha
+
+					if alpha < thres:
+						end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * thres
+					if beta < thres:
+						end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * thres
+
+
+					global_model = Model(D, n, 3, end_constraint, end_values, True, lbd)
+					global_model = self.__optimize_model(global_model, criterion)
+					alpha, beta = global_model.get_magnitude()
+					
 
 			self._spl.ctrlpts = global_model.P.tolist()
 			self._spl.knotvector = global_model.get_knot()
 			self.__set_length_tab()
+			#self.show(data = D)
 
 
 
-	def __optimize_model(self, model, criterion):
+	def __optimize_model(self, model, criterion, curvature=False):
 
 		""" Optimise a given model according to the given criterion."""
+		if criterion != "None":
+			# Smoothing criterion
 
-		lbd = np.linspace(0.01,10, 100)
-		quality_min = 400
+			"""
+			lbd = np.linspace(10^(-6),1, 1000)
+			quality_min = 10000
+			lbd_min = 0.01
 
-		for l in lbd: 
-			model.set_lambda(l)
-			quality = model.quality(criterion)
+			quality_list = []
 
-			if quality < quality_min:
-				lbd_min = l
-				quality_min = quality
+			for l in lbd: 
+				model.set_lambda(l)
+				quality = model.quality(criterion)
+				quality_list.append(quality)
 
-		model.set_lambda(lbd_min)
-		print("optimized lambda : ", lbd_min)
+				if quality < quality_min:
+					lbd_min = l
+					quality_min = quality
+
+			plt.plot(lbd, quality_list)
+			plt.show()
+			model.set_lambda(lbd_min)
+			print("optimized lambda : ", lbd_min)
+			"""
+
+			gr = (math.sqrt(5) + 1) / 2
+			a = 10**(-1)
+			b = 100000
+
+			#Golden-section search to find the minimum
+
+			c = b - (b - a) / gr
+			d = a + (b - a) / gr
+			while abs(b - a) > 10**(-2):
+
+				model.set_lambda(c)
+				fc = model.quality(criterion)
+				model.set_lambda(d)
+				fd = model.quality(criterion)
+			
+				if fc < fd:
+					b = d
+				else:
+					a = c
+
+				# We recompute both c and d here to avoid loss of precision which may lead to incorrect results or infinite loop
+				c = b - (b - a) / gr
+				d = a + (b - a) / gr
+
+			model.set_lambda((b + a) / 2)
+			print("optimized lambda : ", (b + a) / 2)
+		 
+
+			# Curvature check
+			if curvature: 
+				i = 0
+				num = 100
+				while curvature and i < 1000:
+
+					rad = np.zeros((2, num))
+					t = np.linspace(0, 1, num + 2)[1:-1]
+
+					for i in range(len(t)):
+						rad[0, i] = model.spl.curvature_radius(t[i])
+						rad[1, i] = model.spl.radius(t[i])
+
+					if all((rad[0, :] - rad[1, :]) > 10^(-2)):
+						curvature = False
+					else:
+						lbd_min = lbd_min + 0.5
+						i+=1
+
+					model.set_lambda(lbd_min)
+				print("optimized lambda after curvature correction : ", lbd_min)
 
 		return model
 
@@ -775,7 +868,7 @@ class Spline:
 
 			if len(data) != 0:
 				data = np.array(data)
-				ax.scatter(data[:,0], data[:,1],  c='blue', s = 40)
+				plt.scatter(data[:,0], data[:,1],  c='red', s = 40)
 
 			plt.show()
 
@@ -794,16 +887,17 @@ class Spline:
 					knots = self.get_knot()
 					for k in knots:
 						pt = self.point(k)
-						ax.scatter(pt[0], pt[1], pt[2],  c='black', s = 20)
+						ax.scatter(pt[0], pt[1], pt[2],  c='black', s = 20, depthshade=False)
 
 				if control_points:
 					points = self.get_control_points()
 					ax.plot(points[:,0], points[:,1], points[:,2],  c='grey')
-					ax.scatter(points[:,0], points[:,1], points[:,2],  c='grey', s = 40)
+					ax.scatter(points[:,0], points[:,1], points[:,2],  c='grey', s = 40, depthshade=False)
 
 				if len(data) != 0:
 					data = np.array(data)
-					ax.scatter(data[:,0], data[:,1], data[:,2],  c='blue', s = 40)
+					ax.scatter(data[:,0], data[:,1], data[:,2],  c='red', s = 40, depthshade=False)
+					ax.plot(data[:,0], data[:,1], data[:,2],  c='red')
 
 			# Set the initial view
 			ax.view_init(90, -90) # 0 is the initial angle

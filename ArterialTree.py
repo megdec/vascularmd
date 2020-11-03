@@ -221,13 +221,13 @@ class ArterialTree:
 				constraint[-2] = True
 
 			spl = Spline()
-			spl.approximation(pts, constraint, values, False, False, criterion= "AICC")
+			spl.approximation(pts, constraint, values, False, False)
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
 			self._spline_graph.add_node(e[1], coords = spl.point(1.0, True), type = G.nodes[e[1]]['type'])
 			self._spline_graph.add_edge(e[0], e[1], spline = spl, coords = G.edges[e]['coords']) 
-
+			
 
 
 	def __end_conditions(self):
@@ -263,11 +263,11 @@ class ArterialTree:
 		# Fit splines from the main branch to the daughter branches
 		D1 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords']))
 		spl1 = Spline()
-		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False, False, criterion= "AICC")
+		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False, False)
 
 		D2 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords']))
 		spl2 = Spline()
-		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False, False, criterion= "AICC")
+		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False, False)
 			
 		# Find the separation point between the splines
 		r = np.mean(pts0[:,-1])
@@ -1072,9 +1072,10 @@ class ArterialTree:
 		G = nx.DiGraph()
 		k = 1
 
+		ndict = {}
 		for n in self._topo_graph.nodes():
-		
 			G.add_node(k, coords = self._topo_graph.nodes[n]['coords'])
+			ndict[n] = k
 			k  = k + 1
 
 		for e in self._topo_graph.edges():
@@ -1082,12 +1083,12 @@ class ArterialTree:
 
 			if len(pts) == 0:
 
-				G.add_edge(1, 2, coords = np.array([]).reshape(0,4))
+				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
 
 			else: 
 
 				G.add_node(k, coords = pts[0])
-				G.add_edge(1, k, coords = np.array([]).reshape(0,4))
+				G.add_edge(ndict[e[0]], k, coords = np.array([]).reshape(0,4))
 				k = k + 1
 
 				for i in range(1, len(pts)):
@@ -1096,7 +1097,7 @@ class ArterialTree:
 					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
 					k = k + 1
 
-				G.add_edge(k - 1, 2, coords = np.array([]).reshape(0,4))
+				G.add_edge(k - 1, ndict[e[1]], coords = np.array([]).reshape(0,4))
 	
 		return G
 
@@ -1110,8 +1111,10 @@ class ArterialTree:
 		G = nx.DiGraph()
 		k = 1
 
+		ndict = {}
 		for n in self._spline_graph.nodes():
 			G.add_node(k, coords = self._spline_graph.nodes[n]['coords'])
+			ndict[n] = k
 			k = k + 1
 
 		for e in self._spline_graph.edges():
@@ -1119,27 +1122,23 @@ class ArterialTree:
 
 			if spl != None:
 
-				t = spl.resample_time(int(spl.length() * 10))
-
-				pts = []
-				for elt in t:
-					pts.add(spl.point(t).tolist())
+				pts = spl.get_points()
 
 				G.add_node(k, coords = pts[0])
-				G.add_edge(e[0], k, coords = [])
+				G.add_edge(ndict[e[0]], k, coords = np.array([]).reshape(0,4))
 				k = k + 1
 
 				for i in range(1, len(pts)):
 
 					G.add_node(k, coords = pts[i])
-					G.add_edge(k - 1, k, coords = [])
+					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
 					k = k + 1
 
-				G.add_edge(k - 1, e[1], coords = [])
+				G.add_edge(k - 1, ndict[e[1]], coords = np.array([]).reshape(0,4))
 
 			else:
 
-				G.add_edge(e[0], e[1], coords = [])
+				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
 
 		return G
 

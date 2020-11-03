@@ -494,7 +494,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		#self.smooth(10)#self.R
+		self.smooth(1)#self.R
 		return self._crsec
 
 

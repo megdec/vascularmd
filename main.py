@@ -9,7 +9,7 @@ from Bifurcation import Bifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
-from utils import quality, distance
+from utils import quality, distance, lin_interp
 
 from numpy.linalg import norm 
 
@@ -100,31 +100,37 @@ def test_meshing():
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
 	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
-	tree.deteriorate_centerline(1, [0.01, 0.01, 0.01, 0.00])
+	#tree.subgraph([1,2,3,4,5,6])
+	tree.subgraph([4,5])
+	
+	#tree.write_vtk("full", "Results/test.vtk")
+	#tree.deteriorate_centerline(0.5, [0.01, 0.01, 0.01, 0.00])
 	tree.show(True, False, False)
+	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
 	tree.spline_approximation()
 	tree.show(True, True, False)
+	#tree.write_vtk("spline", "Results/test_fitting.vtk")
 
 
 	#file = open('Results/tree_crsec_ref_mesh.obj', 'rb') 	 
 	#tree = pickle.load(file)
 	#tree.show()
 	
-	#tree.subgraph([4,5])
+	
 	#tree.show(True, False, False)
 
 
 	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
 
-	file = open('Results/tube_tree.obj', 'wb') 
-	pickle.dump(tree, file)
+	#file = open('Results/tube_tree.obj', 'wb') 
+	#pickle.dump(tree, file)
 
 	mesh = tree.mesh_surface()
 
 	print("plot mesh")
 	mesh.plot(show_edges=True)
-	mesh.save("Results/surface_mesh.vtk")
-	mesh.save("Results/surface_mesh.stl")
+	#mesh.save("Results/surface_mesh.vtk")
+	#mesh.save("Results/surface_mesh.stl")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh = mesh.compute_cell_quality()
@@ -136,45 +142,38 @@ def test_meshing():
 
 def test_fitting():
 
-	D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+
+	crsec = tree.get_topo_graph()
+	D = crsec.edges[(4,5)]["coords"][::2]
+
+	#D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
 	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
 
-	values = np.vstack((D[0], D[1] - D[0], D[-2] - D[-1], D[-1]))
+	values = np.vstack((D[0], (D[1] - D[0])*15, (D[-1] - D[-2])*15, D[-1]))
 
-	n = len(D) -2
+	n = 6
 	
 	spl = Spline()
-	spl.approximation(D, [True, False, True, True], values, False, False, criterion= "AICC")
+	spl.approximation(D, [True, False, True, True], values, True, False, lbd = 0, criterion="None")
+	spl.show(False, False, data=D)
+
+
+def test_fitting_angle(): 
+
+	p0 = np.array([0,0])
+	p1 = np.array([5,15])
+	p2 = np.array([10,0])
+	num = 5
+
+	D = np.array(lin_interp(p0, p1, num) + lin_interp(p1, p2, num))
+	values = np.vstack((D[0], np.zeros((2,2)), D[-1]))
+	values = np.vstack((D[0], (D[1] - D[0]), (D[-1] - D[-2]), D[-1]))
+
+	spl = Spline()
+	spl.approximation(D, [1,0,0,1], values, False, False, lbd = 100, criterion = "None")
 	spl.show(data=D)
 
-	"""
-	for l in lbd:
-
-		fig = plt.figure(figsize=(10,7))
-		ax = Axes3D(fig)
-		ax.set_facecolor('white')
-
-		spl.pspline_approximation(D, n, l, clip = clip, deriv=deriv, derivative = False)
-
-		points = spl.get_points()
-		dist = spl.distance(D)
-		print(np.mean(dist))
-		for pt in D : 
-			t = spl.project_point_to_centerline(pt[:-1])
-			proj = spl.point(t)
-			ax.scatter(proj[0], proj[1], proj[2],  c='red', s = 40)
-			ax.plot([proj[0], pt[0]], [proj[1], pt[1]], [proj[2], pt[2]])
-
-		ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
-		ax.scatter(D[:,0], D[:,1], D[:,2],  c='blue', s = 40)
-
-		# Set the initial view
-		ax.view_init(90, -90) # 0 is the initial angle
-
-		# Hide the axes
-		ax.set_axis_off()
-		plt.show()
-	"""
 
 def test_quality_model2D():
 
@@ -285,12 +284,14 @@ def test_Model():
 	model.spl.show(data=D)
 	print(model.get_magnitude())
 
+
 #test_tree_class()
 #test_ogrid_pattern()
-test_meshing()
+#test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
-#test_fitting()
+test_fitting()
 #test_quality_model2D()
 #test_quality_model3D()
 #test_Model()
+#test_fitting_angle()
