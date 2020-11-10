@@ -1,3 +1,4 @@
+from multiprocessing import Pool, Process, cpu_count
 import pyvista as pv # Meshing
 import vtk
 from scipy.spatial import KDTree
@@ -16,6 +17,81 @@ import networkx as nx
 from utils import *
 from Bifurcation import Bifurcation
 from Spline import Spline
+
+
+def parallel_bif(bif, N, d):
+
+	# Find cross sections
+	bif.cross_sections(N, d)
+
+	return bif
+
+
+def segment_crsec(spl, num, N, v0 = [], alpha = None):
+
+	""" Compute the cross section nodes along for a vessel segment.
+
+	Keyword arguments:
+	spl -- segment spline
+	num -- number of cross sections
+	N -- number of nodes in a cross section (multiple of 4)
+	v0 -- reference vector
+	alpha -- rotation angle
+	"""
+
+	t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
+
+	if len(v0) == 0:
+		v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector
+			
+
+	if alpha!=None:
+		theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
+
+	crsec = np.zeros((num + 2, N, 3))
+
+	for i in range(num + 2):
+			
+		tg = spl.tangent(t[i])
+		v = spl.transport_vector(v0, 0, t[i]) # Transports the reference vector to time t[i]
+
+		if alpha!=None: 
+			v = rotate_vector(v, tg, theta[i]) # Rotation of the reference vector
+
+		crsec[i,:,:] = single_crsec(spl, t[i], v, N)
+
+	return crsec
+
+
+def single_crsec(spl, t, v, N):
+
+
+	""" Returns the list of N nodes of a single cross section.
+
+	Keyword arguments:
+	spl -- spline of the centerline
+	t -- time 
+	v -- vector pointing to the first node (reference)
+	N -- number of nodes of the cross section (multiple of 4)
+
+	"""
+
+	tg = spl.tangent(t)
+
+	# Test the orthogonality of v and the tangent
+	if abs(dot(tg, v)) > 0.01:
+		raise ValueError('Non-orthogonal cross section')
+	
+	angle = 2 * pi / N
+	angle_list = angle * np.arange(N)
+
+	nds = np.zeros((N, 3))
+	for i in range(N):
+		n = rotate_vector(v, tg, angle_list[i])
+		nds[i, :] = spl.project_time_to_surface(n, t)
+
+	return nds
+
 
 
 class ArterialTree:
@@ -223,6 +299,11 @@ class ArterialTree:
 			spl = Spline()
 			spl.approximation(pts, constraint, values, False, False)
 
+			#if G.nodes[e[1]]['type'] == "bif":
+			#	print(norm(spl.first_derivative(1.0)))
+			#else:
+			#	print(norm(spl.first_derivative(0.0)))
+
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
 			self._spline_graph.add_node(e[1], coords = spl.point(1.0, True), type = G.nodes[e[1]]['type'])
@@ -238,7 +319,7 @@ class ArterialTree:
 			if self._topo_graph.nodes[n]['type'] == "bif":
 
 				edges = list(self._topo_graph.in_edges(n)) + list(self._topo_graph.out_edges(n))
-				pts, pt, tg = self.__bifurcation_point_estimation(edges, n, 0)
+				pts, pt, tg = self.__bifurcation_point_estimation(edges, n)
 			
 				# Update bifurcation point information
 				G.add_node(n, coords = pt, tangent = tg, type = "bif")
@@ -251,7 +332,7 @@ class ArterialTree:
 
 
 
-	def __bifurcation_point_estimation(self, edges, node, pos):
+	def __bifurcation_point_estimation(self, edges, node):
 
 		B = self._topo_graph.nodes[node]['coords'][:-1]
 
@@ -270,32 +351,58 @@ class ArterialTree:
 		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False, False)
 			
 		# Find the separation point between the splines
-		r = np.mean(pts0[:,-1])
+		for pos in [np.mean(pts0[:,-1])]:
+		#r = np.mean(pts0[:,-1])
 
-		t1 = spl1.project_point_to_centerline(B) 
-		t2 = spl2.project_point_to_centerline(B)
+			pts0 = self._topo_graph.edges[edges[0]]['coords']
+			pts1 = self._topo_graph.edges[edges[1]]['coords']
+			pts2 = self._topo_graph.edges[edges[2]]['coords']
 
-		t1 = spl1.length_to_time(spl1.time_to_length(t1) - r)
-		t2 =  spl2.length_to_time(spl2.time_to_length(t2) - r)	
+			t1 = spl1.project_point_to_centerline(B) 
+			t2 = spl2.project_point_to_centerline(B)
 
-		# Get bifurcation coordinates and tangent
-		tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
-		pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
+			t1 = spl1.length_to_time(spl1.time_to_length(t1) - pos)
+			t2 =  spl2.length_to_time(spl2.time_to_length(t2) - pos)	
 
-		# Remove the points of the main branch further than the separation point
-		for i in range(len(pts0)):
-			t = spl1.project_point_to_centerline(pts0[-1][:-1]) 
-			
-			if t > t1:
+			# Get bifurcation coordinates and tangent
+			tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
+			pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
 
-				pts1 = np.vstack((pts0[-1], pts1))
-				pts2 = np.vstack((pts0[-1], pts2))
-				pts0 = pts0[:-1]
-						
-			else: break
+			# Remove the points of the main branch further than the separation point
+			for i in range(len(pts0)):
+				t = spl1.project_point_to_centerline(pts0[-1][:-1]) 
+					
+				if t > t1:
+
+					pts1 = np.vstack((pts0[-1], pts1))
+					pts2 = np.vstack((pts0[-1], pts2))
+					pts0 = pts0[:-1]
+								
+				else: break
+
+			#print(pos, self.__bifucation_point_evaluation(pts0, pts1, pts2, pt, tg))
+
 
 		return [pts0, pts1, pts2], pt, tg 
 
+
+	def __bifucation_point_evaluation(self, pts0, pts1, pts2, pt, tg):
+
+		magnitude = []
+
+		spl1 = Spline()
+		spl1.approximation(pts0, [False, False, True, True], np.vstack((np.zeros((2,4)), tg, pt)), False, False)
+		magnitude.append(norm(spl1.first_derivative(1.0)))
+
+		spl2 = Spline()
+		spl2.approximation(pts1, [True, True, False, False], np.vstack((pt, tg, np.zeros((2,4)))), False, False)
+		magnitude.append(norm(spl2.first_derivative(0.0)))
+
+		spl3 = Spline()
+		spl3.approximation(pts2, [True, True, False, False], np.vstack((pt, tg, np.zeros((2,4)))), False, False)
+		magnitude.append(norm(spl3.first_derivative(0.0)))
+
+		return magnitude
 
 
 	#####################################
@@ -327,10 +434,14 @@ class ArterialTree:
 
 		nmax = max(list(G.nodes())) + 1
 		print('Meshing bifurcations')
+
+		bif_nds = []
+		args = []
 		# Bifurcation cross sections
+
 		for n in self._spline_graph.nodes():
 
-			if self._spline_graph.nodes[n]['type'] == "bif":				
+			if self._spline_graph.nodes[n]['type'] == "bif":
 
 				spl0 =  self._spline_graph.edges[list(self._spline_graph.in_edges(n))[0]]['spline']
 
@@ -350,13 +461,10 @@ class ArterialTree:
 					# Cut spline
 					spl = spl_out[i]
 					splb, spls = spl.split_length(spl.time_to_length(times[i]) + spl.radius(times[i]))  
-					#splb, spls = spl.split_length((spl.mean_radius() * 2 + spl0.mean_radius() * 2))
 
 					spl_bif.append(splb)
-
 					# Adding section
 					S.append([splb.point(1.0, True), splb.tangent(1.0, True)])
-
 					# Adding separation node
 					G.add_node(nmax, coords = splb.tangent(1.0, True), type = "sep")
 					# Adding segment edge
@@ -368,39 +476,51 @@ class ArterialTree:
 					i+=1
 
 				S0 = [spl.point(0.0, True), spl.tangent(0.0, True)]
-			
+
 				# Compute bifurcation object
 				if bifurcation_model : 
 					bif = Bifurcation(S0, S[0], S[1], 1, AP = AP)
 				else: 
 					bif = Bifurcation(S0, S[0], S[1], 1, spl = spl_bif, AP = AP)
-				
-				# Find cross sections
-				end_crsec, bif_crsec, nds, connect_index = bif.cross_sections(N, d)
-				#bif.show(nodes=True)
-				B = bif.get_B()
-				tspl = bif.get_tspl()
 
-				# Add separation nodes with cross sections
-				G.add_node(n, coords = spl.point(0.0, True), type = "sep", crsec = np.array(end_crsec[0]), id_crsec = None)
-				G.add_node(nmax - 2, coords = S[0][0], type = "sep", crsec = np.array(end_crsec[1]), id_crsec = None)
-				G.add_node(nmax - 1, coords = S[1][0], type = "sep", crsec = np.array(end_crsec[2]), id_crsec = None)
+				args.append((bif, N, d))
+				bif_nds.append([n, nmax - 2, nmax - 1])
 
-				# Add bifurcation node
-				G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id_crsec = None)
-				
-				# Add bifurcation edges
-				G.add_edge(n, nmax, spline = tspl[0], crsec = np.array(nds[0]), connect = connect_index[0])
-				G.add_edge(nmax - 2, nmax, spline = tspl[1], crsec = np.array(nds[1]), connect = connect_index[1])
-				G.add_edge(nmax - 1, nmax, spline = tspl[2], crsec = np.array(nds[2]), connect = connect_index[2])
-				
-				nmax = nmax + 1
+		# Return bifurcations
+		p = Pool(cpu_count())
+		liste_bifurcations = p.starmap(parallel_bif, args)	
 
-		self._crsec_graph = G
-		#self.show_crsec_graph()
+		
+		for i in range(len(liste_bifurcations)):	
+
+			n = bif_nds[i][0]
+			bif = liste_bifurcations[i]
+
+			B = bif.get_B()
+			tspl = bif.get_tspl()
+			spl = bif.get_spl()
+			end_crsec, bif_crsec, nds, connect_index = bif.get_crsec()
+			S = bif.get_endsec()
+
+			# Add separation nodes with cross sections
+			G.add_node(n, coords = S[0][0], type = "sep", crsec = np.array(end_crsec[0]), id_crsec = None)
+			G.add_node(bif_nds[i][1], coords = S[1][0], type = "sep", crsec = np.array(end_crsec[1]), id_crsec = None)
+			G.add_node(bif_nds[i][2], coords = S[2][0], type = "sep", crsec = np.array(end_crsec[2]), id_crsec = None)
+
+			# Add bifurcation node
+			G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id_crsec = None)
+				
+			# Add bifurcation edges
+			G.add_edge(n, nmax, spline = tspl[0], crsec = np.array(nds[0]), connect = connect_index[0])
+			G.add_edge(bif_nds[i][1], nmax, spline = tspl[1], crsec = np.array(nds[1]), connect = connect_index[1])
+			G.add_edge(bif_nds[i][2], nmax, spline = tspl[2], crsec = np.array(nds[2]), connect = connect_index[2])
+				
+			nmax = nmax + 1
 
 		print('Meshing edges')
 		# Connecting segments cross sections
+		args = []
+		list_connect = []
 		for e in G.edges():
 
 			spl = G.edges[e]['spline']
@@ -416,8 +536,9 @@ class ArterialTree:
 				# Simple tube
 				if G.nodes[e[0]]['type'] == "end" and G.nodes[e[1]]['type'] == "end": 
 
-					crsec = self.__segment_crsec(spl, num, N)
-					connect_index = np.arange(0, N).tolist()
+					args.append([spl, num, N, [], None])
+					#crsec = self.__segment_crsec(spl, num, N)
+					list_connect.append(np.arange(0, N).tolist())
 
 				# Connecting tube
 				elif G.nodes[e[0]]['type'] == "sep" and G.nodes[e[1]]['type'] == "sep":
@@ -438,8 +559,9 @@ class ArterialTree:
 						if abs(a) < abs(min_a):
 							min_a = a
 							min_ind = i
-					
-					crsec = self.__segment_crsec(spl, num, N, v0 = v0 / norm(v0), alpha = min_a)
+
+					args.append([spl, num, N, v0 / norm(v0), min_a])
+					#crsec = self.__segment_crsec(spl, num, N, v0 = v0 / norm(v0), alpha = min_a)
 					
 					connect_index = []
 					for i in range(N):
@@ -449,74 +571,56 @@ class ArterialTree:
 
 						connect_index.append(min_ind)
 						min_ind  = min_ind  + 1
-					
+
+					list_connect.append(connect_index)
+
 
 				# Ending tube 
 				else :
 					
 					if G.nodes[e[1]]['type'] == "end":
 						v0 = G.nodes[e[0]]['crsec'][0] - G.nodes[e[0]]['coords'][:-1]
-						crsec = self.__segment_crsec(spl, num, N, v0 = v0 / norm(v0))
-						connect_index = np.arange(0, N).tolist()
+						args.append([spl, num, N, v0 / norm(v0)])
+						#crsec = self.__segment_crsec(spl, num, N, v0 = v0 / norm(v0))
+						list_connect.append(np.arange(0, N).tolist())
 
 					else: 
 						v0 = G.nodes[e[1]]['crsec'][0] - G.nodes[e[1]]['coords'][:-1]
 						splr = spl.copy_reverse()
-						crsec = self.__segment_crsec(splr, num, N, v0 = v0 / norm(v0))
-						crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
+						args.append([splr, num, N, v0 / norm(v0)])
+						#crsec = self.__segment_crsec(splr, num, N, v0 = v0 / norm(v0))
+						#crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
 
-						connect_index = np.arange(0, N).tolist()
+						list_connect.append(np.arange(0, N).tolist())
+		p = Pool(cpu_count())
+		liste_crsec = p.starmap(segment_crsec, args)	
 
+
+		i = 0
+		for e in G.edges:
+
+			if G.nodes[e[0]]['type'] != "bif" and G.nodes[e[1]]['type'] != "bif":
+
+				crsec = liste_crsec[i]
+
+				if G.nodes[e[0]]['type'] == "end":
+					crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
+
+				spl = G.edges[e]['spline']
 				# Add cross sections
-				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = connect_index)
+				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = list_connect[i])
 
-				
+					
 				if G.nodes[e[0]]['type'] == "end":
 					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id_crsec = None)
 
 				if G.nodes[e[1]]['type'] == "end":
 					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id_crsec = None)
+				i +=1
 				
-				self._crsec_graph = G
+		self._crsec_graph = G
 
 
-
-	def __segment_crsec(self, spl, num, N, v0 = [], alpha = None):
-
-		""" Compute the cross section nodes along for a vessel segment.
-
-		Keyword arguments:
-		spl -- segment spline
-		num -- number of cross sections
-		N -- number of nodes in a cross section (multiple of 4)
-		v0 -- reference vector
-		alpha -- rotation angle
-		"""
-
-		
-
-		t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
-
-		if len(v0) == 0:
-			v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector
-			
-
-		if alpha!=None:
-			theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
-
-		crsec = np.zeros((num + 2, N, 3))
-
-		for i in range(num + 2):
-			
-			tg = spl.tangent(t[i])
-			v = spl.transport_vector(v0, 0, t[i]) # Transports the reference vector to time t[i]
-
-			if alpha!=None: 
-				v = rotate_vector(v, tg, theta[i]) # Rotation of the reference vector
-
-			crsec[i,:,:] = self.__single_crsec(spl, t[i], v, N)
-
-		return crsec
 
 
 
@@ -650,8 +754,9 @@ class ArterialTree:
 			
 		# Effacer les id
 		nx.set_node_attributes(G, None, 'id_crsec')
+		self._surface_mesh = pv.PolyData(np.array(vertices), np.array(faces))
 		
-		return pv.PolyData(np.array(vertices), np.array(faces))
+		return self._surface_mesh
 
 
 
@@ -826,7 +931,8 @@ class ArterialTree:
 				vertices += v_act
 		
 		# Return volume mesh
-		return pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))
+		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))		
+		return self._volume_mesh
 
 
 
@@ -1146,6 +1252,79 @@ class ArterialTree:
 	#####################################
 	############  OPERATIONS  ###########
 	#####################################
+
+	def deform(self, mesh):
+
+		""" Deforms the original mesh to match a given surface mesh. 
+		Overwrite the cross section graph.
+
+		Keywords arguments: 
+		mesh -- a surface mesh in vtk format
+		"""
+
+
+		for e in self._crsec_graph.edges():
+ 
+			# Get the start cross section only if it is a terminating edge
+			if self._crsec_graph.in_degree(e[0]) == 0:
+
+				crsec = self._crsec_graph.nodes[e[0]]['crsec']
+				center = (crsec[0] + crsec[int(crsec.shape[0]/2)])/2.0 # Compute the center of the section
+			
+				new_crsec = np.zeros([crsec.shape[0], 3])
+				for i in range(crsec.shape[0]):
+					new_crsec[i] = self.__intersection(mesh, center, crsec[i])
+				self._crsec_graph.nodes[e[0]]['crsec'] = new_crsec
+
+			# Get the connection cross sections
+			crsec_array = self._crsec_graph.edges[e]['crsec']  # In edges, the sections are stored as an array of cross section arrays
+			new_crsec = np.zeros([crsec_array.shape[0], crsec_array.shape[1], 3])
+
+			for i in range(crsec_array.shape[0]):
+					crsec = crsec_array[i] # Get indivisual cross section
+					center = (crsec[0] + crsec[int(crsec.shape[0]/2)])/2.0
+			
+					for j in range(crsec.shape[0]):
+						new_crsec[i, j, :] = self.__intersection(mesh, center, crsec[j])
+
+			self._crsec_graph.edges[e]['crsec'] = new_crsec
+
+			# Get the end cross section
+			if self._crsec_graph.nodes[e[1]]['type'] == "bif": # If bifurcation
+				crsec = np.array(self._crsec_graph.nodes[e[1]]['crsec'])
+				center = self._crsec_graph.nodes[e[1]]['coords']
+			else:
+				crsec = self._crsec_graph.nodes[e[1]]['crsec']
+				center = (crsec[0] + crsec[int(crsec.shape[0]/2)])/2.0
+			new_crsec = np.zeros([crsec.shape[0], 3])
+
+			for i in range(crsec.shape[0]):
+				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i])
+			
+			if self._crsec_graph.nodes[e[1]]['type'] == "bif": # If bifurcation
+				self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec.tolist()    
+			else :
+				self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
+
+
+	def __intersection(self, mesh, center, coord):
+
+		search_dist = 2
+		inter = coord
+		points = []
+		while len(points) == 0 and search_dist < 40:
+
+			normal = coord - center
+			normal = normal / norm(normal) # Normal=direction of the projection 
+			p2 = center + normal * search_dist
+			points, ind = mesh.ray_trace(center, p2)
+
+			if len(points) > 0 :
+				inter = points[0]
+			else :
+				search_dist += 1
+
+		return inter
 
 
 	def subgraph(self, nodes):
