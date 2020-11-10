@@ -189,6 +189,6 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 	if display: 
 		quality.plot(show_edges = True, scalars = 'CellQuality')
 
-	tab = quality['CellQuality']
+	tab = np.absolute(quality['CellQuality'])
 	return np.mean(tab), np.min(tab), np.max(tab)
 	

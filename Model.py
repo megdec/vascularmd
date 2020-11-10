@@ -74,7 +74,7 @@ class Model:
 		tg1 = self.spl.first_derivative(1) 
 
 		return norm(tg0), norm(tg1)
-
+		
 
 	def quality(self, criteria="AICC"):
 

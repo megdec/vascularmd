@@ -12,6 +12,7 @@ from Model import Model
 from utils import quality, distance, lin_interp
 
 from numpy.linalg import norm 
+import time
 
 
 def test_bifurcation_class():
@@ -95,13 +96,31 @@ def test_ogrid_pattern():
 	tree.ogrid_pattern(center2, crsec2, [0.5, 0.4, 0.1], 5, 25)
 
 
+def test_deformation():
+
+	ref_surface = pv.read("Data/reference_mesh_aneurisk.vtp")
+
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	tree.spline_approximation()
+	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	tree.deform(ref_surface)
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+	mesh.plot(show_edges=True)
+
+
 def test_meshing():
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
 	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
 	#tree.subgraph([1,2,3,4,5,6])
-	tree.subgraph([4,5])
+	#tree.subgraph([4,5])
 	
 	#tree.write_vtk("full", "Results/test.vtk")
 	#tree.deteriorate_centerline(0.5, [0.01, 0.01, 0.01, 0.00])
@@ -119,9 +138,10 @@ def test_meshing():
 	
 	#tree.show(True, False, False)
 
-
+	t1 = time.time()
 	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
-
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
 	#pickle.dump(tree, file)
 
@@ -285,13 +305,49 @@ def test_Model():
 	print(model.get_magnitude())
 
 
+def test_brava():
+
+	for i in range(1, 62):
+
+		filename = "P" + str(i) + ".swc"
+		print(filename)
+		tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/" + filename)
+		tree.write_vtk("full", "Results/BraVa/raw_P" + str(i) + ".vtk")
+
+		t1 = time.time()
+		tree.spline_approximation()
+		t2 = time.time()
+		print("The approximation process took ", t2 - t1, "seconds." )
+		tree.write_vtk("spline", "Results/BraVa/spline_model_P" + str(i) + ".vtk")
+
+		t1 = time.time()
+		tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
+		t2 = time.time()
+		print("The cross section computation process took ", t2 - t1, "seconds." )
+
+		t1 = time.time()
+		mesh = tree.mesh_surface()
+		mesh.save("Results/BraVa/surface_P" + str(i) + ".vtk")
+		t2 = time.time()
+		print("The surface meshing process took ", t2 - t1, "seconds." )
+
+		t1 = time.time()
+		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+		mesh.save("Results/BraVa/volume_P" + str(i) + ".vtk")
+		t2 = time.time()
+		print("The surface meshing process took ", t2 - t1, "seconds." )
+		
+
+
 #test_tree_class()
 #test_ogrid_pattern()
 #test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
-test_fitting()
+#test_fitting()
 #test_quality_model2D()
 #test_quality_model3D()
 #test_Model()
 #test_fitting_angle()
+#test_brava()
+test_deformation()

@@ -70,6 +70,17 @@ class Bifurcation:
 	def get_B(self):
 		return self._B
 
+	def get_crsec(self):
+		if self._crsec != None:
+			return self._crsec
+
+	def get_AP(self):
+		return self._AP
+
+	def get_tAP(self):
+		return self._tAP
+
+
 
 
 	#####################################
@@ -153,7 +164,7 @@ class Bifurcation:
 		t0 = 0.0
 		t1 = 1.0
 
-		while abs(t1 - t0) > 10**(-6):
+		while abs(t1 - t0) > 10**(-2):
 
 			t = (t1 + t0) / 2.
 			
@@ -494,7 +505,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		self.smooth(1)#self.R
+		#self.smooth(1)#self.R
 		return self._crsec
 
 
@@ -704,7 +715,7 @@ class Bifurcation:
 
 		else:
 
-			while abs(c0 - c1)> 10**(-10):
+			while abs(c0 - c1)> 10**(-3):
 
 				c = (c0 + c1) / 2.0
 

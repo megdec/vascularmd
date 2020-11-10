@@ -182,14 +182,28 @@ class Spline:
 
 		""" Returns evaluation point of spline at time t as a numpy array."""
 
-		pt = self._spl.evaluate_single(t)
+		if type(t) == list or type(t) == np.ndarray:
 
-		if self._spl.dimension == 4:
-			radius = pt[-1]
-		else:
-			raise ValueError('The dimension of the spline must be 4.')
+			pt = np.array(self._spl.evaluate_list(list(t)))
+
+			if self._spl.dimension == 4:
+				radius = pt[:,-1]
+			else:
+				raise ValueError('The dimension of the spline must be 4.')
+			
+		else: 
+			pt = self._spl.evaluate_single(t)
+
+			if self._spl.dimension == 4:
+				radius = pt[-1]
+			else:
+				raise ValueError('The dimension of the spline must be 4.')
+
+
 	
 		return radius
+
+
 
 
 
@@ -236,7 +250,7 @@ class Spline:
 			radius_model = self.__optimize_model(radius_model, criterion)
 		
 			self._spl.ctrlpts = np.hstack((spatial_model.P, radius_model.P)).tolist()
-			self._spl.knotvector = global_model.get_knot()
+			self._spl.knotvector = spatial_model.get_knot()
 			self.__set_length_tab()
 
 
@@ -247,7 +261,7 @@ class Spline:
 			if min_tangent:
 
 				alpha, beta = global_model.get_magnitude()
-				print(alpha, beta)
+				#print(alpha, beta)
 				thres = 15
 
 				if (alpha < thres or beta < thres) and not derivatives:
@@ -264,6 +278,7 @@ class Spline:
 					global_model = Model(D, n, 3, end_constraint, end_values, True, lbd)
 					global_model = self.__optimize_model(global_model, criterion)
 					alpha, beta = global_model.get_magnitude()
+
 					
 
 			self._spl.ctrlpts = global_model.P.tolist()
@@ -277,35 +292,13 @@ class Spline:
 
 		""" Optimise a given model according to the given criterion."""
 		if criterion != "None":
+
 			# Smoothing criterion
-
-			"""
-			lbd = np.linspace(10^(-6),1, 1000)
-			quality_min = 10000
-			lbd_min = 0.01
-
-			quality_list = []
-
-			for l in lbd: 
-				model.set_lambda(l)
-				quality = model.quality(criterion)
-				quality_list.append(quality)
-
-				if quality < quality_min:
-					lbd_min = l
-					quality_min = quality
-
-			plt.plot(lbd, quality_list)
-			plt.show()
-			model.set_lambda(lbd_min)
-			print("optimized lambda : ", lbd_min)
-			"""
-
 			gr = (math.sqrt(5) + 1) / 2
-			a = 10**(-1)
+			a = 10**(-6)
 			b = 100000
 
-			#Golden-section search to find the minimum
+			# Golden-section search to find the minimum
 
 			c = b - (b - a) / gr
 			d = a + (b - a) / gr
@@ -325,31 +318,50 @@ class Spline:
 				c = b - (b - a) / gr
 				d = a + (b - a) / gr
 
-			model.set_lambda((b + a) / 2)
-			print("optimized lambda : ", (b + a) / 2)
+			opt_lbd = (b + a) / 2
+			model.set_lambda(opt_lbd)
+			#print("optimized lambda : ", opt_lbd)
 		 
 
 			# Curvature check
 			if curvature: 
-				i = 0
+
 				num = 100
-				while curvature and i < 1000:
+				tol = 10**(-6)
+				t = np.linspace(0, 1, num)
 
-					rad = np.zeros((2, num))
-					t = np.linspace(0, 1, num + 2)[1:-1]
+				curv_rad = model.spl.curvature_radius(t)
+				rad = model.spl.radius(t)
+			
+				if not all((curv_rad - rad) > tol):
 
-					for i in range(len(t)):
-						rad[0, i] = model.spl.curvature_radius(t[i])
-						rad[1, i] = model.spl.radius(t[i])
+					# Find lbd by dichotomy
+					a = opt_lbd
+					b = 100000
 
-					if all((rad[0, :] - rad[1, :]) > 10^(-2)):
-						curvature = False
+					model.set_lambda(b)
+					curv_rad = model.spl.curvature_radius(t)
+					rad = model.spl.radius(t)
+
+					if not all((curv_rad - rad) > tol):
+						#model.set_lambda(a)
+						print("Could not correct curvature", num-np.sum((curv_rad - rad) > tol), (curv_rad - rad) > tol)
 					else:
-						lbd_min = lbd_min + 0.5
-						i+=1
 
-					model.set_lambda(lbd_min)
-				print("optimized lambda after curvature correction : ", lbd_min)
+						while abs(a-b) >  10**(-2):
+
+							model.set_lambda((a + b) / 2)
+							curv_rad = model.spl.curvature_radius(t)
+							rad = model.spl.radius(t)
+
+							if all((curv_rad - rad) > tol):
+								b = (a + b) / 2
+							else: 
+								a = (a + b) / 2
+
+
+						model.set_lambda((a + b) / 2)
+						print("optimized lambda after curvature correction : ", (a + b) / 2)
 
 		return model
 
@@ -439,26 +451,26 @@ class Spline:
 		return np.mean(self.get_points()[:, -1])
 
 
-	def curvature(self, T):
+	def curvature(self, t):
 
 		""" Returns the curvature value(s) of spline at time(s) T.
 
 		Keyword arguments:	
-		T -- curve times (list or single float value)
+		t -- curve times (list or single float value)
 		"""
+		
+		if type(t) == list or type(t) == np.ndarray:
 
-		if type(T) == list:
-
-			C = []
-			for t in T:
-				der = [self.first_derivative(t), self.second_derivative(t)]
-				C.append(norm(cross(der[0], der[1])) / (norm(der[0]))**3)
+			C = np.zeros(len(t))
+			for i in range(len(t)):
+				der = [self.first_derivative(t[i]), self.second_derivative(t[i])]
+				C[i] = (norm(cross(der[0], der[1])) / (norm(der[0]))**3)
+			
 		else:
-
-			der = [self.first_derivative(T), self.second_derivative(T)]
+			der = [self.first_derivative(t), self.second_derivative(t)]
 			C = (norm(cross(der[0], der[1])) / (norm(der[0]))**3)
 
-		return np.array(C)
+		return C
 
 		
 
@@ -599,8 +611,8 @@ class Spline:
 		
 		tg = self.tangent(t0)
 
-		if dot(v, tg) > 0.001:
-			print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
+		#if dot(v, tg) > 0.001:
+			#print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
 
 		v = cross(tg, cross(v, tg)) # Make sure than v is normal to the spline
 		v = v / norm(v)
@@ -639,8 +651,8 @@ class Spline:
 
 		tg = self.tangent(t)
 
-		if dot(v, tg) > 0.001:
-			print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
+		#if dot(v, tg) > 0.001:
+		#	print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
 
 		v = cross(tg, cross(v, tg)) # Make sure than v is normal to the spline
 		v = v / norm(v)
@@ -787,7 +799,7 @@ class Spline:
 
 
 		tmax = 0.0
-		angle = np.linspace(0,2*pi, 100)
+		angle = np.linspace(0,2*pi, 60)
 
 		for a in angle:
 
@@ -817,7 +829,7 @@ class Spline:
 		"""
 
 		tinit = t1
-		while abs(t1 - t0) > 10**(-6):
+		while abs(t1 - t0) > 10**(-3):
 
 			t = (t1 + t0) / 2.
 			
