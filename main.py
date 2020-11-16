@@ -109,9 +109,11 @@ def test_deformation():
 	tree.deform(ref_surface)
 	mesh = tree.mesh_surface()
 	mesh.plot(show_edges=True)
+	mesh.save("Results/Aneurisk/Deformation/deformed_surface.vtk")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.plot(show_edges=True)
+	mesh.save("Results/Aneurisk/Deformation/deformed_volume.vtk")
 
 
 def test_meshing():
@@ -123,7 +125,7 @@ def test_meshing():
 	#tree.subgraph([4,5])
 	
 	#tree.write_vtk("full", "Results/test.vtk")
-	#tree.deteriorate_centerline(0.5, [0.01, 0.01, 0.01, 0.00])
+	tree.deteriorate_centerline(0.5, [0.0, 0.0, 0.0, 0.0])
 	tree.show(True, False, False)
 	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
 	tree.spline_approximation()
@@ -307,19 +309,19 @@ def test_Model():
 
 def test_brava():
 
-	for i in range(1, 62):
+	for i in range(3, 4):
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
 		tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/" + filename)
-		tree.write_vtk("full", "Results/BraVa/raw_P" + str(i) + ".vtk")
-
+		#tree.write_vtk("full", "Results/BraVa/centerlines/P" + str(i) + ".vtk")
+		
 		t1 = time.time()
 		tree.spline_approximation()
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
-		tree.write_vtk("spline", "Results/BraVa/spline_model_P" + str(i) + ".vtk")
-
+		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
+	
 		t1 = time.time()
 		tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
 		t2 = time.time()
@@ -327,16 +329,42 @@ def test_brava():
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
-		mesh.save("Results/BraVa/surface_P" + str(i) + ".vtk")
+		mesh.save("Results/BraVa/surface/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-
+		"""
 		t1 = time.time()
 		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
-		mesh.save("Results/BraVa/volume_P" + str(i) + ".vtk")
+		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-		
+		"""
+	
+def test_bifurcation_resampling():
+
+	# Create a bifurcation
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+
+	bif = Bifurcation(S0, S1, S2, 0.5)
+
+	# Initial surface mesh
+	init_mesh = bif.surface_mesh()
+	init_mesh.plot(show_edges=True)
+
+	# Smooth 
+	bif.smooth(5)
+	smooth_mesh = bif.surface_mesh()
+	smooth_mesh.plot(show_edges=True)
+
+	# Backprojection
+	bif.deform(init_mesh)
+	resampled_mesh = bif.surface_mesh()
+	resampled_mesh.plot(show_edges=True)
+
+
+	
 
 
 #test_tree_class()
@@ -350,4 +378,5 @@ def test_brava():
 #test_Model()
 #test_fitting_angle()
 #test_brava()
-test_deformation()
+#test_deformation()
+test_bifurcation_resampling()

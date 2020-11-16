@@ -192,3 +192,83 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 	tab = np.absolute(quality['CellQuality'])
 	return np.mean(tab), np.min(tab), np.max(tab)
 	
+
+
+
+#####################################
+##########  MULTIPROCESSING  ########
+#####################################
+
+
+def parallel_bif(bif, N, d):
+
+	# Find cross sections
+	bif.cross_sections(N, d)
+
+	return bif
+
+
+def segment_crsec(spl, num, N, v0 = [], alpha = None):
+
+	""" Compute the cross section nodes along for a vessel segment.
+
+	Keyword arguments:
+	spl -- segment spline
+	num -- number of cross sections
+	N -- number of nodes in a cross section (multiple of 4)
+	v0 -- reference vector
+	alpha -- rotation angle
+	"""
+
+	t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
+
+	if len(v0) == 0:
+		v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector
+			
+
+	if alpha!=None:
+		theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
+
+	crsec = np.zeros((num + 2, N, 3))
+
+	for i in range(num + 2):
+			
+		tg = spl.tangent(t[i])
+		v = spl.transport_vector(v0, 0, t[i]) # Transports the reference vector to time t[i]
+
+		if alpha!=None: 
+			v = rotate_vector(v, tg, theta[i]) # Rotation of the reference vector
+
+		crsec[i,:,:] = single_crsec(spl, t[i], v, N)
+
+	return crsec
+
+
+def single_crsec(spl, t, v, N):
+
+
+	""" Returns the list of N nodes of a single cross section.
+
+	Keyword arguments:
+	spl -- spline of the centerline
+	t -- time 
+	v -- vector pointing to the first node (reference)
+	N -- number of nodes of the cross section (multiple of 4)
+
+	"""
+
+	tg = spl.tangent(t)
+
+	# Test the orthogonality of v and the tangent
+	if abs(dot(tg, v)) > 0.01:
+		raise ValueError('Non-orthogonal cross section')
+	
+	angle = 2 * pi / N
+	angle_list = angle * np.arange(N)
+
+	nds = np.zeros((N, 3))
+	for i in range(N):
+		n = rotate_vector(v, tg, angle_list[i])
+		nds[i, :] = spl.project_time_to_surface(n, t)
+
+	return nds

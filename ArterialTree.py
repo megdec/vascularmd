@@ -19,78 +19,6 @@ from Bifurcation import Bifurcation
 from Spline import Spline
 
 
-def parallel_bif(bif, N, d):
-
-	# Find cross sections
-	bif.cross_sections(N, d)
-
-	return bif
-
-
-def segment_crsec(spl, num, N, v0 = [], alpha = None):
-
-	""" Compute the cross section nodes along for a vessel segment.
-
-	Keyword arguments:
-	spl -- segment spline
-	num -- number of cross sections
-	N -- number of nodes in a cross section (multiple of 4)
-	v0 -- reference vector
-	alpha -- rotation angle
-	"""
-
-	t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
-
-	if len(v0) == 0:
-		v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector
-			
-
-	if alpha!=None:
-		theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
-
-	crsec = np.zeros((num + 2, N, 3))
-
-	for i in range(num + 2):
-			
-		tg = spl.tangent(t[i])
-		v = spl.transport_vector(v0, 0, t[i]) # Transports the reference vector to time t[i]
-
-		if alpha!=None: 
-			v = rotate_vector(v, tg, theta[i]) # Rotation of the reference vector
-
-		crsec[i,:,:] = single_crsec(spl, t[i], v, N)
-
-	return crsec
-
-
-def single_crsec(spl, t, v, N):
-
-
-	""" Returns the list of N nodes of a single cross section.
-
-	Keyword arguments:
-	spl -- spline of the centerline
-	t -- time 
-	v -- vector pointing to the first node (reference)
-	N -- number of nodes of the cross section (multiple of 4)
-
-	"""
-
-	tg = spl.tangent(t)
-
-	# Test the orthogonality of v and the tangent
-	if abs(dot(tg, v)) > 0.01:
-		raise ValueError('Non-orthogonal cross section')
-	
-	angle = 2 * pi / N
-	angle_list = angle * np.arange(N)
-
-	nds = np.zeros((N, 3))
-	for i in range(N):
-		n = rotate_vector(v, tg, angle_list[i])
-		nds[i, :] = spl.project_time_to_surface(n, t)
-
-	return nds
 
 
 
@@ -275,7 +203,7 @@ class ArterialTree:
 
 		for e in G.edges():
 
-			pts = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'],G.nodes[e[1]]['coords']))
+			pts = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
 			
 			while len(pts) < 3:
 				# Linearly interpolate data
@@ -297,12 +225,8 @@ class ArterialTree:
 				constraint[-2] = True
 
 			spl = Spline()
-			spl.approximation(pts, constraint, values, False, False)
+			spl.approximation(pts, constraint, values, False)
 
-			#if G.nodes[e[1]]['type'] == "bif":
-			#	print(norm(spl.first_derivative(1.0)))
-			#else:
-			#	print(norm(spl.first_derivative(0.0)))
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
@@ -336,7 +260,7 @@ class ArterialTree:
 
 		B = self._topo_graph.nodes[node]['coords'][:-1]
 
-		pts0 = self._topo_graph.edges[edges[0]]['coords']
+		pts0 = np.vstack((self._topo_graph.edges[edges[0]]['coords'], self._topo_graph.nodes[node]['coords']))
 		pts1 = self._topo_graph.edges[edges[1]]['coords']
 		pts2 = self._topo_graph.edges[edges[2]]['coords']
 
@@ -344,19 +268,19 @@ class ArterialTree:
 		# Fit splines from the main branch to the daughter branches
 		D1 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords']))
 		spl1 = Spline()
-		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False, False)
+		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False)
 
 		D2 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords']))
 		spl2 = Spline()
-		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False, False)
+		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False)
 			
 		# Find the separation point between the splines
 		for pos in [np.mean(pts0[:,-1])]:
 		#r = np.mean(pts0[:,-1])
 
-			pts0 = self._topo_graph.edges[edges[0]]['coords']
-			pts1 = self._topo_graph.edges[edges[1]]['coords']
-			pts2 = self._topo_graph.edges[edges[2]]['coords']
+			#pts0 = self._topo_graph.edges[edges[0]]['coords']
+			#pts1 = self._topo_graph.edges[edges[1]]['coords']
+			#pts2 = self._topo_graph.edges[edges[2]]['coords']
 
 			t1 = spl1.project_point_to_centerline(B) 
 			t2 = spl2.project_point_to_centerline(B)
@@ -381,7 +305,6 @@ class ArterialTree:
 				else: break
 
 			#print(pos, self.__bifucation_point_evaluation(pts0, pts1, pts2, pt, tg))
-
 
 		return [pts0, pts1, pts2], pt, tg 
 
@@ -592,6 +515,7 @@ class ArterialTree:
 						#crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
 
 						list_connect.append(np.arange(0, N).tolist())
+						
 		p = Pool(cpu_count())
 		liste_crsec = p.starmap(segment_crsec, args)	
 
@@ -620,6 +544,44 @@ class ArterialTree:
 				
 		self._crsec_graph = G
 
+
+
+	def __segment_crsec(self, spl, num, N, v0 = [], alpha = None):
+
+		""" Compute the cross section nodes along for a vessel segment.
+
+		Keyword arguments:
+		spl -- segment spline
+		num -- number of cross sections
+		N -- number of nodes in a cross section (multiple of 4)
+		v0 -- reference vector
+		alpha -- rotation angle
+		"""
+
+		
+
+		t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
+
+		if len(v0) == 0:
+			v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector
+			
+
+		if alpha!=None:
+			theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
+
+		crsec = np.zeros((num + 2, N, 3))
+
+		for i in range(num + 2):
+			
+			tg = spl.tangent(t[i])
+			v = spl.transport_vector(v0, 0, t[i]) # Transports the reference vector to time t[i]
+
+			if alpha!=None: 
+				v = rotate_vector(v, tg, theta[i]) # Rotation of the reference vector
+
+			crsec[i,:,:] = self.__single_crsec(spl, t[i], v, N)
+
+		return crsec
 
 
 
@@ -1464,7 +1426,7 @@ class ArterialTree:
 
 
 
-	def distance_mesh(self, ref_mesh, display=True):
+	def distance(self, ref_mesh, display=True):
 
 		"""Compute mean node to node distance between the computed mesh and a reference mesh
 		and display the distance map.
@@ -1808,4 +1770,5 @@ class ArterialTree:
 			file.write(str(mapping[p]) + '\t' + str(i) + '\t' + str(c[0]) + '\t' + str(c[1]) + '\t' + str(c[2]) + '\t' + str(c[3]) + '\t' + str(n) + '\n')
 
 		file.close()
+
 

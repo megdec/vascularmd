@@ -212,7 +212,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model, curvature=True, min_tangent=False, lbd = 0.0, criterion= "CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=False, curvature=True, min_tangent=False, lbd = 0.0, criterion= "CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -234,22 +234,30 @@ class Spline:
 
 		
 		n = int(length)
-		#n = len(D)
+		n = len(D)
 	
 		if n < 4: # Minimum of 4 control points
 			n = 4
 
 		if radius_model: 
 
+			# Global model for comparison
+			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd)
+			global_model = self.__optimize_model(global_model, criterion)
+
 			# Spatial model
 			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd)
 			spatial_model = self.__optimize_model(spatial_model, criterion)
 
 			# Radius model
-			radius_model = Model(np.reshape(D[:,-1], (len(D),1)), n, 3, end_constraint, np.reshape(end_values[:,-1], (4,1)), derivatives, lbd)
+			t = spatial_model.get_t()
+			data = np.transpose(np.vstack((t, D[:,-1])))
+			radius_model = Model(data, n, 3, end_constraint, np.vstack((data[0], [1,0], [1,0], data[-1])), False, lbd)
 			radius_model = self.__optimize_model(radius_model, criterion)
-		
-			self._spl.ctrlpts = np.hstack((spatial_model.P, radius_model.P)).tolist()
+
+			radius_model.spl.show(data = data)
+			#print(spatial_model.P.shape, radius_model.P[:,1].shape)
+			self._spl.ctrlpts = global_model.P.tolist()
 			self._spl.knotvector = spatial_model.get_knot()
 			self.__set_length_tab()
 

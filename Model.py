@@ -49,7 +49,9 @@ class Model:
 	
 		self.spl = Spline(self.P.tolist(), self._knot, self._p)
 
-
+	def get_t(self):
+		return self._t
+		
 	def get_order(self):
 		return self._p
 

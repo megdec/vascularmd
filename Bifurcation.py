@@ -402,43 +402,6 @@ class Bifurcation:
 		#mesh.plot(show_edges = True)
 
 		return mesh
-
-
-
-	def smooth(self, n_iter):
-
-		""" Smoothes the bifurcation.
-
-		Keyword arguments:
-		pts -- The nodes of the mesh, computed with the cross_sections method.
-		"""
-
-		if self._crsec == None:
-			raise ValueError('Please first perform cross section computation.')
-		else: 
-			pts = self._crsec
-
-		mesh = self.surface_mesh()
-		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
-
-		# Get points and re-order them in the original structure
-		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
-		end_crsec = []
-		nds = [[], [], []]
-		N = len(pts[0][0])
-
-		j = len(pts[1])
-		for s in range(3):
-			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
-			j += N
-
-			for i in range(len(pts[2][s])):
-				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
-				j += N
-
-		self._crsec[0] = end_crsec
-		self._crsec[1] = bif_crsec
-		self._crsec[2] = nds
 		
 
 
@@ -668,6 +631,102 @@ class Bifurcation:
 		return nds
 
 
+	#####################################
+	########## POST PROCESSING  #########
+	#####################################
+
+
+	def smooth(self, n_iter):
+
+		""" Smoothes the bifurcation.
+
+		Keyword arguments:
+		pts -- The nodes of the mesh, computed with the cross_sections method.
+		"""
+
+		if self._crsec == None:
+			raise ValueError('Please first perform cross section computation.')
+		else: 
+			pts = self._crsec
+
+		mesh = self.surface_mesh()
+		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
+
+		# Get points and re-order them in the original structure
+		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
+		end_crsec = []
+		nds = [[], [], []]
+		N = len(pts[0][0])
+
+		j = len(pts[1])
+		for s in range(3):
+			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
+			j += N
+
+			for i in range(len(pts[2][s])):
+				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
+				j += N
+
+		self._crsec[0] = end_crsec
+		self._crsec[1] = bif_crsec
+		self._crsec[2] = nds
+
+
+
+	def deform(self, mesh):
+
+		""" Deforms the original bifurcation mesh to match a given surface mesh. 
+		Overwrite the bifurcation nodes.
+
+		Keywords arguments: 
+		mesh -- a surface mesh in vtk format
+		"""
+
+		if self._crsec is None:
+			raise ValueError("Please compute bifurcation cross sections")
+
+		end_crsec = self._crsec[0]
+		bif_crsec = self._crsec[1]
+		nds = self._crsec[2] 
+
+		# Project end cross sections
+		for i in range(len(end_crsec)):
+			center = (np.array(end_crsec[i][0]) + end_crsec[i][int(len(end_crsec[i])/2)])/2.0 # Compute the center of the section
+			for j in range(len(end_crsec[i])):
+				end_crsec[i][j] = self.__intersection(mesh, center, end_crsec[i][j])
+
+		# Project connecting nodes
+		for i in range(len(nds)):
+			for j in range(len(nds[i])):
+				center = (np.array(nds[i][j][0]) + nds[i][j][int(len(nds[i][j])/2)])/2.0 # Compute the center of the section
+				for k in range(len(nds[i][j])):
+					nds[i][j][k] = self.__intersection(mesh, center, nds[i][j][k])
+
+		# Project bifurcation plan
+		for i in range(len(bif_crsec)):
+			bif_crsec[i] = self.__intersection(mesh, self._B, bif_crsec[i])
+
+
+
+
+	def __intersection(self, mesh, center, coord):
+
+		search_dist = 2
+		inter = coord
+		points = []
+		while len(points) == 0 and search_dist < 40:
+
+			normal = coord - center
+			normal = normal / norm(normal) # Normal=direction of the projection 
+			p2 = center + normal * search_dist
+			points, ind = mesh.ray_trace(center, p2)
+
+			if len(points) > 0 :
+				inter = points[0]
+			else :
+				search_dist += 1
+
+		return inter
 
 
 	#####################################
