@@ -165,16 +165,26 @@ class Spline:
 
 		""" Returns evaluation point of spline at time t as a numpy array."""
 
-		pt = self._spl.evaluate_single(t)
+		if type(t) == list or type(t) == np.ndarray:
 
-		if self._spl.dimension <= 3:
-			pt = np.array(pt)
+			pt = np.array(self._spl.evaluate_list(t))
+
+			if self._spl.dimension > 3 and radius:
+				pt = pt[:,:-1]
+
+
 		else:
-			if radius:
+
+			pt = self._spl.evaluate_single(t)
+
+			if self._spl.dimension <= 3:
 				pt = np.array(pt)
 			else:
-				pt = np.array(pt)[:-1]
-	
+				if radius:
+					pt = np.array(pt)
+				else:
+					pt = np.array(pt)[:-1]
+		
 		return pt
 
 
@@ -212,7 +222,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=False, curvature=True, min_tangent=False, lbd = 0.0, criterion= "CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent= True, n = None, lbd = 0.0, criterion= "CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -226,38 +236,66 @@ class Spline:
 
 		from Model import Model
 
-		# Estimate length of the vessel 
+		if n == None:
+			# Estimate length of the vessel 
+			length = 0.0
+			for i in range(1, len(D)):
+				length += norm(D[i] - D[i-1])
 
-		length = 0.0
-		for i in range(1, len(D)):
-			length += norm(D[i] - D[i-1])
-
-		
-		n = int(length)
-		n = len(D)
+			
+			n = int(length)
+			n = len(D) + 5
 	
 		if n < 4: # Minimum of 4 control points
 			n = 4
 
 		if radius_model: 
 
-			# Global model for comparison
-			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd)
-			global_model = self.__optimize_model(global_model, criterion)
-
 			# Spatial model
 			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd)
-			spatial_model = self.__optimize_model(spatial_model, criterion)
+			spatial_model = self.__optimize_model(spatial_model, criterion = "CV")
 
 			# Radius model
 			t = spatial_model.get_t()
 			data = np.transpose(np.vstack((t, D[:,-1])))
-			radius_model = Model(data, n, 3, end_constraint, np.vstack((data[0], [1,0], [1,0], data[-1])), False, lbd)
+			radius_model = Model(data, n, 3, end_constraint, np.vstack((data[0], [1,0], [1,0], data[-1])), False, lbd, knot = spatial_model.get_knot(), t = spatial_model.get_t())
 			radius_model = self.__optimize_model(radius_model, criterion)
 
-			radius_model.spl.show(data = data)
-			#print(spatial_model.P.shape, radius_model.P[:,1].shape)
-			self._spl.ctrlpts = global_model.P.tolist()
+			
+			if min_tangent:
+
+				alpha, beta = spatial_model.get_magnitude()
+				#print(alpha, beta)
+				thres = 5
+
+				if (alpha < thres or beta < thres) and not derivatives:
+
+					print(alpha, beta)
+					if end_constraint[1]:
+						if alpha >= thres:
+							end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * alpha
+						else:
+							end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * thres
+
+					if end_constraint[-2]:
+						if beta >= thres:
+							end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * beta
+						else: 
+							end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * thres
+
+
+					spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], True, lbd)
+					spatial_model = self.__optimize_model(spatial_model, criterion)
+					print(spatial_model.get_magnitude())
+
+			# Curvature optimization 
+			if curvature: 
+				spatial_model = self.__constraint_curvature(spatial_model, radius_model)
+			#radius_model.spl.show(data = data)
+
+
+			P =  np.hstack((spatial_model.P, np.reshape(radius_model.P[:,-1], (radius_model.P.shape[0],1))))
+			self._spl.ctrlpts = P.tolist()
 			self._spl.knotvector = spatial_model.get_knot()
 			self.__set_length_tab()
 
@@ -266,13 +304,15 @@ class Spline:
 			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd)
 			global_model = self.__optimize_model(global_model, criterion)
 
+
 			if min_tangent:
 
 				alpha, beta = global_model.get_magnitude()
 				#print(alpha, beta)
-				thres = 15
+				thres = 5
 
 				if (alpha < thres or beta < thres) and not derivatives:
+					print(alpha, beta)
 
 					end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * beta
 					end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * alpha
@@ -296,9 +336,11 @@ class Spline:
 
 
 
-	def __optimize_model(self, model, criterion, curvature=False):
+	def __optimize_model(self, model, criterion):
 
-		""" Optimise a given model according to the given criterion."""
+		""" Optimise the value of smoothing parameter lambda 
+		for a given model according to a smoothing criterion."""
+
 		if criterion != "None":
 
 			# Smoothing criterion
@@ -331,47 +373,52 @@ class Spline:
 			#print("optimized lambda : ", opt_lbd)
 		 
 
-			# Curvature check
-			if curvature: 
-
-				num = 100
-				tol = 10**(-6)
-				t = np.linspace(0, 1, num)
-
-				curv_rad = model.spl.curvature_radius(t)
-				rad = model.spl.radius(t)
-			
-				if not all((curv_rad - rad) > tol):
-
-					# Find lbd by dichotomy
-					a = opt_lbd
-					b = 100000
-
-					model.set_lambda(b)
-					curv_rad = model.spl.curvature_radius(t)
-					rad = model.spl.radius(t)
-
-					if not all((curv_rad - rad) > tol):
-						#model.set_lambda(a)
-						print("Could not correct curvature", num-np.sum((curv_rad - rad) > tol), (curv_rad - rad) > tol)
-					else:
-
-						while abs(a-b) >  10**(-2):
-
-							model.set_lambda((a + b) / 2)
-							curv_rad = model.spl.curvature_radius(t)
-							rad = model.spl.radius(t)
-
-							if all((curv_rad - rad) > tol):
-								b = (a + b) / 2
-							else: 
-								a = (a + b) / 2
-
-
-						model.set_lambda((a + b) / 2)
-						print("optimized lambda after curvature correction : ", (a + b) / 2)
 
 		return model
+
+
+	def __constraint_curvature(self, spatial_model, radius_model):
+
+		""" Check curvature and smoothes the spline is the constraint 
+		radius of curvature > radius is not respected """
+
+		num = 100
+		tol = 10**(-6)
+		t = np.linspace(0, 1, num)[50:]
+
+		curv_rad = spatial_model.spl.curvature_radius(t)
+		rad = radius_model.spl.point(t)[:, -1]
+			
+		if not all((curv_rad - rad) > tol):
+
+			# Find lbd by dichotomy
+			a = spatial_model.get_lbd()
+			b = a + 1000000
+
+			spatial_model.set_lambda(b)
+			curv_rad = spatial_model.spl.curvature_radius(t)
+
+			if not all((curv_rad - rad) > tol):
+				#spatial_model.set_lambda(a)
+				print("Could not correct curvature")
+			else:
+
+				while abs(a-b) >  10**(-2):
+
+					spatial_model.set_lambda((a + b) / 2)
+					curv_rad = spatial_model.spl.curvature_radius(t)
+
+					if all((curv_rad - rad) > tol):
+						b = (a + b) / 2
+					else: 
+						a = (a + b) / 2
+
+
+				spatial_model.set_lambda((a + b) / 2)
+				print("optimized lambda after curvature correction : ", (a + b) / 2)
+
+		return spatial_model
+
 
 
 	def __uniform_knot(self, p, n):
@@ -861,7 +908,7 @@ class Spline:
 	#####################################
 
 
-	def show(self, knot = True, control_points = True, data = []):
+	def show(self, knot = False, control_points = True, data = []):
 
 		""" Displays the spline in 3D viewer.
 
@@ -917,7 +964,7 @@ class Spline:
 				if len(data) != 0:
 					data = np.array(data)
 					ax.scatter(data[:,0], data[:,1], data[:,2],  c='red', s = 40, depthshade=False)
-					ax.plot(data[:,0], data[:,1], data[:,2],  c='red')
+					#ax.plot(data[:,0], data[:,1], data[:,2],  c='red')
 
 			# Set the initial view
 			ax.view_init(90, -90) # 0 is the initial angle

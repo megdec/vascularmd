@@ -149,6 +149,7 @@ class ArterialTree:
 			raise ValueError("The provided files must be in swc, vtp or vtk format.")
 
 
+
 	def __set_topo_graph(self):
 
 		""" Set the topo graph of the arterial tree. 
@@ -405,7 +406,7 @@ class ArterialTree:
 					bif = Bifurcation(S0, S[0], S[1], 1, AP = AP)
 				else: 
 					bif = Bifurcation(S0, S[0], S[1], 1, spl = spl_bif, AP = AP)
-
+				#bif.show(True)
 				args.append((bif, N, d))
 				bif_nds.append([n, nmax - 2, nmax - 1])
 
@@ -515,7 +516,7 @@ class ArterialTree:
 						#crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
 
 						list_connect.append(np.arange(0, N).tolist())
-						
+
 		p = Pool(cpu_count())
 		liste_crsec = p.starmap(segment_crsec, args)	
 
@@ -895,7 +896,6 @@ class ArterialTree:
 		# Return volume mesh
 		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))		
 		return self._volume_mesh
-
 
 
 

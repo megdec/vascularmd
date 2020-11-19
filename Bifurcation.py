@@ -296,10 +296,10 @@ class Bifurcation:
 				ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
 
 			# Plot key points 
-			ax.scatter(self._AP[0], self._AP[1], self._AP[2], c='red')
-			ax.scatter(self._B[0], self._B[1], self._B[2], c='black')
-			ax.scatter(self._CP[:, 0], self._CP[:, 1], self._CP[:, 2], c='blue')
-			ax.scatter(self._SP[:, 0], self._SP[:, 1], self._SP[:, 2], c='green')
+			ax.scatter(self._AP[0], self._AP[1], self._AP[2], c='red', s = 40)
+			ax.scatter(self._B[0], self._B[1], self._B[2], c='black', s = 40)
+			ax.scatter(self._CP[:, 0], self._CP[:, 1], self._CP[:, 2], c='blue', s = 40)
+			ax.scatter(self._SP[:, 0], self._SP[:, 1], self._SP[:, 2], c='green', s = 40)
 
 			if nodes: 
 
@@ -316,16 +316,6 @@ class Bifurcation:
 
 				ax.scatter(nds[0,0,0], nds[0,0,1], nds[0,0,2],  c='blue')
 				ax.scatter(nds[0,-1,0], nds[0,-1,1], nds[0,-1,2],  c='red')
-
-				end_crsec, bif_crsec, nds, ind = self._crsec
-				
-				for i in range(3):
-					ndscr = np.array(nds[i])
-					for j in range(N):
-						ax.plot(ndscr[:, j, 0], ndscr[:,j, 1], ndscr[:, j, 2], c='black')
-
-					for k in range(len(ndscr)):
-						ax.plot(ndscr[k, :, 0], ndscr[k, :, 1], ndscr[k, :, 2], c='black')
 
 
 		# Set the initial view
@@ -770,7 +760,8 @@ class Bifurcation:
 		pt = self._spl[ind].point(t, True)
 
 		if norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
-			return self.__projection(O, n, c0, c1 - 0.1, ind)
+			pass
+			#return self.__projection(O, n, c0, c1 - 0.1, ind)
 
 		else:
 

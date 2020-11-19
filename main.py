@@ -122,13 +122,13 @@ def test_meshing():
 	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 
 	#tree.subgraph([1,2,3,4,5,6])
-	#tree.subgraph([4,5])
+	#tree.subgraph([1,2])
 	
 	#tree.write_vtk("full", "Results/test.vtk")
-	tree.deteriorate_centerline(0.5, [0.0, 0.0, 0.0, 0.0])
+	tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
 	tree.show(True, False, False)
 	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
-	tree.spline_approximation()
+	tree.spline_approximation(True, True)
 	tree.show(True, True, False)
 	#tree.write_vtk("spline", "Results/test_fitting.vtk")
 
@@ -141,7 +141,7 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
+	tree.compute_cross_sections(24, 0.05, bifurcation_model=False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
@@ -169,7 +169,7 @@ def test_fitting():
 	crsec = tree.get_topo_graph()
 	D = crsec.edges[(4,5)]["coords"][::2]
 
-	#D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.06141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
+	#D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.0 6141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
 	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
 
 	values = np.vstack((D[0], (D[1] - D[0])*15, (D[-1] - D[-2])*15, D[-1]))
@@ -309,7 +309,7 @@ def test_Model():
 
 def test_brava():
 
-	for i in range(3, 4):
+	for i in range(1, 4):
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
@@ -320,7 +320,7 @@ def test_brava():
 		tree.spline_approximation()
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
-		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
+		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + "_min_tangent_model.vtk")
 	
 		t1 = time.time()
 		tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
@@ -329,7 +329,7 @@ def test_brava():
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
-		mesh.save("Results/BraVa/surface/P" + str(i) + ".vtk")
+		mesh.save("Results/BraVa/surface/P" + str(i) + "_min_tangent_model.vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
 		"""
@@ -364,6 +364,38 @@ def test_bifurcation_resampling():
 	resampled_mesh.plot(show_edges=True)
 
 
+def test_nb_control_points():
+
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	tree.deteriorate_centerline(0.8, [0.0, 0.0, 0.0, 0.0])
+
+	crsec = tree.get_topo_graph()
+	D = crsec.edges[(1,2)]["coords"]
+	values = np.vstack((D[0], (D[1] - D[0])*30, (D[-1] - D[-2])*30, D[-1]))
+	print(len(D))
+
+	spl_prec = Spline()
+	spl_prec.approximation(D, [False, False, False, False], values, derivatives = False, n = 4)
+	distance = []
+	for n in range(5, 80):
+		
+		spl = Spline()
+		spl.approximation(D, [False, False, False, False], values, derivatives = False, n = n)
+		if n in [20, 50, 70]:
+			spl.show(data=D)
+		
+		p1 = spl_prec.get_points()
+		p2 = spl.get_points()
+		dist = 0
+		for i in range(len(p1)):
+			dist += norm(p1[i] - p2[i])
+		distance.append(dist)
+
+		spl_prec = spl
+
+	plt.plot(range(5,80), distance)
+	plt.show()
+		
 	
 
 
@@ -377,6 +409,7 @@ def test_bifurcation_resampling():
 #test_quality_model3D()
 #test_Model()
 #test_fitting_angle()
-#test_brava()
+test_brava()
 #test_deformation()
-test_bifurcation_resampling()
+#test_bifurcation_resampling()
+#test_nb_control_points()

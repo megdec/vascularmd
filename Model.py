@@ -13,7 +13,7 @@ class Model:
 	##########  CONSTRUCTOR  ############
 	#####################################
 
-	def __init__(self, D, n, p, end_constraint, end_values, derivatives, lbd):
+	def __init__(self, D, n, p, end_constraint, end_values, derivatives, lbd, knot = None, t = None):
 
 		""" Create a penalized spline model.
 
@@ -32,8 +32,17 @@ class Model:
 		self._D = D
 		self._p = p
 		self._n = n
-		self._t = self.chord_length_parametrization()
-		self._knot = self.uniform_knot()
+
+		if t is None:
+			self._t = self.chord_length_parametrization()
+		else: 
+			self._t = t
+
+		if knot is None: 
+			self._knot = self.uniform_knot()
+		else: 
+			self._knot = knot
+
 		self._end_constraint = end_constraint
 		self._end_values = end_values
 		self._derivatives = derivatives
@@ -42,7 +51,7 @@ class Model:
 		if self._n <= 3:
 			self._smoothing_order = n-1
 		else:
-			self._smoothing_order = 3
+			self._smoothing_order = 4
 
 		self._N, self._Q1, self._Delta, self._Q2, self._Pt = self.__compute_matrices()
 		self.P = self.__solve_system()
@@ -57,6 +66,9 @@ class Model:
 
 	def get_knot(self):
 		return self._knot
+
+	def get_lbd(self):
+		return self._lbd
 
 	def set_lambda(self, lbd):
 
@@ -361,7 +373,7 @@ class Model:
 
 			Q2 = Q2[d[0]:d[1]]
 
-			# Fell Q2 if tangents
+			# Fill Q2 if tangents
 			if self._end_constraint[1]:
 				Q2[0] = (Sc[d[0],0] + Sc[d[0],1]) * np.dot(self._end_values[0,:], self._end_values[1,:])
 				if self._end_constraint[-2]:
