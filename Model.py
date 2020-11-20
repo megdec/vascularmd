@@ -51,7 +51,7 @@ class Model:
 		if self._n <= 3:
 			self._smoothing_order = n-1
 		else:
-			self._smoothing_order = 4
+			self._smoothing_order = 3
 
 		self._N, self._Q1, self._Delta, self._Q2, self._Pt = self.__compute_matrices()
 		self.P = self.__solve_system()

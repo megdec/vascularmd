@@ -357,12 +357,14 @@ class ArterialTree:
 		#nx.set_node_attributes(G, None, name='id_crsec')
 
 		nmax = max(list(G.nodes())) + 1
+		count = 0
+
 		print('Meshing bifurcations')
 
 		bif_nds = []
 		args = []
-		# Bifurcation cross sections
 
+		# Bifurcation cross sections
 		for n in self._spline_graph.nodes():
 
 			if self._spline_graph.nodes[n]['type'] == "bif":
@@ -427,17 +429,24 @@ class ArterialTree:
 			S = bif.get_endsec()
 
 			# Add separation nodes with cross sections
-			G.add_node(n, coords = S[0][0], type = "sep", crsec = np.array(end_crsec[0]), id_crsec = None)
-			G.add_node(bif_nds[i][1], coords = S[1][0], type = "sep", crsec = np.array(end_crsec[1]), id_crsec = None)
-			G.add_node(bif_nds[i][2], coords = S[2][0], type = "sep", crsec = np.array(end_crsec[2]), id_crsec = None)
+			G.add_node(n, coords = S[0][0], type = "sep", crsec = np.array(end_crsec[0]), id = count)
+			count += np.array(end_crsec[0]).shape[0]
+			G.add_node(bif_nds[i][1], coords = S[1][0], type = "sep", crsec = np.array(end_crsec[1]), id = count)
+			count += np.array(end_crsec[1]).shape[0]
+			G.add_node(bif_nds[i][2], coords = S[2][0], type = "sep", crsec = np.array(end_crsec[2]), id = count)
+			count += np.array(end_crsec[2]).shape[0]
 
 			# Add bifurcation node
-			G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id_crsec = None)
+			G.add_node(nmax, coords = B, type = "bif", crsec = bif_crsec, id = count)
+			count += len(bif_crsec)
 				
 			# Add bifurcation edges
-			G.add_edge(n, nmax, spline = tspl[0], crsec = np.array(nds[0]), connect = connect_index[0])
-			G.add_edge(bif_nds[i][1], nmax, spline = tspl[1], crsec = np.array(nds[1]), connect = connect_index[1])
-			G.add_edge(bif_nds[i][2], nmax, spline = tspl[2], crsec = np.array(nds[2]), connect = connect_index[2])
+			G.add_edge(n, nmax, spline = tspl[0], crsec = np.array(nds[0]), connect = connect_index[0], id = count)
+			count += np.array(nds[0]).shape[0] * np.array(nds[0]).shape[1]
+			G.add_edge(bif_nds[i][1], nmax, spline = tspl[1], crsec = np.array(nds[1]), connect = connect_index[1], id = count)
+			count += np.array(nds[1]).shape[0] * np.array(nds[1]).shape[1]
+			G.add_edge(bif_nds[i][2], nmax, spline = tspl[2], crsec = np.array(nds[2]), connect = connect_index[2], id = count)
+			count += np.array(nds[2]).shape[0] * np.array(nds[2]).shape[1]
 				
 			nmax = nmax + 1
 
@@ -532,17 +541,22 @@ class ArterialTree:
 					crsec = crsec[::-1, np.hstack((0, np.arange(N - 1,0,-1))), :]
 
 				spl = G.edges[e]['spline']
-				# Add cross sections
-				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = list_connect[i])
 
+				# Add cross sections
+				G.add_edge(e[0], e[1], crsec = crsec[1:-1], spline = spl, connect = list_connect[i], id = count)
+				count += crsec[1:-1].shape[0] * crsec[1:-1].shape[1]
 					
 				if G.nodes[e[0]]['type'] == "end":
-					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id_crsec = None)
+					G.add_node(e[0], coords = G.nodes[e[0]]['coords'], crsec = crsec[0], type = "end", id = count)
+					count += crsec[0].shape[0]
 
 				if G.nodes[e[1]]['type'] == "end":
-					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id_crsec = None)
+					G.add_node(e[1], coords = G.nodes[e[1]]['coords'], crsec = crsec[-1], type = "end", id = count)
+					count += crsec[-1].shape[0]
+
 				i +=1
-				
+
+		self._nb_nodes = count 
 		self._crsec_graph = G
 
 
@@ -645,79 +659,66 @@ class ArterialTree:
 			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
 		
 		G = self._crsec_graph
-
 		print('Meshing surface...')
 
-		# Retirer l'attribut "count" du graphe
-		vertices = []
-		faces = []
+		vertices = np.zeros((self._nb_nodes, 3))
+		faces = np.zeros((self._nb_nodes, 5), dtype =int)
+		nb_faces = 0
 
 		for e in G.edges():		
 
 			# Mesh the first cross section
-			if G.nodes[e[0]]['id_crsec'] is None:
+			id_first = G.nodes[e[0]]['id']
+			id_edge = G.edges[e]['id']
+			id_last = G.nodes[e[1]]['id']
 
-				v_prec = G.nodes[e[0]]['crsec']
-				ind_dep = len(vertices) 
+			# Add vertices
+			for i in range(G.nodes[e[0]]['crsec'].shape[0]): # First cross section
+				vertices[id_first + i, :] = G.nodes[e[0]]['crsec'][i]
 
-				vertices += list(v_prec)
-				G.nodes[e[0]]['id_crsec'] = ind_dep 
+			for i in range(G.edges[e]['crsec'].shape[0]): # Edge sections
+				for j in range(G.edges[e]['crsec'].shape[1]):
+					vertices[id_edge + (i * self._N) + j, :] = G.edges[e]['crsec'][i, j]
 
-			else: 
-				ind_dep = G.nodes[e[0]]['id_crsec']
+			for i in range(len(G.nodes[e[1]]['crsec'])): # Last cross section
+				vertices[id_last + i, :] = G.nodes[e[1]]['crsec'][i]
 
-			seg_crsec = G.edges[e]['crsec']
-
-			# Mesh edges
-			for i in range(len(seg_crsec)): 
-
-				v_act = seg_crsec[i]
-				for j in range(len(v_act)):
-
-					if j == len(v_act) - 1:
-						j2 = 0
-					else:
-						j2 = j + 1
-					faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])	
-
-				vertices += list(v_act)
-				v_prec = v_act
-	
-				ind_dep = len(vertices) - len(v_prec)
-
-			# Mesh the last cross section
-			
-			if G.nodes[e[1]]['id_crsec'] is None:
-
-				v_act = G.nodes[e[1]]['crsec']
-	
-				ind_dep = len(vertices)
-				ind_prec = len(vertices) - len(v_prec)
-
-				G.nodes[e[1]]['id_crsec'] = ind_dep
-				vertices += list(v_act)
-
-			else:
-				ind_dep = G.nodes[e[1]]['id_crsec']
-				ind_prec = len(vertices) - len(v_prec)
-			
-			# Get bifurcation half section id and orientation from connection information
-			connect = G.edges[e]['connect']
-								
 			# Add faces
-			for j in range(len(v_prec)): 
-				if j == len(v_prec) - 1:
-					j2 = 0
-					j3 = connect[0]
+			for i in range(G.nodes[e[0]]['crsec'].shape[0]): # First cross section
+
+				if i == G.nodes[e[0]]['crsec'].shape[0] - 1:
+					j = 0
+				else: 
+					j = i + 1
+
+				faces[nb_faces,:] = np.array([4, id_first + i, id_edge + i, id_edge + j, id_first + j])
+				nb_faces += 1
+
+			for k in range(G.edges[e]['crsec'].shape[0] -1): # Edge sections
+				for i in range(G.edges[e]['crsec'].shape[1]):
+
+					if i == G.edges[e]['crsec'].shape[1] - 1:
+						j = 0
+					else: 
+						j = i + 1
+
+					faces[nb_faces,:] = np.array([4, id_edge + (k * self._N) + i, id_edge + ((k + 1) * self._N) + i, id_edge + ((k + 1) * self._N) + j, id_edge + (k * self._N) + j])
+					nb_faces += 1
+
+			id_last_edge = id_edge + ((G.edges[e]['crsec'].shape[0] -1) * self._N)
+			connect = G.edges[e]['connect']
+			for i in range(G.edges[e]['crsec'].shape[1]):
+
+				if i == G.edges[e]['crsec'].shape[1] - 1:
+					j = 0
 				else:
-					j2 = j + 1
-					j3 = connect[j+1] 
-			
-				faces.append([4, ind_prec + j, ind_dep + connect[j],  ind_dep + j3, ind_prec + j2])
-			
-		# Effacer les id
-		nx.set_node_attributes(G, None, 'id_crsec')
-		self._surface_mesh = pv.PolyData(np.array(vertices), np.array(faces))
+					j = i + 1
+
+				faces[nb_faces,:] = np.array([4, id_last_edge + i, id_last + connect[i], id_last + connect[j], id_last_edge + j])
+				nb_faces += 1
+		
+		faces = faces[:nb_faces]
+		self._surface_mesh = pv.PolyData(vertices, faces)
 		
 		return self._surface_mesh
 
@@ -739,76 +740,77 @@ class ArterialTree:
 			self.compute_cross_sections(24, 0.2, False) # Get cross section graph
 
 		G = self._crsec_graph
-
+		
 		if self._N%8 != 0:
 			raise ValueError('The number of cross section nodes must be a multiple of 8 for volume meshing.')
 
 		print('Meshing volume...')
 
-		vertices = []
-		cells = []
-		cell_types = []
+		# Compute node ids
+		nx.set_node_attributes(G, None, name='id_volume')
+		count = 0
+		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
+		nb_nds_bif_ogrid = int(nb_nds_ogrid +  (self._N/2 - 1) * (num_a + num_b + 3) + (self._N - 4)/4 * (((self._N - 4)/4 -1)/2)) +2 ## WORKAROUND
+	
 
-		# Store the vertices and change the id of every cross section
+		for n in G.nodes():
+			G.nodes[n]['id_volume'] = count
+			if G.nodes[n]['type'] == "bif":
+				count +=  nb_nds_bif_ogrid
+			else: 
+				count += nb_nds_ogrid
+
+		for e in G.edges():
+			G.edges[e]['id_volume'] = count
+			count += G.edges[e]['crsec'].shape[0] * nb_nds_ogrid
+
+		# Add vertices and cells to the mesh
+		print(count)
+		vertices = np.zeros((count,3))
+		cells = np.zeros((count,9), dtype=int)
+		nb_cells = 0
+
 		for e in G.edges():
 
 			# Mesh the first cross section
-			if G.nodes[e[0]]['id_crsec'] is None:
+			id_first = G.nodes[e[0]]['id_volume']
+			id_edge = G.edges[e]['id_volume']
+			id_last = G.nodes[e[1]]['id_volume']
 
-				crsec = np.array(G.nodes[e[0]]['crsec'])
-				center = np.array(G.nodes[e[0]]['coords'])[:-1]
-				v_prec, f_prec = self.ogrid_pattern((crsec[0] + crsec[int(self._N/2)])/2.0, crsec, layer_ratio, num_a, num_b)
-			
-				vertices += v_prec
-				ind_dep = len(vertices) - len(v_prec)
-				G.nodes[e[0]]['id_crsec'] = ind_dep
-			
+			# Add vertices
+			# First cross section
+			crsec = G.nodes[e[0]]['crsec']
+			center = G.nodes[e[0]]['coords'][:-1]
+			v, f_ogrid = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
 
-			else: 
-				ind_dep = G.nodes[e[0]]['id_crsec']
+			vertices[id_first:id_first + nb_nds_ogrid, :] = np.array(v)
+			cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_first + f_ogrid[:,1:], id_edge + f_ogrid[:,1:]))
+			nb_cells += f_ogrid.shape[0]
 
-			seg_crsec = np.array(G.edges[e]['crsec'])
+			# Edge cross sections
+			for i in range(G.edges[e]['crsec'].shape[0]):
 
-			# Mesh edges
-			for i in range(len(seg_crsec)): 
-
-				crsec = seg_crsec[i]
+				crsec = G.edges[e]['crsec'][i]
 				center = (crsec[0] + crsec[int(self._N/2)])/2.0
-				v_act, f_act = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
-				
-				
-				for j in range(len(f_act)):
-			
-					cells.append([8] + (np.array(f_prec[j])[1:] + ind_dep).tolist() + (np.array(f_act[j])[1:] + len(vertices)).tolist())
-					cell_types += [vtk.VTK_HEXAHEDRON]
+				v, f_ogrid = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
+				id_crsec = id_edge + (i * nb_nds_ogrid)
 
-				vertices += v_act
+				vertices[id_crsec:id_crsec + nb_nds_ogrid, :] = np.array(v)
 
-				v_prec = v_act
-				f_prec = f_act
+			for i in range(G.edges[e]['crsec'].shape[0] - 1):
 
-				ind_dep = len(vertices) - len(v_prec)
+				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * i) + f_ogrid[:,1:], id_edge + (nb_nds_ogrid * (i + 1)) + f_ogrid[:,1:]))
+				nb_cells += f_ogrid.shape[0]
 
-			# Mesh the last cross section
+			# Last cross section
 			if G.nodes[e[1]]['type'] == "bif": # Bifurcation case 
-				if G.nodes[e[1]]['id_crsec'] is None:
 
-					crsec = G.nodes[e[1]]['crsec']
-					center = (np.array(crsec[0]) + crsec[1])/2.0
+				crsec = G.nodes[e[1]]['crsec']
+				center = (np.array(crsec[0]) + crsec[1])/2.0
 
-					# Mesh of the 3 half-sections
-					v, f = self.bif_ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)				
-							
-					ind_dep = len(vertices)
-					G.nodes[e[1]]['id_crsec'] = ind_dep
-				
-					vertices += v
-					ind_prec = len(vertices) - len(v) -len(v_prec)
-
-
-				else:
-					ind_dep = G.nodes[e[1]]['id_crsec']
-					ind_prec = len(vertices) - len(v_prec)
+				# Mesh of the 3 half-sections
+				v, f_bif_ogrid = self.bif_ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
+				vertices[id_last:id_last + nb_nds_bif_ogrid, :] = np.array(v)
 
 				# Get bifurcation half section id and orientation from connection information
 				connect = G.edges[e]['connect']
@@ -827,74 +829,35 @@ class ArterialTree:
 					else: 
 						h1 += [1, 0]
 					h.append(h1)
-				
-				
-				f_act = []
-				for s in range(2): # Both half-sections
-					
-					quarter = f[h[s][0]][h[s][1]]
-					for ray in quarter: # Iterate on the rays
-						for face in ray: # Iterate on the faces
-							# Get bifurcation faces
-							f_act.append(face) #[half][quarter][ray][face]
 
-					# Reorder second quarter 
-					quarter = f[h[s][0]][h[s][2]][::-1]
-					for i in range(len(quarter)): # Iterate on the rays
-
-						if i < len(quarter) / 2: # Long rays
-							for j in range(len(quarter[i])): # Iterate on the faces
-								face = quarter[i][j]
-								f_act.append([4, face[2] , face[1], face[4], face[3]])
-
-							for k in range(int(self._N/8)):
-								face = quarter[-int(self._N/8)+k][-i -1]
-								f_act.append([4, face[3] , face[2], face[1], face[4]])
-
-						else:
-
-							for j in range(len(quarter[i]) - int(self._N/8)): # Iterate on the faces
-								face = quarter[i][j]
-								f_act.append([4, face[2] , face[1], face[4], face[3]])
-
-								
-				# Add cells
-				for k in range(len(f_act)): 
-				
-					cells.append([8] + (np.array(f_prec[k])[1:] + ind_prec).tolist() + (np.array(f_act[k])[1:] + ind_dep).tolist())
-					cell_types += [vtk.VTK_HEXAHEDRON]
+				f_bif_ogrid = self.__reorder_faces(h, f_bif_ogrid)
+				cells[nb_cells: nb_cells + f_bif_ogrid.shape[0], :] = np.hstack((np.zeros((f_bif_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_bif_ogrid)[:,1:]))
+				nb_cells += f_bif_ogrid.shape[0]
 
 
-			# Rotated segment case
-			else:
+			else: 
 
-				if G.nodes[e[1]]['id_crsec'] is None:
+				crsec = G.nodes[e[1]]['crsec']
+				center = G.nodes[e[1]]['coords'][:-1]
+				v, f_ogrid_rot = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
 
-					end_crsec = np.array(G.nodes[e[1]]['crsec'])
-					center = (end_crsec[0] + end_crsec[int(self._N/2)])/2.0
-					v_act, f_act = self.ogrid_pattern(center, end_crsec, layer_ratio, num_a, num_b)
-					ind_dep = len(vertices)
-					G.nodes[e[1]]['id_crsec'] = ind_dep
-				
-				else:
-					ind_dep = G.nodes[e[1]]['id_crsec']
-
-				j = int([0, int(self._N/4), int(self._N/2), int(3* self._N/4)].index(G.edges[e]['connect'][0]) * len(f_act) / 4)
-
-				for k in range(len(f_act)):
-
-					if j == len(f_act):
-						j = 0
-			
-					cells.append([8] + (np.array(f_prec[j])[1:] + len(vertices) - len(v_prec)).tolist() + (np.array(f_act[j])[1:] + ind_dep).tolist())
-					cell_types += [vtk.VTK_HEXAHEDRON]
-
-					j +=1
-
-				vertices += v_act
+				# Reorder faces for rotation
+				quarter = [0, int(self._N/4), int(self._N/2), int(3* self._N/4)].index(G.edges[e]['connect'][0])
+				start_face = int(quarter * f_ogrid.shape[0] / 4)
 		
+				if start_face != 0:
+					f_ogrid_rot = np.vstack((f_ogrid[start_face:, :], f_ogrid[:start_face, :]))
+
+				vertices[id_last:id_last + nb_nds_ogrid, :] = np.array(v)
+				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_rot)[:,1:]))
+				nb_cells += f_ogrid.shape[0]
+
+
+		cells = cells[:nb_cells]
+		cell_types = np.array([vtk.VTK_HEXAHEDRON] * cells.shape[0])
+
 		# Return volume mesh
-		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), np.array(cells), np.array(cell_types), np.array(vertices))		
+		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), cells, cell_types, vertices)
 		return self._volume_mesh
 
 
@@ -1022,6 +985,38 @@ class ArterialTree:
 
 		return vertices, faces
 
+	def __reorder_faces(self, h, f):
+				
+				
+		f_act = []
+		for s in range(2): # Both half-sections
+					
+			quarter = f[h[s][0]][h[s][1]]
+			for ray in quarter: # Iterate on the rays
+				for face in ray: # Iterate on the faces
+					# Get bifurcation faces
+					f_act.append(face) #[half][quarter][ray][face]
+
+			# Reorder second quarter 
+			quarter = f[h[s][0]][h[s][2]][::-1]
+			for i in range(len(quarter)): # Iterate on the rays
+
+				if i < len(quarter) / 2: # Long rays
+					for j in range(len(quarter[i])): # Iterate on the faces
+						face = quarter[i][j]
+						f_act.append([4, face[2] , face[1], face[4], face[3]])
+
+					for k in range(int(self._N/8)):
+						face = quarter[-int(self._N/8)+k][-i -1]
+						f_act.append([4, face[3] , face[2], face[1], face[4]])
+
+				else:
+
+					for j in range(len(quarter[i]) - int(self._N/8)): # Iterate on the faces
+						face = quarter[i][j]
+						f_act.append([4, face[2] , face[1], face[4], face[3]])
+
+		return np.array(f_act)
 
 
 
@@ -1066,7 +1061,6 @@ class ArterialTree:
 
 			square_sides1 = [lin_interp(square_corners[0], square_corners[1], N/8+1), lin_interp(center, square_corners[2], N/8+1)] # Horizontal square edges
 			square_sides2 = [lin_interp(square_corners[0], center, N/8+1), lin_interp(square_corners[1], square_corners[2], N/8+1)] # Vertical square edges
-
 
 			for i in range(int(s * N/4), int((s+1) * N/4)):
 
@@ -1123,7 +1117,7 @@ class ArterialTree:
 					faces.append([4, nds[i][j], nds[i2][j], nds[i2][j+1], nds[i][j+1]])
  
 
-		return vertices, faces
+		return np.array(vertices), np.array(faces)
 
 
 

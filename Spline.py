@@ -266,7 +266,7 @@ class Spline:
 
 				alpha, beta = spatial_model.get_magnitude()
 				#print(alpha, beta)
-				thres = 5
+				thres = 10
 
 				if (alpha < thres or beta < thres) and not derivatives:
 
@@ -309,7 +309,7 @@ class Spline:
 
 				alpha, beta = global_model.get_magnitude()
 				#print(alpha, beta)
-				thres = 5
+				thres = 10
 
 				if (alpha < thres or beta < thres) and not derivatives:
 					print(alpha, beta)

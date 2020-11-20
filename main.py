@@ -25,7 +25,9 @@ def test_bifurcation_class():
 
 	bif = Bifurcation(S0, S1, S2, 0.5)
 
-	mesh = bif.surface_mesh()
+	mesh = bif.mesh_surface()
+	bif.local_smooth(0)
+	print(mesh.faces.reshape(int(mesh.faces.shape[0]/5), 5))
 	mesh.plot(show_edges=True)
 	mesh.save("Results/bifurcation.vtk")
 
@@ -37,7 +39,7 @@ def test_bifurcation_smoothing():
 	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
 
 	bif_ref = Bifurcation(S0, S1, S2, 0)
-	mesh_ref = bif_ref.surface_mesh()
+	mesh_ref = bif_ref.mesh_surface()
 	mesh_ref.plot(show_edges=True)
 
 	mean_distance = [distance(mesh_ref, mesh_ref)[0]]
@@ -46,7 +48,7 @@ def test_bifurcation_smoothing():
 
 	for i in range(10):
 		bif_ref.smooth(100)
-		mesh = bif_ref.surface_mesh()
+		mesh = bif_ref.mesh_surface()
 		mesh.plot(show_edges=True)
 		mean_distance.append(distance(mesh, mesh_ref, True)[0])
 		mean_quality.append(quality(mesh, True)[0])
@@ -128,7 +130,7 @@ def test_meshing():
 	tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
 	tree.show(True, False, False)
 	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
-	tree.spline_approximation(True, True)
+	tree.spline_approximation()
 	tree.show(True, True, False)
 	#tree.write_vtk("spline", "Results/test_fitting.vtk")
 
@@ -141,20 +143,22 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.05, bifurcation_model=False)
+	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
 	#pickle.dump(tree, file)
-
+	t1 = time.time()
 	mesh = tree.mesh_surface()
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
 
 	print("plot mesh")
 	mesh.plot(show_edges=True)
-	#mesh.save("Results/surface_mesh.vtk")
-	#mesh.save("Results/surface_mesh.stl")
+	#mesh.save("Results/mesh_surface.vtk")
+	#mesh.save("Results/mesh_surface.stl")
 
-	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 1, 1)
 	mesh = mesh.compute_cell_quality()
 	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
 	mesh.plot(show_edges=True, scalars= 'CellQuality')
@@ -309,7 +313,7 @@ def test_Model():
 
 def test_brava():
 
-	for i in range(1, 4):
+	for i in range(3,4):
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
@@ -320,7 +324,7 @@ def test_brava():
 		tree.spline_approximation()
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
-		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + "_min_tangent_model.vtk")
+		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
 	
 		t1 = time.time()
 		tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
@@ -329,16 +333,16 @@ def test_brava():
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
-		mesh.save("Results/BraVa/surface/P" + str(i) + "_min_tangent_model.vtk")
+		mesh.save("Results/BraVa/surface/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-		"""
+	
 		t1 = time.time()
 		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-		"""
+	
 	
 def test_bifurcation_resampling():
 
@@ -350,17 +354,17 @@ def test_bifurcation_resampling():
 	bif = Bifurcation(S0, S1, S2, 0.5)
 
 	# Initial surface mesh
-	init_mesh = bif.surface_mesh()
+	init_mesh = bif.mesh_surface()
 	init_mesh.plot(show_edges=True)
 
 	# Smooth 
 	bif.smooth(5)
-	smooth_mesh = bif.surface_mesh()
+	smooth_mesh = bif.mesh_surface()
 	smooth_mesh.plot(show_edges=True)
 
 	# Backprojection
 	bif.deform(init_mesh)
-	resampled_mesh = bif.surface_mesh()
+	resampled_mesh = bif.mesh_surface()
 	resampled_mesh.plot(show_edges=True)
 
 
@@ -413,3 +417,4 @@ test_brava()
 #test_deformation()
 #test_bifurcation_resampling()
 #test_nb_control_points()
+#test_bifurcation_class()
