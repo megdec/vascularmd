@@ -156,6 +156,67 @@ def lin_interp(p0, p1, num):
 
 
 #####################################
+######## MESHING GEOMETRY ###########
+#####################################
+
+def neighbor_faces(vertices, faces):
+	""" Create a numpy array of the neighbor cells of every vertices"""
+
+	faces = faces[:, 1:]
+	adj_faces = np.zeros((vertices.shape[0], 7), dtype=int) - 1
+
+	for i in range(vertices.shape[0]):
+
+		face_ids = np.where(faces == i)[0]
+		adj_faces[i, 0] = face_ids.shape[0]
+		adj_faces[i, 1:1 + face_ids.shape[0]] = face_ids
+
+	return adj_faces
+
+
+def neighbor_faces_id(vertices, faces, id_vertice):
+
+	adj_faces = np.zeros((vertices.shape[0], 7), dtype=int) - 1
+	face_ids = np.where(faces[:, 1:] == id_vertice)[0]
+
+	return face_ids
+
+
+def neighbor_faces_normals(normals, adj_faces, id_vertice):
+
+	adj_normals = np.zeros((adj_faces[id_vertice, 0], 3))
+	adj = adj_faces[id_vertice, 1:1 + adj_faces[id_vertice, 0]]
+
+	for i in range(adj_faces[id_vertice, 0]):
+		adj_normals[i, :] = normals[adj[i], :]
+
+	return adj_normals
+
+
+def neighbor_vertices_id(adj_faces, faces, id_vertice):
+	""" Returns a list of the neighbor vertices of a given vertice"""
+
+	adj = []
+	for i in adj_faces[id_vertice, 1:1 + adj_faces[id_vertice, 0]]:
+		adj += faces[i, 1:].tolist()
+	adj = np.unique(adj)
+	adj = adj[adj != id_vertice]
+
+	return adj
+
+
+def neighbor_vertices_coords(adj_faces, faces, vertices, id_vertice):
+
+	adj_vertices = neighbor_vertices_id(adj_faces, faces, id_vertice)
+
+	coords = np.zeros((len(adj_vertices), 3))
+	for i in range(len(adj_vertices)):
+		coords[i, :] = vertices[adj_vertices[i], :]
+
+	return coords
+
+
+#####################################
 ############ VALIDATION  ############
 #####################################
 

@@ -267,6 +267,29 @@ class Bifurcation:
 		self._tspl = tspl
 
 
+	def set_crsec(self, mesh):
+
+		pts = self._crsec
+
+		# Get points and re-order them in the original structure
+		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
+		end_crsec = []
+		nds = [[], [], []]
+		N = len(pts[0][0])
+
+		j = len(pts[1])
+		for s in range(3):
+			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
+			j += N
+
+			for i in range(len(pts[2][s])):
+				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
+				j += N
+
+		self._crsec[0] = end_crsec
+		self._crsec[1] = bif_crsec
+		self._crsec[2] = nds
+
 
 
 
@@ -332,19 +355,20 @@ class Bifurcation:
 	#####################################
 
 
-	def surface_mesh(self, N=24, d=0.2):
+	def mesh_surface(self, N=24, d=0.2):
 
 		""" Returns the surface mesh of the bifurcation
 
 		Keyword arguments:
-		pts -- The nodes of the mesh, computed with the cross_sections method.
-		If not given, he cross section are computed with default parameters.
+		N -- number of nodes in a cross section
+		d -- density of cross section along the vessel (proportional to the radius)
+		If not given, the cross section are computed with default parameters.
 		"""
 
 		if self._crsec == None:
 			end_crsec, bif_crsec, nds, ind = self.cross_sections(N, d)
 		else: 
-			[end_crsec, bif_crsec, nds, ind] = self._crsec
+			end_crsec, bif_crsec, nds, ind = self._crsec
 
 		vertices = []
 		faces = []
@@ -458,7 +482,7 @@ class Bifurcation:
 			nds.append(nds_seg.tolist())
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		#self.smooth(1)#self.R
+		 #self.smooth(1)#self.R
 		return self._crsec
 
 
@@ -631,7 +655,7 @@ class Bifurcation:
 		""" Smoothes the bifurcation.
 
 		Keyword arguments:
-		pts -- The nodes of the mesh, computed with the cross_sections method.
+		n_iter : number of iteration for the smoothing
 		"""
 
 		if self._crsec == None:
@@ -639,27 +663,51 @@ class Bifurcation:
 		else: 
 			pts = self._crsec
 
-		mesh = self.surface_mesh()
+		mesh = self.mesh_surface()
 		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
+		self.set_crsec(mesh)
 
-		# Get points and re-order them in the original structure
-		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
-		end_crsec = []
-		nds = [[], [], []]
-		N = len(pts[0][0])
 
-		j = len(pts[1])
-		for s in range(3):
-			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
-			j += N
 
-			for i in range(len(pts[2][s])):
-				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
-				j += N
 
-		self._crsec[0] = end_crsec
-		self._crsec[1] = bif_crsec
-		self._crsec[2] = nds
+	def local_smooth(self, max_angle):
+
+		""" Localy smoothes the bifurcation"""
+		if self._crsec == None:
+			raise ValueError('Please first perform cross section computation.')
+		else: 
+			pts = self._crsec
+
+		mesh = self.mesh_surface()
+
+		vertices = mesh.points
+		faces = mesh.faces.reshape(-1, 5)
+		normals = mesh.face_normals
+		print(normals, normals.shape)
+
+		adj_faces = neighbor_faces(vertices, faces)
+
+		# Example use
+		print(adj_faces)
+		print(neighbor_vertices_id(adj_faces, faces, 15))
+		print(neighbor_vertices_coords(adj_faces, faces, vertices, 15))
+		print(neighbor_faces_normals(normals, adj_faces, 15))
+
+		# Compute the angle between the neighbor faces of every point
+
+		# If the angle is > max_angle select the points for smoothing
+
+		# For every selected points, get the coordinates of the neighbors
+			# coords =  neighbor_vertices_coords(adj_faces, faces, vertices, id_point)
+		# Compute the barycenter, compute the new coordinates of the points
+
+		# Replace them in the mesh 
+
+		# Replace the cross sections
+		self.set_crsec(mesh)
+
+		# Enjoy a smooth bifurcation
+
 
 
 
@@ -760,8 +808,7 @@ class Bifurcation:
 		pt = self._spl[ind].point(t, True)
 
 		if norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
-			pass
-			#return self.__projection(O, n, c0, c1 - 0.1, ind)
+			return self.__projection(O, n, c0, c1 - 0.01, ind)
 
 		else:
 
