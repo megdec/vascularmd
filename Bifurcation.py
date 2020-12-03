@@ -187,7 +187,8 @@ class Bifurcation:
 
 		""" Set the coordinates of the separation points SP of the bifurcation. """
 
-		SP = []
+		SP = np.zeros((2,3))
+		i = 0
 		for ind in [[0, 1], [1, 0]]:
 		
 			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
@@ -204,9 +205,10 @@ class Bifurcation:
 
 			ptS = self._spl[ind[0]].point(t)  
 
-			SP.append(self.__send_to_surface(ptS, nS / norm(nS), ind))
+			SP[i, :] = self.__send_to_surface(ptS, nS / norm(nS), ind)
+			i += 1
 
-		self._SP = np.array(SP)
+		self._SP = SP
 
 
 
@@ -286,9 +288,9 @@ class Bifurcation:
 				nds[s].append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
 				j += N
 
-		self._crsec[0] = end_crsec
-		self._crsec[1] = bif_crsec
-		self._crsec[2] = nds
+		self._crsec[0] = np.array(end_crsec)
+		self._crsec[1] = np.array(bif_crsec)
+		self._crsec[2] = [np.array(nds[0]), np.array(nds[1]), np.array(nds[2])]
 
 
 
@@ -373,14 +375,14 @@ class Bifurcation:
 		vertices = []
 		faces = []
 
-		vertices += bif_crsec
+		vertices += bif_crsec.tolist()
 		 
 		for e in range(3):
 
 			# Mesh the end cross section
 			v_prec = end_crsec[e]
 			ind_dep = len(vertices)
-			vertices += v_prec
+			vertices += v_prec.tolist()
 			
 			seg_crsec = nds[e]
 			# Mesh edges
@@ -396,7 +398,7 @@ class Bifurcation:
 					faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])	
 
 				ind_dep = len(vertices)
-				vertices += v_act
+				vertices += v_act.tolist()
 				v_prec = v_act
 	
 			# Mesh the bifurcation
@@ -479,10 +481,11 @@ class Bifurcation:
 			for j in range(N):
 				nds_seg[:, j, :] = self.__bifurcation_connect(i, ind, end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
 
-			nds.append(nds_seg.tolist())
+			nds.append(nds_seg)
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
 		 #self.smooth(1)#self.R
+		self.local_smooth(1)
 		return self._crsec
 
 
@@ -524,7 +527,7 @@ class Bifurcation:
 			pts.append(np.linspace(P0[i], P1[i], n + 2)[1:-1].tolist())
 		pts = np.array(pts).transpose()
 
-		nds = []
+		nds = np.zeros((n,3))
 		for i in range(n):
 
 			t = self._tspl[tind].project_point_to_centerline(pts[i])
@@ -533,7 +536,7 @@ class Bifurcation:
 			n = n / norm(n)
 			
 			pt = self.__send_to_surface(P, n, ind)
-			nds.append(pt)
+			nds[i] = pt
 		
 		return nds
 
@@ -548,9 +551,12 @@ class Bifurcation:
 		N -- number of nodes in a section (multiple of 4)
 		"""
 
-		nds = [self._CP[0].tolist(), self._CP[1].tolist()]
-		n = N/4 - 1
+		nds = np.zeros((2 + (N//2 - 1) * 3,3))
+		nds[:2] = self._CP
+	
+		n = N//4 - 1
 
+		j = 2
 		for i in range(3):
 
 			if i == 0:
@@ -560,8 +566,11 @@ class Bifurcation:
 			else: 
 				P = self._SP[1]
 
-			nds = nds + self.__separation_segment(self._CP[0], P, n) + [P.tolist()] + self.__separation_segment(P, self._CP[1], n) 
-
+			nds[j: j + n] = self.__separation_segment(self._CP[0], P, n)
+			nds[j + n] = P
+			nds[j+n+1: j + 2*n +1] = self.__separation_segment(P, self._CP[1], n) 
+			j += 2*n + 1
+			
 		return nds
 
 
@@ -583,11 +592,11 @@ class Bifurcation:
 		theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
 
 		# Computing nodes using t and theta parameters
-		nds = []
-		for i in range(int(n)):
+		nds = np.zeros((n, 3))
+		for i in range(n):
 
 			n = rotate_vector(v1, cross(v1, v2), theta[i])
-			nds.append(self.__send_to_surface(self._B, n, [0,1]))
+			nds[i] = self.__send_to_surface(self._B, n, [0,1])
 
 		return nds
 
@@ -602,12 +611,12 @@ class Bifurcation:
 		N -- number of nodes in a section (multiple of 4)
 		"""
 		
-		nds = []
+		nds = np.zeros((3,N,3))
 
+		
 		for i in range(3):
 
-			crsec_nds = []
-
+			
 			if i == 0:
 				
 				# Reference vector
@@ -635,12 +644,9 @@ class Bifurcation:
 			ref = ref / norm(ref)
 			angle_list = (2 * pi / N) * np.arange(N)
 
-			for theta in angle_list:
-				n = np.array(rotate_vector(ref, self._endsec[i][1][:-1], theta))
-				crsec_nds.append((self._endsec[i][0][:-1] + n * self._endsec[i][0][-1] / norm(n)).tolist())
-
-			nds.append(crsec_nds)
-		
+			for j in range(N):
+				n = np.array(rotate_vector(ref, self._endsec[i][1][:-1], angle_list [j]))
+				nds[i, j] = self._endsec[i][0][:-1] + n * self._endsec[i][0][-1] / norm(n)
 		
 		return nds
 
@@ -688,7 +694,7 @@ class Bifurcation:
 		adj_faces = neighbor_faces(vertices, faces)
 
 		# Example use
-		print(adj_faces)
+		print(adj_faces[:5])
 		print(neighbor_vertices_id(adj_faces, faces, 15))
 		print(neighbor_vertices_coords(adj_faces, faces, vertices, 15))
 		print(neighbor_faces_normals(normals, adj_faces, 15))
@@ -731,14 +737,14 @@ class Bifurcation:
 		for i in range(len(end_crsec)):
 			center = (np.array(end_crsec[i][0]) + end_crsec[i][int(len(end_crsec[i])/2)])/2.0 # Compute the center of the section
 			for j in range(len(end_crsec[i])):
-				end_crsec[i][j] = self.__intersection(mesh, center, end_crsec[i][j])
+				end_crsec[i, j] = self.__intersection(mesh, center, end_crsec[i][j])
 
 		# Project connecting nodes
 		for i in range(len(nds)):
 			for j in range(len(nds[i])):
 				center = (np.array(nds[i][j][0]) + nds[i][j][int(len(nds[i][j])/2)])/2.0 # Compute the center of the section
 				for k in range(len(nds[i][j])):
-					nds[i][j][k] = self.__intersection(mesh, center, nds[i][j][k])
+					nds[i][j, k] = self.__intersection(mesh, center, nds[i][j][k])
 
 		# Project bifurcation plan
 		for i in range(len(bif_crsec)):

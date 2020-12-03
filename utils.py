@@ -169,7 +169,37 @@ def neighbor_faces(vertices, faces):
 
 		face_ids = np.where(faces == i)[0]
 		adj_faces[i, 0] = face_ids.shape[0]
-		adj_faces[i, 1:1 + face_ids.shape[0]] = face_ids
+
+		if face_ids.shape[0] == 4:
+
+			if np.intersect1d(faces[face_ids[1]], faces[face_ids[2]]).shape[0] == 2:
+				adj_faces[i, 1:1 + face_ids.shape[0]] = face_ids[[0,1,2,3]]
+			else: 
+				adj_faces[i, 1:1 + face_ids.shape[0]] = face_ids[[0,1,3,2]]
+
+		elif face_ids.shape[0] == 6:
+
+			if np.intersect1d(faces[face_ids[1]], faces[face_ids[3]]).shape[0] == 2:
+				adj_faces[i, 1:1 + 6] = face_ids[[0,1,3,2,5,4]]
+
+			elif np.intersect1d(faces[face_ids[1]], faces[face_ids[5]]).shape[0] == 2:
+				adj_faces[i, 1:1 + 6] = face_ids[[0,1,5,4,3,2]]
+
+			else: 
+				print("PROBLEM")
+		else: 
+			adj_faces[i, 1:1 + face_ids.shape[0]] = face_ids
+
+		"""		
+		# Teste l'ordre des faces
+			for j in range(face_ids.shape[0]):
+				j2 = j + 1
+				if j2 == face_ids.shape[0]:
+					j2 = 0
+				if np.intersect1d(faces[adj_faces[i, 1 + j]], faces[adj_faces[i, 1 + j2]]).shape[0] != 2:
+					print("PROBLEME!")
+					print(np.intersect1d(faces[adj_faces[i, 1 + j]], faces[adj_faces[i, 1 + j2]]).shape[0])
+		"""
 
 	return adj_faces
 
@@ -198,9 +228,20 @@ def neighbor_vertices_id(adj_faces, faces, id_vertice):
 
 	adj = []
 	for i in adj_faces[id_vertice, 1:1 + adj_faces[id_vertice, 0]]:
-		adj += faces[i, 1:].tolist()
+		face = faces[i, 1:].tolist()
+		ind = face.index(id_vertice)
+
+		if ind - 1 < 0:
+			adj.append(face[-1])
+		else:
+			adj.append(face[ind - 1])
+
+		if ind + 1 > 3:
+			adj.append(face[0])
+		else:
+			adj.append(face[ind + 1])
+
 	adj = np.unique(adj)
-	adj = adj[adj != id_vertice]
 
 	return adj
 

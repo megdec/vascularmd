@@ -95,8 +95,24 @@ def test_ogrid_pattern():
 	center2 = (crsec2[0] + crsec2[12])/2
 	
 	tree = ArterialTree("TestPatient", "BraVa")
-	tree.ogrid_pattern(center2, crsec2, [0.5, 0.4, 0.1], 5, 25)
+	tree.ogrid_pattern(24, center2, crsec2, [0.5, 0.4, 0.1], 5, 25)
 
+def test_bif_ogrid_pattern():
+
+	crsec24 = np.array([[28.472897149872587, 16.647843302505702, 25.447880980319386], [31.502682236294486, 18.33460378012935, 24.869209603934415], [28.56528143, 16.58960056, 25.01218854], [28.71130444, 16.57125149, 24.60448866], [28.91409403, 16.59404931, 24.22232322], [29.17878826, 16.66244053, 23.87075631], [29.5113068 , 16.78504919, 23.56896745], [29.907562686141308, 16.968895904030084, 23.353170324741292], [30.34150796, 17.21101339, 23.27230498], [30.75996517, 17.48903152, 23.36410605], [31.10246859, 17.76459016, 23.62221757], [31.33387429, 18.0031732 , 23.99636518], [31.4599088 , 18.19182849, 24.42393355], [28.34220219, 17.07771078, 25.43174422], [28.29583079, 17.51642797, 25.40261713], [28.34245508, 17.95534558, 25.35994537], [28.47570745, 18.38538174, 25.30539786], [28.72289127, 18.7738559 , 25.23767493], [29.117923855202317, 19.007499266473335, 25.161104275470123], [29.54503796, 19.14013629, 25.0881257 ], [29.98425684, 19.14023168, 25.02422383], [30.39964512, 19.03592831, 24.97232508], [30.78234036, 18.85951748, 24.9310783 ], [31.142985  , 18.62685482, 24.89763884], [28.6127879 , 16.4021492 , 25.84277083], [28.88617401, 16.21141298, 26.23739254], [29.28738932, 16.1065126 , 26.58848509], [29.7878501 , 16.11184639, 26.84898294], [30.33726855, 16.2365906 , 26.98005583], [30.879496054470728, 16.464770173411626, 26.972512755818382], [31.3602181 , 16.77777477, 26.8215766 ], [31.71637317, 17.1480424 , 26.52945955], [31.90482738, 17.52906104, 26.13371446], [31.91309777, 17.873516  , 25.68931998], [31.76222318, 18.14602388, 25.2536228 ]])
+	crsec32 = np.array([[28.472897149872587, 16.647843302505702, 25.447880980319386], [31.502682236294486, 18.33460378012935, 24.869209603934415], [28.53695265, 16.6002297 , 25.11822942], [28.63140865, 16.57541017, 24.80514352], [28.75699139, 16.57333665, 24.50676019], [28.91409403, 16.59404931, 24.22232322],[29.10633337, 16.64055209, 23.95491674],[29.33635974, 16.71629485, 23.71156018], [29.60489654, 16.82504979, 23.50495863], [29.907562686141308, 16.968895904030084, 23.353170324741292], [30.23199204, 17.14589528, 23.27741207], [30.55673645, 17.34773985, 23.29562693], [30.85487119, 17.55975331, 23.41415192],[31.10246859, 17.76459016, 23.62221757], [31.28676357, 17.94814397, 23.89558113], [31.40789093, 18.10335627, 24.20702618], [31.47606079, 18.23074765, 24.53492039], [28.36677038, 16.96912593, 25.43704896], [28.30802957, 17.29629106, 25.41884261], [28.2998665 , 17.6265537 , 25.39302533], [28.34245508, 17.95534558, 25.35994537], [28.43745032, 18.27738982, 25.31979344], [28.58445881, 18.58771236, 25.27303349], [28.80939071, 18.85120686, 25.21876688], [29.117923855202317, 19.007499266473335, 25.161104275470123], [29.43527451, 19.11983373, 25.10575331], [29.76590132, 19.15606586, 25.05469373], [30.09116786, 19.12283944, 25.01009338], [30.39964512, 19.03592831, 24.97232508], [30.68959182, 18.90962781, 24.94047322], [30.96393075, 18.74950435, 24.91365748], [31.23185437, 18.55983195, 24.89019113], [28.56562446, 16.45972526, 25.74254673], [28.7328811 , 16.29814806, 26.04245924], [28.97513612, 16.17592945, 26.33116808], [29.28738932, 16.1065126 , 26.58848509], [29.65584306, 16.09918042, 26.79494139], [30.06019109, 16.15943365, 26.93251798], [30.4751948 , 16.28545363, 26.99009698], [30.879496054470728, 16.464770173411626, 26.972512755818382], [31.24910851, 16.69278544, 26.87293781], [31.55666011, 16.95865236, 26.69087783], [31.78026465, 17.24422842, 26.43827591], [31.90482738, 17.52906104, 26.13371446], [31.92707236, 17.79303815, 25.80164819], [31.8554447 , 18.0203202 , 25.46722867],[31.70329565, 18.20010923, 25.15166022]])
+
+	center = (crsec24[0] + crsec24[1]) /2
+	tree = ArterialTree("TestPatient", "BraVa")
+	vertices = tree.bif_ogrid_pattern_vertices(center, crsec24, [0.5, 0.4, 0.1], 5, 25)
+	faces = tree.bif_ogrid_pattern_faces(24, 5, 25)
+
+	face_ord = tree.reorder_faces([[0, 1, 0], [1, 0, 1]], faces, 24, 5, 25)
+
+	for i in range(1, face_ord.shape[0] - 1, 20):
+		mesh = pv.PolyData(vertices, face_ord[:i])
+		mesh.plot(show_edges = True)
+	
 
 def test_deformation():
 
@@ -143,7 +159,7 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, bifurcation_model=False)
+	tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
@@ -155,14 +171,14 @@ def test_meshing():
 
 	print("plot mesh")
 	mesh.plot(show_edges=True)
-	#mesh.save("Results/mesh_surface.vtk")
+	mesh.save("Results/Aneurisk/mesh_surface.vtk")
 	#mesh.save("Results/mesh_surface.stl")
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 1, 1)
 	mesh = mesh.compute_cell_quality()
 	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
 	mesh.plot(show_edges=True, scalars= 'CellQuality')
-	mesh.save("Results/volume_mesh.vtk")
+	mesh.save("Results/Aneurisk/volume_mesh.vtk")
 
 
 
@@ -313,7 +329,7 @@ def test_Model():
 
 def test_brava():
 
-	for i in range(3,4):
+	for i in range(6,7):
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
@@ -327,7 +343,7 @@ def test_brava():
 		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
 	
 		t1 = time.time()
-		tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
+		tree.compute_cross_sections(32, 0.5, bifurcation_model=False)
 		t2 = time.time()
 		print("The cross section computation process took ", t2 - t1, "seconds." )
 
@@ -342,6 +358,7 @@ def test_brava():
 		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
+		
 	
 	
 def test_bifurcation_resampling():
@@ -371,7 +388,7 @@ def test_bifurcation_resampling():
 def test_nb_control_points():
 
 	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
-	tree.deteriorate_centerline(0.8, [0.0, 0.0, 0.0, 0.0])
+	tree.deteriorate_centerline(0.5, [0.01, 0.01, 0.01, 0.0])
 
 	crsec = tree.get_topo_graph()
 	D = crsec.edges[(1,2)]["coords"]
@@ -404,7 +421,8 @@ def test_nb_control_points():
 
 
 #test_tree_class()
-#test_ogrid_pattern()
+test_ogrid_pattern()
+#test_bif_ogrid_pattern()
 #test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
@@ -413,7 +431,7 @@ def test_nb_control_points():
 #test_quality_model3D()
 #test_Model()
 #test_fitting_angle()
-test_brava()
+#test_brava()
 #test_deformation()
 #test_bifurcation_resampling()
 #test_nb_control_points()

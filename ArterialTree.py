@@ -429,11 +429,11 @@ class ArterialTree:
 			S = bif.get_endsec()
 
 			# Add separation nodes with cross sections
-			G.add_node(n, coords = S[0][0], type = "sep", crsec = np.array(end_crsec[0]), id = count)
+			G.add_node(n, coords = S[0][0], type = "sep", crsec = end_crsec[0], id = count)
 			count += np.array(end_crsec[0]).shape[0]
-			G.add_node(bif_nds[i][1], coords = S[1][0], type = "sep", crsec = np.array(end_crsec[1]), id = count)
+			G.add_node(bif_nds[i][1], coords = S[1][0], type = "sep", crsec = end_crsec[1], id = count)
 			count += np.array(end_crsec[1]).shape[0]
-			G.add_node(bif_nds[i][2], coords = S[2][0], type = "sep", crsec = np.array(end_crsec[2]), id = count)
+			G.add_node(bif_nds[i][2], coords = S[2][0], type = "sep", crsec = end_crsec[2], id = count)
 			count += np.array(end_crsec[2]).shape[0]
 
 			# Add bifurcation node
@@ -441,11 +441,11 @@ class ArterialTree:
 			count += len(bif_crsec)
 				
 			# Add bifurcation edges
-			G.add_edge(n, nmax, spline = tspl[0], crsec = np.array(nds[0]), connect = connect_index[0], id = count)
+			G.add_edge(n, nmax, spline = tspl[0], crsec = nds[0], connect = connect_index[0], id = count)
 			count += np.array(nds[0]).shape[0] * np.array(nds[0]).shape[1]
-			G.add_edge(bif_nds[i][1], nmax, spline = tspl[1], crsec = np.array(nds[1]), connect = connect_index[1], id = count)
+			G.add_edge(bif_nds[i][1], nmax, spline = tspl[1], crsec = nds[1], connect = connect_index[1], id = count)
 			count += np.array(nds[1]).shape[0] * np.array(nds[1]).shape[1]
-			G.add_edge(bif_nds[i][2], nmax, spline = tspl[2], crsec = np.array(nds[2]), connect = connect_index[2], id = count)
+			G.add_edge(bif_nds[i][2], nmax, spline = tspl[2], crsec = nds[2], connect = connect_index[2], id = count)
 			count += np.array(nds[2]).shape[0] * np.array(nds[2]).shape[1]
 				
 			nmax = nmax + 1
@@ -504,6 +504,7 @@ class ArterialTree:
 
 						connect_index.append(min_ind)
 						min_ind  = min_ind  + 1
+					print(min_ind, connect_index)
 
 					list_connect.append(connect_index)
 
@@ -648,7 +649,6 @@ class ArterialTree:
 
 
 
-
 	def mesh_surface(self):
 
 		""" Meshes the surface of the arterial tree."""
@@ -707,6 +707,18 @@ class ArterialTree:
 
 			id_last_edge = id_edge + ((G.edges[e]['crsec'].shape[0] -1) * self._N)
 			connect = G.edges[e]['connect']
+			print("computed connections: ", connect)
+
+			pt = G.edges[e]['crsec'][-1, 0]
+			min_dist = 1000
+			for j in range(G.nodes[e[1]]['crsec'].shape[0]):
+				pt2 = G.nodes[e[1]]['crsec'][j]
+				dist = norm(pt - pt2)
+				if dist < min_dist:
+					min_dist = dist
+					min_ind = j
+			print("real connections: ", min_ind)
+
 			for i in range(G.edges[e]['crsec'].shape[1]):
 
 				if i == G.edges[e]['crsec'].shape[1] - 1:
@@ -750,7 +762,7 @@ class ArterialTree:
 		nx.set_node_attributes(G, None, name='id_volume')
 		count = 0
 		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
-		nb_nds_bif_ogrid = int(nb_nds_ogrid +  (self._N/2 - 1) * (num_a + num_b + 3) + (self._N - 4)/4 * (((self._N - 4)/4 -1)/2)) +2 ## WORKAROUND
+		nb_nds_bif_ogrid = int(nb_nds_ogrid +  (self._N/2 - 1) * (num_a + num_b + 3) + (self._N - 4)/4 * (((self._N - 4)/4 -1)/2))
 	
 
 		for n in G.nodes():
@@ -764,8 +776,12 @@ class ArterialTree:
 			G.edges[e]['id_volume'] = count
 			count += G.edges[e]['crsec'].shape[0] * nb_nds_ogrid
 
+		# Compute faces
+		f_ogrid = self.ogrid_pattern_faces(self._N, num_a, num_b)
+		f_bif_ogrid = self.bif_ogrid_pattern_faces(self._N, num_a, num_b)
+
+
 		# Add vertices and cells to the mesh
-		print(count)
 		vertices = np.zeros((count,3))
 		cells = np.zeros((count,9), dtype=int)
 		nb_cells = 0
@@ -781,9 +797,9 @@ class ArterialTree:
 			# First cross section
 			crsec = G.nodes[e[0]]['crsec']
 			center = G.nodes[e[0]]['coords'][:-1]
-			v, f_ogrid = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+			v = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)
 
-			vertices[id_first:id_first + nb_nds_ogrid, :] = np.array(v)
+			vertices[id_first:id_first + nb_nds_ogrid, :] = v
 			cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_first + f_ogrid[:,1:], id_edge + f_ogrid[:,1:]))
 			nb_cells += f_ogrid.shape[0]
 
@@ -792,10 +808,10 @@ class ArterialTree:
 
 				crsec = G.edges[e]['crsec'][i]
 				center = (crsec[0] + crsec[int(self._N/2)])/2.0
-				v, f_ogrid = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
+				v = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)	
 				id_crsec = id_edge + (i * nb_nds_ogrid)
 
-				vertices[id_crsec:id_crsec + nb_nds_ogrid, :] = np.array(v)
+				vertices[id_crsec:id_crsec + nb_nds_ogrid, :] = v
 
 			for i in range(G.edges[e]['crsec'].shape[0] - 1):
 
@@ -809,8 +825,9 @@ class ArterialTree:
 				center = (np.array(crsec[0]) + crsec[1])/2.0
 
 				# Mesh of the 3 half-sections
-				v, f_bif_ogrid = self.bif_ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)	
-				vertices[id_last:id_last + nb_nds_bif_ogrid, :] = np.array(v)
+		
+				v = self.bif_ogrid_pattern_vertices(center, np.array(crsec), layer_ratio, num_a, num_b)	
+				vertices[id_last:id_last + nb_nds_bif_ogrid, :] = v
 
 				# Get bifurcation half section id and orientation from connection information
 				connect = G.edges[e]['connect']
@@ -830,16 +847,16 @@ class ArterialTree:
 						h1 += [1, 0]
 					h.append(h1)
 
-				f_bif_ogrid = self.__reorder_faces(h, f_bif_ogrid)
-				cells[nb_cells: nb_cells + f_bif_ogrid.shape[0], :] = np.hstack((np.zeros((f_bif_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_bif_ogrid)[:,1:]))
-				nb_cells += f_bif_ogrid.shape[0]
+				f_ogrid_reorder = self.__reorder_faces(h, f_bif_ogrid, self._N, num_a, num_b)
+				cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_reorder)[:,1:]))
+				nb_cells += f_ogrid_reorder.shape[0]
 
 
 			else: 
 
 				crsec = G.nodes[e[1]]['crsec']
 				center = G.nodes[e[1]]['coords'][:-1]
-				v, f_ogrid_rot = self.ogrid_pattern(center, crsec, layer_ratio, num_a, num_b)
+				v = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)
 
 				# Reorder faces for rotation
 				quarter = [0, int(self._N/4), int(self._N/2), int(3* self._N/4)].index(G.edges[e]['connect'][0])
@@ -847,8 +864,10 @@ class ArterialTree:
 		
 				if start_face != 0:
 					f_ogrid_rot = np.vstack((f_ogrid[start_face:, :], f_ogrid[:start_face, :]))
+				else: 
+					f_ogrid_rot = f_ogrid
 
-				vertices[id_last:id_last + nb_nds_ogrid, :] = np.array(v)
+				vertices[id_last:id_last + nb_nds_ogrid, :] = v
 				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_rot)[:,1:]))
 				nb_cells += f_ogrid.shape[0]
 
@@ -862,7 +881,102 @@ class ArterialTree:
 
 
 
-	def bif_ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
+	def bif_ogrid_pattern(self, N, center, crsec, layer_ratio, num_a, num_b):
+
+
+		""" Computes the nodes of a O-grid pattern from the bifurcation separation nodes.
+
+		Keyword arguments: 
+		center -- center point of the cross section as numpy array
+		crsec -- list of cross section nodes as numpy array 
+		"""
+		vertices = self.bif_ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b) 
+		faces = self.bif_ogrid_pattern_faces(N, num_a, num_b)
+
+
+		return vertices, faces
+
+
+	def bif_ogrid_pattern_faces(self, N, num_a, num_b):
+
+
+		""" Computes the nodes of a O-grid pattern from the bifurcation separation nodes.
+
+		Keyword arguments: 
+		center -- center point of the cross section as numpy array
+		crsec -- list of cross section nodes as numpy array 
+		"""
+
+		# Get the suface nodes of each individual half section
+		Nh = int((N - 2) / 2) 
+		
+		#nb = int((N * (num_a + num_b + 3) + ((N - 4)/4)**2)/ 2)*3
+		nb = int(N/8) * (2 * (num_a + num_b + 2) + int(N/8))
+		faces = np.zeros((3, 2, nb, 5), dtype = int)
+			
+		shared_edge2 = []
+		count = 0
+
+		for h in range(3):
+
+			# Separate in quarters
+			for q in range(2):
+				nb_faces = 0
+
+				if q == 0:
+					# Point of the horizontal shared line
+					if h == 0:
+						nb_vertices = int(num_a + num_b + 2 + N/8 + 1)
+						shared_edge1 = list(range(count, count + nb_vertices))
+						center = shared_edge1[-1]
+					else: 
+						nb_vertices = int(num_a + num_b + 2 + N/8)
+						shared_edge1 = list(range(count, count + nb_vertices)) + [center]
+					
+					count += nb_vertices
+
+				for i in range(int(N/4)):
+					
+					# First half points	
+					if i <= int(N/8): 
+						if i == 0:
+							if h == 0:
+								nb_vertices = int(num_a + num_b + 2 + N/8)
+								ray_ind = list(range(count, count + nb_vertices)) + [shared_edge1[-i-1]]
+								count += nb_vertices
+								shared_edge2.append(ray_ind)
+							else: 
+								ray_ind = shared_edge2[q] # Common edge of the bifurcation plan
+
+						else:
+							nb_vertices = int(num_a + num_b + 2 + N/8)
+							ray_ind = list(range(count, count + nb_vertices)) + [shared_edge1[-i-1]]
+							count += nb_vertices
+
+						if i == int(N/8):
+							shared_edge3 = ray_ind[-int(N/8):]
+							
+					else: # Second half points
+						nb_vertices = int(num_a + num_b + 2)
+						ray_ind = list(range(count, count + nb_vertices)) + [shared_edge3[i-int(N/8)-1]]
+						count += nb_vertices
+
+					if i > 0:
+						for k in range(min([len(ray_prec)-1, len(ray_ind)-1])):
+							faces[h, q, nb_faces, :] = np.array([4, ray_prec[k], ray_ind[k], ray_ind[k+1], ray_prec[k+1]])
+							nb_faces += 1
+				
+					ray_prec = ray_ind[:]
+
+				for k in range(min([len(ray_ind)-1, len(shared_edge1)-1])):
+					faces[h, q, nb_faces, :] = np.array([4, ray_ind[k], shared_edge1[k], shared_edge1[k+1], ray_ind[k+1]])
+					nb_faces += 1
+
+
+		return faces
+
+
+	def bif_ogrid_pattern_vertices(self, center, crsec, layer_ratio, num_a, num_b):
 
 
 		""" Computes the nodes of a O-grid pattern from the bifurcation separation nodes.
@@ -877,33 +991,36 @@ class ArterialTree:
 			raise ValueError("The sum of the layer ratios must equal 1.")
 			
 		# Get the suface nodes of each individual half section
-		half_crsec =  []
-		N = int((len(crsec) - 2) / 3)
+		Nh = int((crsec.shape[0] - 2) / 3)
+		N = Nh * 2 + 2
+
+		nb_nds_ogrid = int(N * (num_a + num_b + 3) + ((N - 4)/4)**2)
+		nb_vertices = int(nb_nds_ogrid +  (N/2 - 1) * (num_a + num_b + 3) + (N - 4)/4 * (((N - 4)/4 -1)/2))
+
+		half_crsec =  np.zeros((3, Nh + 2, 3))
 		
-		half_crsec.append([crsec[0]] + crsec[2:N + 2] + [crsec[1]])
-		half_crsec.append([crsec[0]] + crsec[N + 2:(N * 2) + 2] + [crsec[1]])
-		half_crsec.append([crsec[0]] + crsec[(N*2) + 2:(N * 3) + 2] + [crsec[1]])
+		half_crsec[:, 0, :] = [crsec[0]] * 3
+		half_crsec[:, -1, :] = [crsec[1]] * 3
+		half_crsec[0, 1 : Nh + 1, :] = crsec[2:Nh + 2]
+		half_crsec[1, 1 : Nh + 1, :] = crsec[Nh + 2:(Nh * 2) + 2]
+		half_crsec[2, 1 : Nh + 1, :] = crsec[(Nh*2) + 2:(Nh * 3) + 2]
 
-		shared_edge2 = []
-		nds_full = []
-		vertices = []
+
+		vertices = np.zeros((nb_vertices, 3))
 		count = 0
-
-		N = N*2 + 2
-		for h in range(len(half_crsec)):
-
-			nds_half = []
+		for h in range(3):
 		
 			# Separate in quarters
-			quarters = np.array([half_crsec[h][:int(N/4)+1], half_crsec[h][int(N/4):][::-1]])
+			quarters = np.array([half_crsec[h,:int(N/4)+1], half_crsec[h, int(N/4):][::-1]])
+	
 
-			for q in range(len(quarters)):
+			for q in range(2):
 
 				# Computes the coordinates of the corners and the side nodes of the central square
 				square_corners = []
 				for n in [0, int(N/8), int(N/4)]:
 
-					v = quarters[q][n] - center
+					v = quarters[q, n] - center
 					pt = (center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist()
 					square_corners.append(pt)
 					
@@ -913,114 +1030,94 @@ class ArterialTree:
 
 				if q == 0:
 					# Point of the horizontal shared line
-					v = square_corners[2] - quarters[0][-1] # Direction of the ray
+					v = square_corners[2] - quarters[0, -1] # Direction of the ray
 					pb = quarters[0][-1] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+					if h == 0:
+						ray_vertices = lin_interp(quarters[0, -1], pb, num_a + 2)[:-1] + lin_interp(pb, square_corners[2], num_b + 2)[:-1] + lin_interp(square_corners[2], center, N/8 + 1)
+					else: 
+						ray_vertices = lin_interp(quarters[0, -1], pb, num_a + 2)[:-1] + lin_interp(pb, square_corners[2], num_b + 2)[:-1] + lin_interp(square_corners[2], center, N/8 + 1)[:-1]
+					vertices[count: count + len(ray_vertices)]  =  ray_vertices
+					count += len(ray_vertices)
 
-					ray_vertices = lin_interp(quarters[0][-1], pb, num_a + 2)[:-1] + lin_interp(pb, square_corners[2], num_b + 2)[:-1] + lin_interp(square_corners[2], center, N/8 + 1)
-					shared_edge1 = list(range(count, count + len(ray_vertices)))
-
-					vertices += ray_vertices
-					count += len(ray_vertices)	
-
-				nds_quarter = []
-				for i in range(len(quarters[q])-1):
+				for i in range(quarters.shape[1]-1):
 					
 					# First half points	
-					if i <= (len(quarters[q])-1) / 2: 
+					if i <= (quarters.shape[1]-1) / 2: 
 						
-						v = square_sides1[0][i] - quarters[q][i] # Direction of the ray
-						pb = quarters[q][i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+						v = square_sides1[0][i] - quarters[q, i] # Direction of the ray
+						pb = quarters[q, i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
 
 						if i == 0:
 							if h == 0:
-								ray_vertices = lin_interp(quarters[q][i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][i], num_b + 2)[:-1] + lin_interp(square_sides1[0][i], square_sides1[1][i], N/8 + 1)[:-1]
-								ray_ind = list(range(count, count + len(ray_vertices))) + [shared_edge1[-i-1]]
-								shared_edge2.append(ray_ind)
+								ray_vertices = lin_interp(quarters[q, i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][i], num_b + 2)[:-1] + lin_interp(square_sides1[0][i], square_sides1[1][i], N/8 + 1)[:-1]
 							else: 
 								ray_vertices = []
-								ray_ind = shared_edge2[q] # Common edge of the bifurcation plan
-
 						else:
-							ray_vertices = lin_interp(quarters[q][i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][i], num_b + 2)[:-1] + lin_interp(square_sides1[0][i], square_sides1[1][i], N/8 + 1)[:-1]
-							ray_ind = list(range(count, count + len(ray_vertices))) + [shared_edge1[-i-1]]
-
-						if i == (len(quarters[q])-1) / 2:
-							shared_edge3 = ray_ind[-int(N/8):]
-							
+							ray_vertices = lin_interp(quarters[q, i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][i], num_b + 2)[:-1] + lin_interp(square_sides1[0][i], square_sides1[1][i], N/8 + 1)[:-1]
 
 					else: # Second half points
 						
-						v = square_sides2[1][i-int(N/8)] - quarters[q][i] # Direction of the ray
-						pb = quarters[q][i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+						v = square_sides2[1][i-int(N/8)] - quarters[q, i] # Direction of the ray
+						pb = quarters[q, i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
 
-						ray_vertices = lin_interp(quarters[q][i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][i-int(N/8)], num_b + 2)[:-1]
-						ray_ind = list(range(count, count + len(ray_vertices))) + [shared_edge3[i-int(N/8)-1]]
-
-					nds_quarter.append(ray_ind)
-					vertices += ray_vertices
-					count += len(ray_vertices)
-
-				nds_quarter.append(shared_edge1)
-				nds_half.append(nds_quarter)
-			nds_full.append(nds_half)
-
-		# Get faces list
-		faces = []
-
-		for nds_half in nds_full:
-			faces_half = []
-
-			for nds in nds_half:
-				faces_quarter = []
-
-				for i in range(len(nds) - 1):
-					faces_ray = []
-					for j in range(min([len(nds[i])-1, len(nds[i+1])-1])):
-						faces_ray.append([4, nds[i][j], nds[i+1][j], nds[i+1][j+1], nds[i][j+1]])
-					faces_quarter.append(faces_ray)
-
-				faces_half.append(faces_quarter)
-			faces.append(faces_half)
- 
-
-		return vertices, faces
-
-	def __reorder_faces(self, h, f):
-				
-				
-		f_act = []
-		for s in range(2): # Both half-sections
+						ray_vertices = lin_interp(quarters[q, i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][i-int(N/8)], num_b + 2)[:-1]
 					
-			quarter = f[h[s][0]][h[s][1]]
-			for ray in quarter: # Iterate on the rays
-				for face in ray: # Iterate on the faces
-					# Get bifurcation faces
-					f_act.append(face) #[half][quarter][ray][face]
+					if len(ray_vertices) != 0:
+						vertices[count: count + len(ray_vertices)]  =  ray_vertices
+						count += len(ray_vertices)
 
-			# Reorder second quarter 
-			quarter = f[h[s][0]][h[s][2]][::-1]
-			for i in range(len(quarter)): # Iterate on the rays
+		return vertices
 
-				if i < len(quarter) / 2: # Long rays
-					for j in range(len(quarter[i])): # Iterate on the faces
-						face = quarter[i][j]
-						f_act.append([4, face[2] , face[1], face[4], face[3]])
 
-					for k in range(int(self._N/8)):
-						face = quarter[-int(self._N/8)+k][-i -1]
-						f_act.append([4, face[3] , face[2], face[1], face[4]])
 
+
+	def __reorder_faces(self, h, f, N, num_a, num_b):
+				
+		f_ord = np.zeros((2, f.shape[1], f.shape[2], f.shape[3]), dtype = int) 
+
+		nb_short =  num_a + num_b + 2
+		nb_long = num_a + num_b + 2 + int(N/8)
+
+	
+		for s in range(2): # Both half-sections
+
+			# Write first quarter
+			f_ord[s, 0] = f[h[s][0], h[s][1]]
+			f_ord[s, 0, :, 0] = [4] * f_ord.shape[2]
+			
+			# Reorder second quarter
+			ind1 = 0
+			ind2 = 0
+			
+			for i in range(int(N/4)): # Inverse the rays of faces
+				
+				if i < int(N/8):
+	
+					if ind2 == 0:
+						f_ord[s, 1, ind1:ind1 + nb_short , :] = np.transpose(f[h[s][0], h[s][2], -(nb_short + ind2):, [0, 2, 1, 4, 3]]) # Inverse rays
+					else: 
+						f_ord[s, 1, ind1:ind1 + nb_short , :] = np.transpose(f[h[s][0], h[s][2], -(nb_short + ind2):-ind2, [0, 2, 1, 4, 3]]) # Inverse rays
+					ind1 += nb_long 
+					ind2 += nb_short
+				
 				else:
+					if i == int(N/8):
+						ind2 = ind2 + int(N/8)
 
-					for j in range(len(quarter[i]) - int(self._N/8)): # Iterate on the faces
-						face = quarter[i][j]
-						f_act.append([4, face[2] , face[1], face[4], face[3]])
+					f_ord[s, 1, ind1:ind1 + nb_short , :] = np.transpose(f[h[s][0], h[s][2], -(nb_short + ind2):-ind2, [0, 2, 1, 4, 3]]) # Inverse rays
 
-		return np.array(f_act)
+					for j in range(int(N/8)):
+						f_ord[s, 1, j*(nb_long-1) + nb_short + j + i - int(N/8) , :] = np.transpose(f[h[s][0], h[s][2], -(ind2 + j -int(N/8) +1),[0, 3, 2, 1, 4]])
+					
+
+					ind1 += nb_short
+					ind2 += nb_long
+	
+		return f_ord.reshape((-1, 5))
 
 
 
-	def ogrid_pattern(self, center, crsec, layer_ratio, num_a, num_b):
+	def ogrid_pattern(self, N, center, crsec, layer_ratio, num_a, num_b):
 
 		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
 
@@ -1033,18 +1130,37 @@ class ArterialTree:
 		if sum(layer_ratio) != 1.0:
 			raise ValueError("The sum of the layer ratios must equal 1.")
 		
-		count = 0
+		vertices = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)
+		faces = self.ogrid_pattern_faces(N, num_a, num_b)
 
-		vertices = []
-		nds = []
+		return vertices, faces
 
-		N = len(crsec)
-	
+
+
+
+	def ogrid_pattern_vertices(self, center, crsec, layer_ratio, num_a, num_b):
+
+		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
+
+		Keyword arguments: 
+		center -- center point of the cross section as numpy array
+		crsec -- list of cross section nodes as numpy array
+		layer_ratio, num_a, num_b -- parameters of the O-grid
+		"""
+
+		if sum(layer_ratio) != 1.0:
+			raise ValueError("The sum of the layer ratios must equal 1.")
+		
+		
+		N = crsec.shape[0]
+		nb_vertices = int(N * (num_a + num_b + 3) + ((N - 4)/4)**2)
+
+		vertices = np.zeros((nb_vertices, 3))
+		
 		# Get the symmetric nodes of the pattern
 		sym_nodes = np.array([0, int(N/8), int(N/4)])
+		count = 0
 
-		shared_edge1 = []
-		
 		for s in range(4): # For each quarter
 			j = 0
 
@@ -1072,53 +1188,93 @@ class ArterialTree:
 
 					if s != 0 and j == 0:
 						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1]  # Shared square
-						ray_ind = list(range(count, count + len(ray_vertices))) + shared_edge1[::-1] # Common nodes of the previous quarter
-						shared_edge1 = [ray_ind[-1]]
 
 					elif s==3:
 						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)[:-1]
-						ray_ind = list(range(count, count + len(ray_vertices))) + [nds[0][-j - 1]] # Common nodes to close the circle
+						
 					else:
 						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1] + lin_interp(square_sides1[0][j], square_sides1[1][j], N/8 + 1)
-						ray_ind = list(range(count, count + len(ray_vertices)))
-						shared_edge1.append(ray_ind[-1]) # Store the indices of the shared nodes
-
-					if j == int(N/8):
-						shared_edge2 = ray_ind[-int(N/8):]
-						
 
 				else: 
 					v = square_sides2[1][j-int(N/8)] - crsec[i] # Direction of the ray
 					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
 
 					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][j-int(N/8)], num_b + 2)[:-1]
-					ray_ind = list(range(count, count + len(ray_vertices))) + [shared_edge2[j-int(N/8)-1]]
-
-				vertices += ray_vertices
-				nds.append(ray_ind)
+					
+				vertices[count: count + len(ray_vertices)]  = ray_vertices
 				count += len(ray_vertices)
 
 				j = j + 1
 
 			sym_nodes = sym_nodes + int(N/4)
-			
+
+		
+		return np.array(vertices)
 
 
-		# Get faces list
-		faces = []
-		for i in range(len(nds)):
 
-			if i != N - 1:
-				i2 = i+1
-			else:
-				i2 = 0
+	def ogrid_pattern_faces(self, N, num_a, num_b):
 
-			for j in range(min([len(nds[i])-1, len(nds[i2])-1])):
-					faces.append([4, nds[i][j], nds[i2][j], nds[i2][j+1], nds[i][j+1]])
- 
+		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
 
-		return np.array(vertices), np.array(faces)
+		Keyword arguments: 
+		N -- number of nodes of the cross section
+		num_a, num_b -- parameters of the O-grid
+		"""
 
+		count = 0
+		tot_faces = int(N/8) * (2 * (num_a + num_b + 2) + int(N/8)) * 4
+		faces = np.zeros((tot_faces, 5), dtype = int)
+
+		shared_edge1 = []
+		nb_faces = 0
+
+		for s in range(4): # For each quarter
+			j = 0
+
+			for i in range(int(s * N/4), int((s+1) * N/4)):
+
+				# First half points	
+				if j <= int(N/8): 
+				
+					if s != 0 and j == 0:
+						nb_vertices = int(num_a + num_b + 2)
+						ray_ind = list(range(count, count + nb_vertices)) + shared_edge1[::-1] # Common nodes of the previous quarter
+						shared_edge1 = [ray_ind[-1]]
+
+					elif s==3:
+						nb_vertices = int(num_a + num_b + 2 + N/8)
+						ray_ind = list(range(count, count + nb_vertices)) + [first_ray[-j - 1]] # Common nodes to close the circle
+					else:
+						nb_vertices = int(num_a + num_b + 3 + N/8)
+						ray_ind = list(range(count, count + nb_vertices))
+						shared_edge1.append(ray_ind[-1]) # Store the indices of the shared nodes
+					
+					if j == int(N/8):
+						shared_edge2 = ray_ind[-int(N/8):]
+						
+				else: 
+				
+					nb_vertices = num_a + num_b + 2
+					ray_ind = list(range(count, count + nb_vertices)) + [shared_edge2[j-int(N/8)-1]]
+
+				if s==0 and j == 0:
+					first_ray = ray_ind
+					ray_prec = ray_ind
+				else:
+					for k in range(min([len(ray_prec)-1, len(ray_ind)- 1])):
+						faces[nb_faces, :] = np.array([4, ray_prec[k], ray_ind[k], ray_ind[k+1], ray_prec[k+1]])
+						nb_faces += 1
+					
+				count += nb_vertices
+				ray_prec = ray_ind
+				j = j + 1
+
+		for k in range(min([len(ray_ind)-1, len(first_ray) - 1])):
+			faces[nb_faces, :] = np.array([4, ray_ind[k], first_ray[k], first_ray[k+1], ray_ind[k+1]])
+			nb_faces += 1
+
+		return faces
 
 
 
@@ -1246,21 +1402,18 @@ class ArterialTree:
 			self._crsec_graph.edges[e]['crsec'] = new_crsec
 
 			# Get the end cross section
+			crsec = self._crsec_graph.nodes[e[1]]['crsec']
 			if self._crsec_graph.nodes[e[1]]['type'] == "bif": # If bifurcation
-				crsec = np.array(self._crsec_graph.nodes[e[1]]['crsec'])
 				center = self._crsec_graph.nodes[e[1]]['coords']
 			else:
-				crsec = self._crsec_graph.nodes[e[1]]['crsec']
 				center = (crsec[0] + crsec[int(crsec.shape[0]/2)])/2.0
+
 			new_crsec = np.zeros([crsec.shape[0], 3])
 
 			for i in range(crsec.shape[0]):
 				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i])
-			
-			if self._crsec_graph.nodes[e[1]]['type'] == "bif": # If bifurcation
-				self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec.tolist()    
-			else :
-				self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
+
+			self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
 
 
 	def __intersection(self, mesh, center, coord):
