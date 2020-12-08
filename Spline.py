@@ -270,7 +270,8 @@ class Spline:
 
 				if (alpha < thres or beta < thres) and not derivatives:
 
-					print(alpha, beta)
+					#print(alpha, beta)
+					#print(end_constraint[1], end_constraint[-2])
 					if end_constraint[1]:
 						if alpha >= thres:
 							end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * alpha
@@ -286,7 +287,7 @@ class Spline:
 
 					spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], True, lbd)
 					spatial_model = self.__optimize_model(spatial_model, criterion)
-					print(spatial_model.get_magnitude())
+					#print(spatial_model.get_magnitude())
 
 			# Curvature optimization 
 			if curvature: 
@@ -847,31 +848,33 @@ class Spline:
 		spl -- Spline object
 		t0, t1 -- Times in between the search occurs
 		"""
-		
+
+		t1 = self.length_to_time(self.radius(0) * 10)
 		tg1 = self.tangent(t1)
+
 		v = cross(tg1, np.array([1,0,0]))
 		v = v / norm(v)
+		
+		# Search angles
+		n_angles = 60
+		angles = np.linspace(0,2*pi, n_angles)
+		res = np.zeros((n_angles, 5))
 
+		
+		for i in range(n_angles):
 
-		tmax = 0.0
-		angle = np.linspace(0,2*pi, 60)
-
-		for a in angle:
-
-			vrot = rotate_vector(v, tg1, a)
+			vrot = rotate_vector(v, tg1, angles[i])
 			ap, times = self.intersection(spl, vrot, t0, t1)
 
-			if sum(times)/2 > tmax:
-				tmax = sum(times)/2
+			res[i, :2] = times
+			res[i, 2:] = ap
 
-				AP = ap
-				tAP = times
+		# Analyze the results
+		measure = res[:, 0] / max(res[:,0]) + res[:, 1] / max(res[:,1])
+		ind = np.argmax(measure)
 
-
-		return np.array(AP), tAP
+		return res[ind, 2:], res[ind, :2]
 	
-
-
 
 	def intersection(self, spl, v0, t0, t1):
 

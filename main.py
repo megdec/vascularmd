@@ -329,7 +329,7 @@ def test_Model():
 
 def test_brava():
 
-	for i in range(6,7):
+	for i in [3]:
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
@@ -343,23 +343,44 @@ def test_brava():
 		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
 	
 		t1 = time.time()
-		tree.compute_cross_sections(32, 0.5, bifurcation_model=False)
+		tree.compute_cross_sections(16, 0.8, bifurcation_model=False)
 		t2 = time.time()
 		print("The cross section computation process took ", t2 - t1, "seconds." )
+		file = open("Results/BraVa/crsec/P" + str(i) + ".obj", 'wb') 
+		pickle.dump(tree, file)
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
-		mesh.save("Results/BraVa/surface/P" + str(i) + ".vtk")
+		mesh.save("Results/BraVa/surface/P" + str(i) + "_corrected.vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-	
+		
+		"""
 		t1 = time.time()
 		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
+		"""
 		
+def meshing_brava():
+
+	file = open("Results/BraVa/crsec/P6.obj", 'rb') 
+	tree = pickle.load(file)
 	
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+
+	mesh.save("Results/BraVa/surface/P6.vtk")
+	t2 = time.time()
+	print("The surface meshing process took ", t2 - t1, "seconds." )
+	"""
+	t1 = time.time()
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+	mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
+	t2 = time.time()
+	print("The surface meshing process took ", t2 - t1, "seconds." )
+	"""
 	
 def test_bifurcation_resampling():
 
@@ -373,6 +394,7 @@ def test_bifurcation_resampling():
 	# Initial surface mesh
 	init_mesh = bif.mesh_surface()
 	init_mesh.plot(show_edges=True)
+	init_mesh.save('Results/Bifurcation/bifurcation.ply')
 
 	# Smooth 
 	bif.smooth(5)
@@ -421,7 +443,7 @@ def test_nb_control_points():
 
 
 #test_tree_class()
-test_ogrid_pattern()
+#test_ogrid_pattern()
 #test_bif_ogrid_pattern()
 #test_meshing()
 #test_bifurcation_smoothing()
@@ -432,7 +454,8 @@ test_ogrid_pattern()
 #test_Model()
 #test_fitting_angle()
 #test_brava()
+#meshing_brava()
 #test_deformation()
-#test_bifurcation_resampling()
+test_bifurcation_resampling()
 #test_nb_control_points()
 #test_bifurcation_class()

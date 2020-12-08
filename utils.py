@@ -41,6 +41,32 @@ def rotate_vector(v, axis, theta):
 	return dot(R, v)
 
 
+def angle(v1, v2, axis = None, signed = False):
+
+	if axis is not None: 
+		# Compute angle on the plane of normal axis
+		v1 = v1 - dot(v1, axis / norm(axis))
+		v2 = v2 - dot(v2, axis / norm(axis))
+
+	if signed:
+
+		sign = np.sign(np.cross(v1, v2).dot(axis))
+		# 0 means collinear: 0 or 180. Let's call that clockwise.
+		if sign == 0:
+			sign = 1
+	else: 
+		sign = 1
+
+	x = dot(v1, v2) / (norm(v1) * norm(v2))
+
+	if x > 1.0:
+		x = 1.0
+
+	if x < -1.0:
+		x = -1.0
+
+	return sign * acos(x)
+
 
 def directed_angle(v1, v2, u):
 
@@ -95,24 +121,6 @@ def directed_angle_negative(v1, v2, u):
 	else: 
 		return - acos(x)
 
-
-
-def angle(v1, v2):
-
-	"""
-	Return the angle between v1 and v2.
-
-	Keywords arguments:
-	v1, v2 -- vectors
-	"""
-
-	if dot(v1, v2) / (norm(v1) * norm(v2)) < -1:
-		theta = acos(-1)
-		
-	else:
-		theta = acos(dot(v1, v2) / (norm(v1) * norm(v2)))
-
-	return  theta
 
 
 

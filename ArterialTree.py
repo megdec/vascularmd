@@ -235,7 +235,6 @@ class ArterialTree:
 			self._spline_graph.add_edge(e[0], e[1], spline = spl, coords = G.edges[e]['coords']) 
 			
 
-
 	def __end_conditions(self):
 
 		G = self._topo_graph.copy()
@@ -257,7 +256,7 @@ class ArterialTree:
 
 
 
-	def __bifurcation_point_estimation(self, edges, node):
+	def __bifurcation_point_estimation(self, edges, node, pos = None):
 
 		B = self._topo_graph.nodes[node]['coords'][:-1]
 
@@ -274,59 +273,35 @@ class ArterialTree:
 		D2 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords']))
 		spl2 = Spline()
 		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False)
-			
+		
 		# Find the separation point between the splines
-		for pos in [np.mean(pts0[:,-1])]:
-		#r = np.mean(pts0[:,-1])
+		if pos is None:
+			pos = np.mean(pts0[:,-1])
 
-			#pts0 = self._topo_graph.edges[edges[0]]['coords']
-			#pts1 = self._topo_graph.edges[edges[1]]['coords']
-			#pts2 = self._topo_graph.edges[edges[2]]['coords']
+		t1 = spl1.project_point_to_centerline(B) 
+		t2 = spl2.project_point_to_centerline(B)
 
-			t1 = spl1.project_point_to_centerline(B) 
-			t2 = spl2.project_point_to_centerline(B)
+		t1 = spl1.length_to_time(spl1.time_to_length(t1) - pos)
+		t2 =  spl2.length_to_time(spl2.time_to_length(t2) - pos)	
 
-			t1 = spl1.length_to_time(spl1.time_to_length(t1) - pos)
-			t2 =  spl2.length_to_time(spl2.time_to_length(t2) - pos)	
+		# Get bifurcation coordinates and tangent
+		tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
+		pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
 
-			# Get bifurcation coordinates and tangent
-			tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
-			pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
-
-			# Remove the points of the main branch further than the separation point
-			for i in range(len(pts0)):
-				t = spl1.project_point_to_centerline(pts0[-1][:-1]) 
+		# Remove the points of the main branch further than the separation point
+		for i in range(len(pts0)):
+			t = spl1.project_point_to_centerline(pts0[-1][:-1]) 
 					
-				if t > t1:
+			if t > t1:
 
-					pts1 = np.vstack((pts0[-1], pts1))
-					pts2 = np.vstack((pts0[-1], pts2))
-					pts0 = pts0[:-1]
+				pts1 = np.vstack((pts0[-1], pts1))
+				pts2 = np.vstack((pts0[-1], pts2))
+				pts0 = pts0[:-1]
 								
-				else: break
-
-			#print(pos, self.__bifucation_point_evaluation(pts0, pts1, pts2, pt, tg))
+			else: break
 
 		return [pts0, pts1, pts2], pt, tg 
 
-
-	def __bifucation_point_evaluation(self, pts0, pts1, pts2, pt, tg):
-
-		magnitude = []
-
-		spl1 = Spline()
-		spl1.approximation(pts0, [False, False, True, True], np.vstack((np.zeros((2,4)), tg, pt)), False, False)
-		magnitude.append(norm(spl1.first_derivative(1.0)))
-
-		spl2 = Spline()
-		spl2.approximation(pts1, [True, True, False, False], np.vstack((pt, tg, np.zeros((2,4)))), False, False)
-		magnitude.append(norm(spl2.first_derivative(0.0)))
-
-		spl3 = Spline()
-		spl3.approximation(pts2, [True, True, False, False], np.vstack((pt, tg, np.zeros((2,4)))), False, False)
-		magnitude.append(norm(spl3.first_derivative(0.0)))
-
-		return magnitude
 
 
 	#####################################
@@ -487,15 +462,14 @@ class ArterialTree:
 					for i in [0, int(N/4), int(N/2), int(3* N/4)]: #range(N)
 
 						v = crsec1[i] - G.nodes[e[1]]['coords'][:-1]
-						a = directed_angle_negative(v01, v, tg1)
+						a = angle(v01, v, axis = tg1, signed =True)
 
 						if abs(a) < abs(min_a):
 							min_a = a
 							min_ind = i
-
-					args.append([spl, num, N, v0 / norm(v0), min_a])
-					#crsec = self.__segment_crsec(spl, num, N, v0 = v0 / norm(v0), alpha = min_a)
 					
+					args.append([spl, num, N, v0 / norm(v0), min_a])
+
 					connect_index = []
 					for i in range(N):
 
@@ -504,7 +478,7 @@ class ArterialTree:
 
 						connect_index.append(min_ind)
 						min_ind  = min_ind  + 1
-					print(min_ind, connect_index)
+				
 
 					list_connect.append(connect_index)
 
@@ -707,17 +681,7 @@ class ArterialTree:
 
 			id_last_edge = id_edge + ((G.edges[e]['crsec'].shape[0] -1) * self._N)
 			connect = G.edges[e]['connect']
-			print("computed connections: ", connect)
 
-			pt = G.edges[e]['crsec'][-1, 0]
-			min_dist = 1000
-			for j in range(G.nodes[e[1]]['crsec'].shape[0]):
-				pt2 = G.nodes[e[1]]['crsec'][j]
-				dist = norm(pt - pt2)
-				if dist < min_dist:
-					min_dist = dist
-					min_ind = j
-			print("real connections: ", min_ind)
 
 			for i in range(G.edges[e]['crsec'].shape[1]):
 
