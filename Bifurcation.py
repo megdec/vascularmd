@@ -395,7 +395,11 @@ class Bifurcation:
 						j2 = 0
 					else:
 						j2 = j + 1
-					faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])	
+			
+					if e != 0: 
+						faces.append([4, ind_dep + j, len(vertices) + j,  len(vertices) + j2, ind_dep + j2])
+					else: # Flip normals
+						faces.append([4, ind_dep + j, ind_dep + j2, len(vertices) + j2, len(vertices) + j])
 
 				ind_dep = len(vertices)
 				vertices += v_act.tolist()
@@ -411,8 +415,11 @@ class Bifurcation:
 				else:
 					j2 = j + 1
 					j3 = connect[j+1] 
-			
-				faces.append([4, ind_dep + j, connect[j], j3, ind_dep + j2])
+				
+				if e != 0:
+					faces.append([4, ind_dep + j, connect[j], j3, ind_dep + j2])
+				else: # Flip normals
+					faces.append([4, ind_dep + j, ind_dep + j2, j3, connect[j]])
 
 		mesh = pv.PolyData(np.array(vertices), np.array(faces))
 		#mesh.plot(show_edges = True)
@@ -485,7 +492,8 @@ class Bifurcation:
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
 		 #self.smooth(1)#self.R
-		self.local_smooth(1)
+		#self.local_smooth(0)
+		
 		return self._crsec
 
 
@@ -589,7 +597,8 @@ class Bifurcation:
 		v1 = P1 - self._B
 		v2 = P2 - self._B
 
-		theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
+		#theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
+		theta = angle(v1, v2)/ (n+1) * np.arange(1, n + 1) 
 
 		# Computing nodes using t and theta parameters
 		nds = np.zeros((n, 3))
@@ -689,15 +698,16 @@ class Bifurcation:
 		vertices = mesh.points
 		faces = mesh.faces.reshape(-1, 5)
 		normals = mesh.face_normals
-		print(normals, normals.shape)
+		#print(normals, normals.shape)
 
 		adj_faces = neighbor_faces(vertices, faces)
 
 		# Example use
-		print(adj_faces[:5])
-		print(neighbor_vertices_id(adj_faces, faces, 15))
-		print(neighbor_vertices_coords(adj_faces, faces, vertices, 15))
+		#print(adj_faces[:5])
+		#print(neighbor_vertices_id(adj_faces, faces, 15))
+		#print(neighbor_vertices_coords(adj_faces, faces, vertices, 15))
 		print(neighbor_faces_normals(normals, adj_faces, 15))
+		print(neighbor_faces_normals(normals, adj_faces, 0))
 
 		# Compute the angle between the neighbor faces of every point
 
