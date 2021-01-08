@@ -56,7 +56,7 @@ class Model:
 		self._N, self._Q1, self._Delta, self._Q2, self._Pt = self.__compute_matrices()
 		self.P = self.__solve_system()
 	
-		self.spl = Spline(self.P.tolist(), self._knot, self._p)
+		self.spl = Spline(self.P, self._knot, self._p)
 
 	def get_t(self):
 		return self._t

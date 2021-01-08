@@ -194,48 +194,101 @@ class ArterialTree:
 
 	def spline_approximation(self):
 
-		""" Approximate centerlines using splines and sets the attribute spline-graph.
-		"""
+		""" Approximate centerlines using splines and sets the attribute spline-graph """
 
 		print('Modeling the network with splines...')
 
-		G = self.__end_conditions()
+		# Fill the spline graph using data graph
+		self.__set_data_graph()
+		G = self._data_graph
+
 		self._spline_graph = nx.DiGraph()
 
 		for e in G.edges():
 
-			pts = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
-			
-			while len(pts) < 3:
-				# Linearly interpolate data
-				pts = np.array(linear_interpolation(pts, 1))
-
-			values = np.zeros((4,4))
-			constraint = [False] * 4
-
-			if G.nodes[e[0]]['type'] == "bif":
-				values[0,:] = pts[0]
-				constraint[0] = True
-				values[1,:] = G.nodes[e[0]]['tangent']
-				constraint[1] = True
-	
-			if G.nodes[e[1]]['type'] == "bif":
-				values[-1,:] =  pts[-1]
-				constraint[-1] = True
-				values[-2,:] = G.nodes[e[1]]['tangent']
-				constraint[-2] = True
-
-			spl = Spline()
-			spl.approximation(pts, constraint, values, False)
-
+			spl = self.__spline_approximation_edge(e)
 
 			# Add edges with spline attributes
 			self._spline_graph.add_node(e[0], coords = spl.point(0.0, True), type = G.nodes[e[0]]['type'])
 			self._spline_graph.add_node(e[1], coords = spl.point(1.0, True), type = G.nodes[e[1]]['type'])
-			self._spline_graph.add_edge(e[0], e[1], spline = spl, coords = G.edges[e]['coords']) 
+			self._spline_graph.add_edge(e[0], e[1], spline = spl) 
+
+
+		# compute apex and correct the bifurcation position
+		G = self._spline_graph
+
+		for n in G.nodes():
+			if G.nodes[n]['type'] == "bif":
+
+				# Compute apex of the bifurcation
+				e = list(G.in_edges(n)) + list(G.out_edges(n))
+				AP, times = G.edges[e[-2]]['spline'].first_intersection(G.edges[e[-1]]['spline'])
+
+				# Distance from the bifurcation point
+				dist = norm(AP - G.nodes[n]['coords'][:-1])
+
+				if False: #abs(dist - G.nodes[n]['coords'][-1] * 2) > G.nodes[n]['coords'][-1]/2 : # Misplaced node
+					print("Readjusting bifurcation point", abs(dist - G.nodes[n]['coords'][-1] * 2), G.nodes[n]['coords'][-1] * 2)
+					# Recompute the bifurcation position
+					pts, pt, tg  = self.__bifurcation_point_estimation(n, e, pos = G.nodes[n]['coords'][-1] * 2)
+
+					# Modify the data graph consequently
+					self._data_graph.nodes[n]['coords'] = pt
+					self._data_graph.nodes[n]['tangent'] = tg
+
+					self._data_graph.edges[e[0]]['coords'] = pts[0]
+					self._data_graph.edges[e[1]]['coords'] = pts[1]
+					self._data_graph.edges[e[2]]['coords'] = pts[2]
+
+					# Recompute the 3 splines 
+					self._spline_graph.edges[e[0]]['spline'] = self.__spline_approximation_edge(e[0])
+					self._spline_graph.edges[e[1]]['spline'] = self.__spline_approximation_edge(e[1])
+					self._spline_graph.edges[e[2]]['spline'] = self.__spline_approximation_edge(e[2])
+
+					# Recompute apex
+					AP, times = G.edges[e[-2]]['spline'].first_intersection(G.edges[e[-1]]['spline'])
+
+				self._spline_graph.nodes[n]['apex'] = [AP, times]
 			
 
-	def __end_conditions(self):
+
+	def __spline_approximation_edge(self, e):
+
+		""" Approximate centerlines using splines foe a given edge of the spline-graph """
+
+		G = self._data_graph
+
+		pts = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
+			
+		while len(pts) < 3:
+			# Linearly interpolate data
+			pts = np.array(linear_interpolation(pts, 1))
+
+		values = np.zeros((4,4))
+		constraint = [False] * 4
+
+		if G.nodes[e[0]]['type'] == "bif":
+			values[0,:] = pts[0]
+			constraint[0] = True
+			values[1,:] = G.nodes[e[0]]['tangent']
+			constraint[1] = True
+	
+		if G.nodes[e[1]]['type'] == "bif":
+			values[-1,:] =  pts[-1]
+			constraint[-1] = True
+			values[-2,:] = G.nodes[e[1]]['tangent']
+			constraint[-2] = True
+
+		spl = Spline()
+		spl.approximation(pts, constraint, values, False)
+
+		return spl
+
+
+
+	def __set_data_graph(self):
+
+		""" Write the graph of data points after re-estimation of the bifurcation point and tangent. """
 
 		G = self._topo_graph.copy()
 
@@ -243,7 +296,7 @@ class ArterialTree:
 			if self._topo_graph.nodes[n]['type'] == "bif":
 
 				edges = list(self._topo_graph.in_edges(n)) + list(self._topo_graph.out_edges(n))
-				pts, pt, tg = self.__bifurcation_point_estimation(edges, n)
+				pts, pt, tg = self.__bifurcation_point_estimation(n, edges)
 			
 				# Update bifurcation point information
 				G.add_node(n, coords = pt, tangent = tg, type = "bif")
@@ -252,11 +305,19 @@ class ArterialTree:
 				G.add_edge(*edges[1], coords = pts[1])
 				G.add_edge(*edges[2], coords = pts[2])
 
-		return G
+		self._data_graph = G
 
 
 
-	def __bifurcation_point_estimation(self, edges, node, pos = None):
+	def __bifurcation_point_estimation(self, node, edges, pos = None):
+
+		""" Re-estimate the bifurcation point and tangent from the topo graph.
+
+		Keyword arguments:
+		node -- bifurcation node to be reestimated
+		pos -- distance of the reestimated bifurcation point from the original bifurcation
+		"""
+
 
 		B = self._topo_graph.nodes[node]['coords'][:-1]
 
@@ -353,8 +414,8 @@ class ArterialTree:
 				for e in self._spline_graph.out_edges(n): # Out splines
 					spl_out.append(self._spline_graph.edges[e]['spline'])
 
-				# Find apex
-				AP, times = spl_out[0].first_intersection(spl_out[1])
+				# Get apex
+				AP, times = self._spline_graph.nodes[n]['apex'] #spl_out[0].first_intersection(spl_out[1])
 
 				i = 0
 				for e in self._spline_graph.out_edges(n):
@@ -380,9 +441,9 @@ class ArterialTree:
 
 				# Compute bifurcation object
 				if bifurcation_model : 
-					bif = Bifurcation(S0, S[0], S[1], 1, AP = AP)
+					bif = Bifurcation(np.array([S0, S[0], S[1]]), 1, AP = AP)
 				else: 
-					bif = Bifurcation(S0, S[0], S[1], 1, spl = spl_bif, AP = AP)
+					bif = Bifurcation(np.array([S0, S[0], S[1]]), 1, spl = spl_bif, AP = AP)
 				#bif.show(True)
 				args.append((bif, N, d))
 				bif_nds.append([n, nmax - 2, nmax - 1])

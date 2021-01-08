@@ -30,7 +30,7 @@ class Spline:
 			#if len(control_points[0]) != 3 and len(control_points[0]) != 4:
 			#	raise ValueError ('The spline control points must have dimension 3 (x, y, z) or  (x, y, z, r).')
 
-			self._spl.ctrlpts = control_points
+			self._spl.ctrlpts = control_points.tolist()
 
 			if order is not None:
 				self._spl.order = order

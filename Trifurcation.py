@@ -14,7 +14,7 @@ from utils import *
 from Spline import Spline
 
 
-class Bifurcation:
+class Trifurcation:
 
 
 	#####################################
@@ -28,7 +28,7 @@ class Bifurcation:
 		
 		# Set user paramaters
 
-		self._endsec = S # Cross sections of main and daughter branches
+		self._endsec = S # Cross sections of main and daughter branches as a numpy array
 		self.R = R  # Minimum curvature for rounded apex
 		self._crsec = None
 
@@ -88,7 +88,7 @@ class Bifurcation:
 	#####################################
 
 
-	def set_R(self, R):
+	def set_R(self, R): #OK
 
 		""" Set the R parameter of the bifurcation."""
 
@@ -96,7 +96,7 @@ class Bifurcation:
 
 
 
-	def set_spl(self, spl):
+	def set_spl(self, spl): #OK
 
 		""" Public setter for the bifurcation splines."""
 
@@ -111,7 +111,7 @@ class Bifurcation:
 
 
 
-	def __set_spl(self, r=1.5):
+	def __set_spl(self, r=1.5): #OK
 
 
 		""" Set the shape splines of the bifurcation.
@@ -123,83 +123,95 @@ class Bifurcation:
 		p0 = self._endsec[0][0] + r * self._endsec[0][1]
 		p1 = self._endsec[1][0] - r * self._endsec[1][1]
 		p2 = self._endsec[2][0] - r * self._endsec[2][1]
+		p3 = self._endsec[3][0] - r * self._endsec[3][1]
+
+		spl1 = Spline(np.array([self._endsec[0][0], p0, p1, self._endsec[1][0]]))
+		spl2 = Spline(np.array([self._endsec[0][0], p0, p2, self._endsec[2][0]]))
+		spl3 = Spline(np.array([self._endsec[0][0], p0, p3, self._endsec[3][0]]))
+
+		self._spl = [spl1, spl2, spl3]
+
+
+
+	def __set_AP(self): #OK
+
+		""" Set the coordinates of the apex points and the times at apex. Reorder the splines if required. """
+		AP = np.zeros((3,3,3)) # Apex table
+		tAP = np.zeros((3,3)) # Time table
+
+		for i in range(3):
+			for j in range(3):
+				if j > i:
+					# Compute apex
+					AP_tmp, tAP_tmp = self._spl[i].first_intersection(self._spl[j])
+					AP[i, j, :] = AP_tmp
+					AP[j, i, :] = AP_tmp
+					tAP[i, j] = tAP_tmp[0]
+					tAP[j, i] = tAP_tmp[1]
 		
-		spl1 = Spline(np.vstack([self._endsec[0][0], p0, p1, self._endsec[1][0]]))
-		spl2 = Spline(np.vstack([self._endsec[0][0], p0, p2, self._endsec[2][0]]))
+		ind = np.array([np.argmax(tAP[i]) for i in range(3)])	
+		unique, counts = np.unique(ind, return_counts=True)
 
-		self._spl = [spl1, spl2]
-
-
-
-	def __set_AP(self):
-
-		""" Set the coordinates of the apex point parameter and the times at apex. """
-
-		AP, tAP = self._spl[0].first_intersection(self._spl[1])
-
-		self._AP = AP 
-		self._tAP = tAP
+		if np.any(counts>1):
+			middle_spl = unique[np.where(counts>1)[0][0]]
+		else:
+			raise ValueError(' Non coplanar trifurcation')
 
 
-	def __set_tAP(self):
+
+		# Set AP and tAP attributes
+		self._AP = [AP[0, 1,:], AP[1, 2,:]]
+		self._tAP = [[tAP[0,1], tAP[1,0]], [tAP[1,2], tAP[2,1]]]
+
+		# Permute splines
+		if middle_spl !=1:
+
+			# Swap splines
+			self._spl[1], self._spl[middle_spl] = self._spl[middle_spl], self._spl[1]
+
+			# Swap cross sections
+			S_tmp = self._endsec[2][:].copy()
+			self._endsec[2] = self._endsec[middle_spl + 1]
+			self._endsec[middle_spl + 1] = S_tmp
+
+
+			if middle_spl == 2:
+				# Set AP and tAP attributes
+				self._AP = [AP[0, 2,:], AP[2, 1,:]]
+				self._tAP = [[tAP[0,2], tAP[2,0]], [tAP[2,1], tAP[1,2]]]
+			else: 
+
+				# Set AP and tAP attributes
+				self._AP = [AP[1, 0,:], AP[0, 2,:]]
+				self._tAP = [[tAP[1,0], tAP[0,1]], [tAP[0,2], tAP[2,0]]]
+
+		
+
+	def __set_tAP(self): #OK
 
 		""" Set the times at apex. """
 
-		tAP = []
-		for i in range(len(self._spl)):
-			tAP.append(self._spl[i].project_point_to_centerline(self._AP))
+		tAP = [[self._spl[0].project_point_to_centerline(self._AP[0]), self._spl[1].project_point_to_centerline(self._AP[0])]]
+		tAP.append([self._spl[1].project_point_to_centerline(self._AP[1]), self._spl[2].project_point_to_centerline(self._AP[2])])
 
 		self._tAP = tAP
 
 
 
-	def __find_intersection(self, v0):
-
-		""" Returns the intersection time between the shape splines, given a initial vector v0.
-
-		Keywords arguments: 
-		v0 -- reference vector for the search
-		"""
-
-		t0 = 0.0
-		t1 = 1.0
-
-		while abs(t1 - t0) > 10**(-2):
-
-			t = (t1 + t0) / 2.
-			
-			v = self._spl[0].transport_vector(v0, 1.0, t)
-			pt = self._spl[0].project_time_to_surface(v, t) 
-			
-			t2 = self._spl[1].project_point_to_centerline(pt)
-			pt2 = self._spl[1].point(t2, True)
-
-			if norm(pt - pt2[:-1]) <= pt2[-1]:
-				t0 = t
-			else: 
-				t1 = t
-
-		return pt, [t, t2]
-
-
-
-	def __set_SP(self):
+	def __set_SP(self): #OK?
 
 		""" Set the coordinates of the separation points SP of the bifurcation. """
 
 		SP = np.zeros((2,3))
 		i = 0
-		for ind in [[0, 1], [1, 0]]:
+		for ind in [[0, 1, 2], [2, 1, 0]]:
 		
 			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
-			#t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() -  2*self._spl[ind[0]].radius(self._tAP[ind[0]]))
-			#if t<0:
-			#	t = 0.5
 
-			ptAP = self._spl[ind[0]].point(self._tAP[ind[0]])
-			nAP = self._AP - ptAP
+			ptAP = self._spl[ind[0]].point(self._tAP[i][i])
+			nAP = self._AP[i] - ptAP
 
-			nAP0 = self._spl[ind[0]].transport_vector(nAP, self._tAP[ind[0]], 1.0) 
+			nAP0 = self._spl[ind[0]].transport_vector(nAP, self._tAP[i][i], 1.0) 
 			nS = self._spl[ind[0]].transport_vector(-nAP0, 1.0, t) 
 		
 
@@ -213,46 +225,51 @@ class Bifurcation:
 
 
 
-	def __set_B(self):
+	def __set_B(self): #OK
 
 		""" Set the coordinates of the geometric center of the bifurcation. """
 
-		self._B = (self._SP[0] + self._SP[1] + self._AP) / 3.0
+		self._B = (self._SP[0] + self._SP[1] + self._AP[0] + self._AP[1]) / 4.0
 
 
 
-	def __set_CP(self):
+	def __set_CP(self): #OK
 
 		""" Set the coordinates of the common points CP of the bifurcation. """
 
-		n = cross(self._AP - self._SP[0], self._AP - self._SP[1])
-		n = n / norm(n)
+		n1 = cross(self._AP[0] - self._SP[0], self._AP[0] - self._SP[1])
+		n1 = n1 / norm(n1)
 
-		self._CP = np.array([self.__send_to_surface(self._B, n, [0, 1]), self.__send_to_surface(self._B, -n, [0, 1])])
+		n2 = cross(self._AP[0] - self._SP[0], self._AP[0] - self._SP[1])
+		n2 = n2 / norm(n2)
+
+		n = (n1 + n2) / 2.0
+
+		self._CP = np.array([self.__send_to_surface(self._B, n, [0, 1, 2]), self.__send_to_surface(self._B, -n, [0, 1, 2])])
 
 
 
-
-	def __set_tspl(self, r=6):
+	def __set_tspl(self, r=6): # OK
 
 		""" Set the coordinates of the trajectory splines. """
 
 		tspl = []
-		for i in range(3):
+		for i in range(4):
+
+			tg0 = tg0 = -self._endsec[i][1][:-1]
 
 			if i == 0:
-				tg1 = (cross(self._CP[0] - self._B, self._SP[0] - self._B) + cross(self._SP[1] - self._B, self._CP[0]  - self._B)) / 2.0
-				tg0 = self._endsec[i][1][:-1]
+				tg1 = ((self._SP[0] - self._B) + (self._SP[1] - self._B)) / 2.0
+				tg0 = -tg0
+
+			elif i == 1:
+				tg1 = ((self._SP[0] - self._B) + (self._AP[0] - self._B)) / 2.0 
 
 			elif i == 2:
-
-				tg1 = (cross(self._CP[0] - self._B, self._SP[1] - self._B) + cross(self._AP - self._B, self._CP[0]  - self._B)) / 2.0
-				tg0 = -self._endsec[i][1][:-1]
-
-			else: 
-				tg1 = (cross(self._CP[0] - self._B, self._AP - self._B) + cross(self._SP[0] - self._B, self._CP[0]  - self._B)) / 2.0
-				tg0 =  -self._endsec[i][1][:-1]
-				
+				tg1 = ((self._AP[0] - self._B) + (self._AP[1] - self._B)) / 2.0 
+			
+			else:
+				tg1 = ((self._AP[1] - self._B) + (self._SP[1] - self._B)) / 2.0 
 
 			p0 = self._endsec[i][0][:-1]
 			p1 = self._B
@@ -262,12 +279,14 @@ class Bifurcation:
 
 			pint0 = np.array(p0) + tg0 * (d/r) / norm(tg0)
 			pint1 = np.array(p1) +  tg1 * (d/r) / norm(tg1)
+
 			P = np.vstack([p0, pint0,  pint1, p1])
 			P = np.hstack((P, np.zeros((4,1))))
-		
+
 			tspl.append(Spline(P))
 
 		self._tspl = tspl
+
 
 
 	def set_crsec(self, mesh):
@@ -277,11 +296,11 @@ class Bifurcation:
 		# Get points and re-order them in the original structure
 		bif_crsec = mesh.points[:len(pts[1])].tolist() # Fill bifurcation
 		end_crsec = []
-		nds = [[], [], []]
+		nds = [[], [], [], []]
 		N = len(pts[0][0])
 
 		j = len(pts[1])
-		for s in range(3):
+		for s in range(4):
 			end_crsec.append(mesh.points[j:j+N].tolist()) # Fill end_sections
 			j += N
 
@@ -291,7 +310,7 @@ class Bifurcation:
 
 		self._crsec[0] = np.array(end_crsec)
 		self._crsec[1] = np.array(bif_crsec)
-		self._crsec[2] = [np.array(nds[0]), np.array(nds[1]), np.array(nds[2])]
+		self._crsec[2] = [np.array(nds[0]), np.array(nds[1]), np.array(nds[2]), np.array(nds[3])]
 
 
 
@@ -317,15 +336,17 @@ class Bifurcation:
 				ax.plot(points[:,0], points[:,1], points[:,2])
 
 			# Plot the trajectory splines 
-			for s in self._tspl:
-				points = s.get_points()
-				ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
+			#for s in self._tspl:
+			#	points = s.get_points()
+			#	ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
 
 			# Plot key points 
-			ax.scatter(self._AP[0], self._AP[1], self._AP[2], c='red', s = 40)
+			ax.scatter(self._AP[0][0], self._AP[0][1], self._AP[0][2], c='red', s = 40)
+			ax.scatter(self._AP[1][0], self._AP[1][1], self._AP[1][2], c='red', s = 40)
 			ax.scatter(self._B[0], self._B[1], self._B[2], c='black', s = 40)
 			ax.scatter(self._CP[:, 0], self._CP[:, 1], self._CP[:, 2], c='blue', s = 40)
 			ax.scatter(self._SP[:, 0], self._SP[:, 1], self._SP[:, 2], c='green', s = 40)
+
 
 			if nodes: 
 
@@ -339,6 +360,7 @@ class Bifurcation:
 				ax.scatter(nds[0,:,0], nds[0,:,1], nds[0,:,2],  c='black')
 				ax.scatter(nds[1,:,0], nds[1,:,1], nds[1,:,2],  c='black')
 				ax.scatter(nds[2,:,0], nds[2,:,1], nds[2,:,2],  c='black')
+				ax.scatter(nds[3,:,0], nds[3,:,1], nds[3,:,2],  c='black')
 
 				ax.scatter(nds[0,0,0], nds[0,0,1], nds[0,0,2],  c='blue')
 				ax.scatter(nds[0,-1,0], nds[0,-1,1], nds[0,-1,2],  c='red')
@@ -378,7 +400,7 @@ class Bifurcation:
 
 		vertices += bif_crsec.tolist()
 		 
-		for e in range(3):
+		for e in range(4):
 
 			# Mesh the end cross section
 			v_prec = end_crsec[e]
@@ -427,6 +449,7 @@ class Bifurcation:
 
 		return mesh
 		
+		
 
 
 	def cross_sections(self, N, d):
@@ -456,27 +479,21 @@ class Bifurcation:
 		connect_index = []
 
 		nodes_num = np.arange(2, len(bif_crsec)).tolist()
-		l = int(len(nodes_num) / 3)
-		ind = [nodes_num[:l], nodes_num[l:2*l], nodes_num[2*l:3*l]]
+		l = int(len(nodes_num) / 4)
+		#ind = nodes_num.reshape((4, -1))
+		ind = [nodes_num[:l], nodes_num[l:2*l], nodes_num[2*l:3*l], nodes_num[3*l:4*l]]
 
-		connect_index.append([1] + ind[0][::-1] + [0] + ind[2])
+		connect_index.append([1] + ind[0][::-1] + [0] + ind[3])
 		connect_index.append([1] + ind[0][::-1] + [0] + ind[1])
 		connect_index.append([1] + ind[1][::-1] + [0] + ind[2])
+		connect_index.append([1] + ind[2][::-1] + [0] + ind[3])
 		
 	
 		# Compute connecting nodes
 		nds = []
+		ind = [[0,1,2], [0,1,2], [1,0,2], [2,1,0]]
 
-		for i in range(3):
-
-			if i == 0:
-				ind = [0, 1]
-
-			elif i == 1:
-				ind = [0, 1]
-
-			else:
-				ind = [1, 0]
+		for i in range(4):
 
 			num = int(self._tspl[i].length() / (self._endsec[i][0][-1] * d))
 
@@ -487,13 +504,12 @@ class Bifurcation:
 			nds_seg = np.zeros((num, N, 3))
 		
 			for j in range(N):
-				nds_seg[:, j, :] = self.__bifurcation_connect(i, ind, end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
+				nds_seg[:, j, :] = self.__bifurcation_connect(i, ind[i], end_crsec[i][j], bif_crsec[connect_index[i][j]], num)  
 
 			nds.append(nds_seg)
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		 #self.smooth(1)#self.R
-		#self.local_smooth(0)
+		self.smooth(1)
 		
 		return self._crsec
 
@@ -521,9 +537,10 @@ class Bifurcation:
 
 		pint0 = P0 +  tg0 * (d/6) / norm(tg0)
 		pint1 = P1 +  tg1 * (d/6) / norm(tg1)
-		P = [P0.tolist() + [0.0], pint0.tolist() + [0.0],  pint1.tolist() + [0.0], P1.tolist() + [0.0]]
+		P = np.vstack([P0, pint0,  pint1, P1])
+		P = np.hstack((P, np.zeros((4,1))))
 		
-		tsplsurf = Spline(np.array(P))
+		tsplsurf = Spline(P)
 		tsamp = tsplsurf.resample_time(n)
 		pts = []
 		for t in tsamp:
@@ -551,7 +568,7 @@ class Bifurcation:
 
 
 
-	def __separation_section(self, N):
+	def __separation_section(self, N): #OK
 
 
 		""" Returns the nodes of the separation plan.
@@ -560,31 +577,25 @@ class Bifurcation:
 		N -- number of nodes in a section (multiple of 4)
 		"""
 
-		nds = np.zeros((2 + (N//2 - 1) * 3,3))
+		nds = np.zeros((2 + (N//2 - 1) * 4,3))
 		nds[:2] = self._CP
 	
 		n = N//4 - 1
 
 		j = 2
-		for i in range(3):
+		P = [self._SP[0], self._AP[0], self._AP[1], self._SP[1]]
+		for i in range(4):
 
-			if i == 0:
-				P = self._SP[0]
-			elif i == 1:
-				P = self._AP
-			else: 
-				P = self._SP[1]
-
-			nds[j: j + n] = self.__separation_segment(self._CP[0], P, n)
-			nds[j + n] = P
-			nds[j+n+1: j + 2*n +1] = self.__separation_segment(P, self._CP[1], n) 
+			nds[j: j + n] = self.__separation_segment(self._CP[0], P[i], n)
+			nds[j + n] = P[i]
+			nds[j+n+1: j + 2*n +1] = self.__separation_segment(P[i], self._CP[1], n) 
 			j += 2*n + 1
 			
 		return nds
 
 
 
-	def __separation_segment(self, P1, P2, n):
+	def __separation_segment(self, P1, P2, n): #OK
 
 
 		""" Returns the nodes of the half section between p1 and p2
@@ -598,15 +609,14 @@ class Bifurcation:
 		v1 = P1 - self._B
 		v2 = P2 - self._B
 
-		#theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
-		theta = angle(v1, v2)/ (n+1) * np.arange(1, n + 1) 
+		theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
 
 		# Computing nodes using t and theta parameters
 		nds = np.zeros((n, 3))
 		for i in range(n):
 
 			n = rotate_vector(v1, cross(v1, v2), theta[i])
-			nds[i] = self.__send_to_surface(self._B, n, [0,1])
+			nds[i] = self.__send_to_surface(self._B, n, [0,1,2])
 
 		return nds
 
@@ -621,18 +631,16 @@ class Bifurcation:
 		N -- number of nodes in a section (multiple of 4)
 		"""
 		
-		nds = np.zeros((3,N,3))
+		nds = np.zeros((4,N,3))
 
-		
-		for i in range(3):
+		for i in range(4):
 
-			
 			if i == 0:
-				
+			
 				# Reference vector
 				tS = self._tspl[0].project_point_to_centerline(self._SP[1])
 				ptS = self._tspl[0].point(tS)
-				nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0) 
+				nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0)
 				ref = cross(self._endsec[0][1][:-1], nS)
 
 			elif i == 1:
@@ -643,13 +651,21 @@ class Bifurcation:
 				nS = self._spl[0].transport_vector(self._SP[0] - ptS, tS, 1.0)
 				ref = cross(nS, self._endsec[1][1][:-1])
 
+			elif i == 2:
+
+				# Reference vector
+				tS = self._spl[1].project_point_to_centerline(self._AP[0])
+				ptS = self._spl[1].point(tS)
+				nS = self._spl[1].transport_vector(self._AP[0] - ptS, tS, 1.0)
+				ref = cross(nS, self._endsec[2][1][:-1])
+
 			else:
 				
 				# Reference vector
-				tS = self._spl[1].project_point_to_centerline(self._SP[1])
-				ptS = self._spl[1].point(tS)
-				nS = self._spl[1].transport_vector(self._SP[1] - ptS, tS, 1.0)
-				ref = cross(self._endsec[2][1][:-1], nS)
+				tS = self._spl[2].project_point_to_centerline(self._SP[1])
+				ptS = self._spl[2].point(tS)
+				nS = self._spl[2].transport_vector(self._SP[1] - ptS, tS, 1.0)
+				ref = cross(self._endsec[3][1][:-1], nS)
 
 			ref = ref / norm(ref)
 			angle_list = (2 * pi / N) * np.arange(N)
@@ -685,13 +701,13 @@ class Bifurcation:
 
 
 
-	def local_smooth(self, max_angle, type_curvature = 'Mean'):
+
+	def local_smooth(self, max_angle):
 
 		""" Localy smoothes the bifurcation"""
-
 		if self._crsec == None:
 			raise ValueError('Please first perform cross section computation.')
-		else:
+		else: 
 			pts = self._crsec
 
 		mesh = self.mesh_surface()
@@ -699,54 +715,30 @@ class Bifurcation:
 		vertices = mesh.points
 		faces = mesh.faces.reshape(-1, 5)
 		normals = mesh.face_normals
+		print(normals, normals.shape)
+
 		adj_faces = neighbor_faces(vertices, faces)
+
+		# Example use
+		print(adj_faces[:5])
+		print(neighbor_vertices_id(adj_faces, faces, 15))
+		print(neighbor_vertices_coords(adj_faces, faces, vertices, 15))
+		print(neighbor_faces_normals(normals, adj_faces, 15))
 
 		# Compute the angle between the neighbor faces of every point
 
-		angle_max_tot = 10
-		k = 0
+		# If the angle is > max_angle select the points for smoothing
 
-		while angle_max_tot > max_angle and k < 100:
+		# For every selected points, get the coordinates of the neighbors
+			# coords =  neighbor_vertices_coords(adj_faces, faces, vertices, id_point)
+		# Compute the barycenter, compute the new coordinates of the points
 
-			angle_max_tot = 0
-			sommets = np.copy(vertices)
-			mesh.points = vertices
-			normals = mesh.face_normals
-			curvature = mesh.curvature(type_curvature)
-			curvature_abs = abs(curvature)
-			max_curv = np.max(curvature_abs)
-			min_curv = np.min(curvature_abs)
-
-			for x in range(len(vertices)):
-				neighbor_normals = neighbor_faces_normals(normals, adj_faces, x)
-				coord_neighbor = neighbor_vertices_coords(adj_faces, faces, vertices, x)
-				id_neighbor = neighbor_vertices_id(adj_faces, faces, x)
-				angle_max = 0
-				for i in range(len(neighbor_normals)):
-					if i == len(neighbor_normals)-1:
-						angle1 = angle(neighbor_normals[i], neighbor_normals[0])
-					else:
-						angle1 = angle(neighbor_normals[i], neighbor_normals[i+1])
-					if angle1 > angle_max:
-						angle_max = angle1
-
-				if angle_max > angle_max_tot:
-					angle_max_tot = angle_max
-
-				coeff = (curvature_abs[x] - min_curv)/(max_curv - min_curv)
-				coord = [(1-coeff)* vertices[x, 0] + (coeff)*np.mean(coord_neighbor[:,0]),(1-coeff)* vertices[x, 1] + (coeff)*np.mean(coord_neighbor[:,1]),(1-coeff)* vertices[x, 2] + coeff* np.mean(coord_neighbor[:,2])]
-				sommets[x,:] = coord
-
-			print(angle_max_tot)
-			vertices = np.copy(sommets)
-			k += 1
-
-
-		mesh.points = vertices
+		# Replace them in the mesh 
 
 		# Replace the cross sections
 		self.set_crsec(mesh)
 
+		# Enjoy a smooth bifurcation
 
 
 
@@ -820,8 +812,15 @@ class Bifurcation:
 		t = self._spl[ind[1]].project_point_to_centerline(pt)
 		pt2 = self._spl[ind[1]].point(t, True)
 		
-		if norm(pt - pt2[:-1]) -  pt2[-1] < -10**(-3):
+		if norm(pt - pt2[:-1]) < pt2[-1]:
 			pt = self.__projection(pt, n, 0.0, 5.0, ind[1])
+
+		# Check distance to spl3
+		t = self._spl[ind[2]].project_point_to_centerline(pt)
+		pt3 = self._spl[ind[2]].point(t, True)
+		
+		if norm(pt - pt3[:-1]) < pt3[-1]:
+			pt = self.__projection(pt, n, 0.0, 5.0, ind[2])
 
 		return pt
 
@@ -843,7 +842,7 @@ class Bifurcation:
 		# Checking inital born
 		if c1<c0:
 			raise ValueError("We must have c1>c0.")
-
+		
 		t = self._spl[ind].project_point_to_centerline(O + c1 * n)
 		pt = self._spl[ind].point(t, True)
 

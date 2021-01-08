@@ -6,6 +6,7 @@ import pyvista as pv
 from geomdl import BSpline, operations
 
 from Bifurcation import Bifurcation
+from Trifurcation import Trifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
@@ -26,10 +27,29 @@ def test_bifurcation_class():
 	bif = Bifurcation(S0, S1, S2, 0.5)
 
 	mesh = bif.mesh_surface()
-	bif.local_smooth(0)
+	#bif.local_smooth(0)
 	print(mesh.faces.reshape(int(mesh.faces.shape[0]/5), 5))
+	quality(mesh, display=True, metric='scaled_jacobian')
 	mesh.plot(show_edges=True)
-	mesh.save("Results/bifurcation.vtk")
+	#mesh.save("Results/bifurcation.vtk")
+
+
+def test_trifurcation_class():
+
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+	S3 = (np.array(S1) + np.array(S2)) / 2
+	S3[0] = S3[0] + 4* S3[1]
+	S3 = S3.tolist()
+
+
+	trif = Trifurcation(np.array([S0, S3, S2, S1]), 0.5)
+	mesh = trif.mesh_surface()
+	mesh.plot(show_edges=True)
+
+
+
 
 
 def test_bifurcation_smoothing():
@@ -407,6 +427,32 @@ def test_bifurcation_resampling():
 	resampled_mesh.plot(show_edges=True)
 
 
+def test_bifurcation_local_smooth():
+
+	# Create a bifurcation
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+
+	bif = Bifurcation(S0, S1, S2, 0.5)
+
+	# Initial surface mesh
+	init_mesh = bif.mesh_surface()
+	init_mesh.plot(show_edges=True)
+
+	init_mesh['curvature'] = np.abs(init_mesh.curvature())
+
+	# Smooth 		
+	p = pv.Plotter()
+	p.add_mesh(init_mesh, scalars = 'curvature')
+	p.show()
+
+	bif.local_smooth(0.8)
+	smooth_mesh = bif.mesh_surface()
+	smooth_mesh.plot(show_edges=True)
+
+
+
 def test_nb_control_points():
 
 	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
@@ -456,6 +502,8 @@ def test_nb_control_points():
 #test_brava()
 #meshing_brava()
 #test_deformation()
-test_bifurcation_resampling()
+#test_bifurcation_resampling()
+#test_bifurcation_local_smooth()
 #test_nb_control_points()
 #test_bifurcation_class()
+test_trifurcation_class()
