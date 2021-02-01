@@ -39,12 +39,13 @@ class Bifurcation:
 		else:
 			self.__set_spl()
 
-		if len(AP)!= 0:
+		if len(AP) != 0:
 			self._AP = AP # Apex coords (np array)
 			self.__set_tAP() # Times at apex
 
 		else:
 			self.__set_AP() # Apex point (np array)
+
 
 		self.__set_SP() # Separation points (np array)
 		self.__set_B() # Geometric center (np array)
@@ -80,6 +81,16 @@ class Bifurcation:
 	def get_tAP(self):
 		return self._tAP
 
+	def get_apex_curve(self):
+
+		if self._crsec == None: 
+			raise ValueError('Please first compute cross sections.')
+		else: 
+			N = self._crsec[2][1].shape[1]
+			nds1 = self._crsec[2][1][:, int(3*N/4)]
+			nds2 = self._crsec[2][2][:, int(N/4)]
+
+		return np.vstack((nds1, self._AP, nds2[::-1]))
 
 
 
@@ -150,36 +161,6 @@ class Bifurcation:
 			tAP.append(self._spl[i].project_point_to_centerline(self._AP))
 
 		self._tAP = tAP
-
-
-
-	def __find_intersection(self, v0):
-
-		""" Returns the intersection time between the shape splines, given a initial vector v0.
-
-		Keywords arguments: 
-		v0 -- reference vector for the search
-		"""
-
-		t0 = 0.0
-		t1 = 1.0
-
-		while abs(t1 - t0) > 10**(-2):
-
-			t = (t1 + t0) / 2.
-			
-			v = self._spl[0].transport_vector(v0, 1.0, t)
-			pt = self._spl[0].project_time_to_surface(v, t) 
-			
-			t2 = self._spl[1].project_point_to_centerline(pt)
-			pt2 = self._spl[1].point(t2, True)
-
-			if norm(pt - pt2[:-1]) <= pt2[-1]:
-				t0 = t
-			else: 
-				t1 = t
-
-		return pt, [t, t2]
 
 
 
@@ -343,6 +324,9 @@ class Bifurcation:
 				ax.scatter(nds[0,0,0], nds[0,0,1], nds[0,0,2],  c='blue')
 				ax.scatter(nds[0,-1,0], nds[0,-1,1], nds[0,-1,2],  c='red')
 
+				nds = self.get_apex_curve()
+				ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='yellow', s = 40)
+
 
 		# Set the initial view
 		ax.view_init(90, -90) # 0 is the initial angle
@@ -429,7 +413,7 @@ class Bifurcation:
 		
 
 
-	def cross_sections(self, N, d):
+	def cross_sections(self, N, d, end_ref = [None, None, None]):
 
 
 		""" Returns the nodes of the surface mesh ordered by transverse sections
@@ -450,7 +434,7 @@ class Bifurcation:
 
 		# Get separation section nodes and end section nodes
 		bif_crsec = self.__separation_section(N)
-		end_crsec = self.__end_sections(N)
+		end_crsec = self.__end_sections(N, end_ref)
 
 		# Write connectivity index
 		connect_index = []
@@ -612,7 +596,7 @@ class Bifurcation:
 
 
 
-	def __end_sections(self, N):
+	def __end_sections(self, N, end_ref=[None, None, None]):
 
 
 		""" Returns the nodes of end sections.
@@ -626,32 +610,37 @@ class Bifurcation:
 		
 		for i in range(3):
 
-			
-			if i == 0:
+			if end_ref[i] is not None: 
+				ref = end_ref[i]
+			else: 
 				
-				# Reference vector
-				tS = self._tspl[0].project_point_to_centerline(self._SP[1])
-				ptS = self._tspl[0].point(tS)
-				nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0) 
-				ref = cross(self._endsec[0][1][:-1], nS)
+				if i == 0:
+					
+					# Reference vector
+					tS = self._tspl[0].project_point_to_centerline(self._SP[1])
+					ptS = self._tspl[0].point(tS)
+					nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0) 
+					ref = cross(self._endsec[0][1][:-1], nS)
 
-			elif i == 1:
-				
-				# Reference vector
-				tS = self._spl[0].project_point_to_centerline(self._SP[0])
-				ptS = self._spl[0].point(tS)
-				nS = self._spl[0].transport_vector(self._SP[0] - ptS, tS, 1.0)
-				ref = cross(nS, self._endsec[1][1][:-1])
+				elif i == 1:
+					
+					# Reference vector
+					tS = self._spl[0].project_point_to_centerline(self._SP[0])
+					ptS = self._spl[0].point(tS)
+					nS = self._spl[0].transport_vector(self._SP[0] - ptS, tS, 1.0)
+					ref = cross(nS, self._endsec[1][1][:-1])
 
-			else:
-				
-				# Reference vector
-				tS = self._spl[1].project_point_to_centerline(self._SP[1])
-				ptS = self._spl[1].point(tS)
-				nS = self._spl[1].transport_vector(self._SP[1] - ptS, tS, 1.0)
-				ref = cross(self._endsec[2][1][:-1], nS)
+				else:
+					
+					# Reference vector
+					tS = self._spl[1].project_point_to_centerline(self._SP[1])
+					ptS = self._spl[1].point(tS)
+					nS = self._spl[1].transport_vector(self._SP[1] - ptS, tS, 1.0)
+					ref = cross(self._endsec[2][1][:-1], nS)
+
 
 			ref = ref / norm(ref)
+
 			angle_list = (2 * pi / N) * np.arange(N)
 
 			for j in range(N):
@@ -842,7 +831,7 @@ class Bifurcation:
 
 		# Checking inital born
 		if c1<c0:
-			raise ValueError("We must have c1>c0.")
+			return pt
 
 		t = self._spl[ind].project_point_to_centerline(O + c1 * n)
 		pt = self._spl[ind].point(t, True)

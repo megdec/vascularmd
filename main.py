@@ -24,12 +24,15 @@ def test_bifurcation_class():
 	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
 
 
-	bif = Bifurcation(S0, S1, S2, 0.5)
+	bif = Bifurcation(np.array([S0, S1, S2]), 0.5)
+	bif.cross_sections(24, 0.2)
+
 
 	mesh = bif.mesh_surface()
+	bif.show(nodes = True)
+
 	#bif.local_smooth(0)
-	print(mesh.faces.reshape(int(mesh.faces.shape[0]/5), 5))
-	quality(mesh, display=True, metric='scaled_jacobian')
+	#quality(mesh, display=True, metric='scaled_jacobian')
 	mesh.plot(show_edges=True)
 	#mesh.save("Results/bifurcation.vtk")
 
@@ -49,6 +52,20 @@ def test_trifurcation_class():
 	mesh.plot(show_edges=True)
 
 
+def test_trifurcation_nonplanar():
+
+	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
+	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
+	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
+	S3 = (np.array(S1) + np.array(S2)) / 2
+	S3[0] = S3[0] + 4* S3[1]
+	S3[0, :-1] = S3[0, :-1] + 3* np.array([0.2,0.8,0])
+	S3 = S3.tolist()
+
+
+	trif = Trifurcation(np.array([S0, S3, S2, S1]), 0.5)
+	mesh = trif.mesh_surface()
+	mesh.plot(show_edges=True)
 
 
 
@@ -349,33 +366,37 @@ def test_Model():
 
 def test_brava():
 
-	for i in [3]:
+	for i in [2]:
 
 		filename = "P" + str(i) + ".swc"
 		print(filename)
-		tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/" + filename)
-		#tree.write_vtk("full", "Results/BraVa/centerlines/P" + str(i) + ".vtk")
+		tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + filename)
+		tree.cut_branch((49,50), preserve_shape = False)
+		tree.write_vtk("topo", "Results/BraVa/registered/topo/P" + str(i) + ".vtk")
 		
+		#tree.show(False, False, False)
+	
 		t1 = time.time()
 		tree.spline_approximation()
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
-		tree.write_vtk("spline", "Results/BraVa/splines/P" + str(i) + ".vtk")
+		tree.write_vtk("spline", "Results/BraVa/registered/splines/P" + str(i) + ".vtk")
+		"""
 	
 		t1 = time.time()
-		tree.compute_cross_sections(16, 0.8, bifurcation_model=False)
+		tree.compute_cross_sections(24, 0.4, bifurcation_model=False)
 		t2 = time.time()
 		print("The cross section computation process took ", t2 - t1, "seconds." )
-		file = open("Results/BraVa/crsec/P" + str(i) + ".obj", 'wb') 
+		file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'wb') 
 		pickle.dump(tree, file)
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
-		mesh.save("Results/BraVa/surface/P" + str(i) + "_corrected.vtk")
+		mesh.save("Results/BraVa/registered/surface/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
 		
-		"""
+		
 		t1 = time.time()
 		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
@@ -384,17 +405,26 @@ def test_brava():
 		"""
 		
 def meshing_brava():
+	i = 2
 
-	file = open("Results/BraVa/crsec/P6.obj", 'rb') 
+	file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'rb') 
 	tree = pickle.load(file)
+	tree.show(False, True, False)
+	"""
+	tree.cut_branch((49,50), preserve_shape = False)
+	tree.write_vtk("spline", "Results/BraVa/registered/splines/remove_branchP" + str(i) + ".vtk")
+	
+	tree.compute_cross_sections(24, 0.4, bifurcation_model=False)
 	
 	t1 = time.time()
 	mesh = tree.mesh_surface()
 
-	mesh.save("Results/BraVa/surface/P6.vtk")
+	mesh.save("Results/BraVa/registered/surface/remove_branchP" + str(i) +".vtk")
 	t2 = time.time()
 	print("The surface meshing process took ", t2 - t1, "seconds." )
-	"""
+
+	
+	
 	t1 = time.time()
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
@@ -485,7 +515,82 @@ def test_nb_control_points():
 	plt.plot(range(5,80), distance)
 	plt.show()
 		
+
+def test_compare_image():
+
+	i = 5
+
+	filename = "P" + str(i) + ".swc"
+	print(filename)
+
+	#tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + filename)
+
+	#tree.spline_approximation()
+	#tree.write_vtk("spline", "Results/BraVa/registered/splines/P" + str(i) + ".vtk")
+
+	#tree.compute_cross_sections(16, 0.8, bifurcation_model=False)
+
+	#file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'wb') 
+	#pickle.dump(tree, file)
+
+	file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'rb') 
+	tree = pickle.load(file)
+	mesh = tree.mesh_surface()
+	mesh.save("Results/BraVa/registered/surface/P" + str(i) + ".vtk")
+
+	tree.compare_image("/home/decroocq/Documents/Thesis/Data/BraVa/MRA/renamed/MRA" + str(i) + ".nii.gz", data_type = "spline")
+
+
+def register_swc_nii():
+
+	import nibabel as nib
+
+	for i in range(1, 59):
+		try :
+			data = nib.load("/home/decroocq/Documents/Thesis/Data/BraVa/MRA/renamed/MRA" + str(i) +".nii.gz")
+		except:
+			print("File " + "MRA" + str(i) +".nii.gz"+" is missing")
+		else:
+
+			pix_dim = np.array(data.header['pixdim'][1:4]) # Dimensions
+			vox_dim = np.array(data.header['dim'][1:4])
+
+			dim = pix_dim * vox_dim
+			print(dim)
+
+			file_in = np.loadtxt("/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/" + "P" + str(i) + ".swc", skiprows=0)
+			file_out = open("/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + "P" + str(i) + ".swc", 'w') 
+
+			for j in range(0, file_in.shape[0]):
+
+				# Brava database conversion to nii (x, ysize- z, zsize - y)
+				txt = str(int(file_in[j, 0])) + '\t' + str(int(file_in[j, 1])) + '\t' + str(file_in[j, 2])
+				txt = txt + '\t' + str(dim[1] - file_in[j, 4]) + '\t' + str(dim[2] + file_in[j, 3]) + '\t' + str(file_in[j, 5]) 
+				txt = txt + '\t' + str(int(file_in[j, 6])) + '\n'
+
+				file_out.write(txt) 
+				
+
+		file_out.close()
+
+
+def register_centerlines():
+
+	for i in range(1,59):
+
+		filename = "P" + str(i) + ".swc"
+		print(filename)
+
+		try:
+			tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + filename)
+		except : 
+			print("No MRA for " + "P" + str(i))
+		else:
+			tree.write_vtk("full", "Results/BraVa/registered/centerlines/P" + str(i) + ".vtk")
 	
+
+		
+
 
 
 #test_tree_class()
@@ -493,7 +598,7 @@ def test_nb_control_points():
 #test_bif_ogrid_pattern()
 #test_meshing()
 #test_bifurcation_smoothing()
-#test_bifurcation_class()
+test_bifurcation_class()
 #test_fitting()
 #test_quality_model2D()
 #test_quality_model3D()
@@ -506,4 +611,8 @@ def test_nb_control_points():
 #test_bifurcation_local_smooth()
 #test_nb_control_points()
 #test_bifurcation_class()
-test_trifurcation_class()
+#test_trifurcation_class()
+#test_trifurcation_nonplanar()
+#test_compare_image()
+#register_swc_nii()
+#register_centerlines()
