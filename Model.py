@@ -76,7 +76,7 @@ class Model:
 
 		self._lbd = lbd
 		self.P = self.__solve_system()
-		self.spl = Spline(self.P.tolist(), self._knot, self._p)
+		self.spl = Spline(self.P, self._knot, self._p)
 
 
 
@@ -87,7 +87,18 @@ class Model:
 		tg0 = self.spl.first_derivative(0) 
 		tg1 = self.spl.first_derivative(1) 
 
-		return norm(tg0), norm(tg1)
+		sign0 = 1
+		sign1 = 1
+
+		if self._end_constraint[1]:
+			if tg0[0] * self._end_values[1,0] < 0:
+				sign0 = -1
+
+		if self._end_constraint[2]:
+			if tg1[0] * self._end_values[2,0] < 0:
+				sign1 = -1
+
+		return sign0 * norm(tg0), sign1 * norm(tg1)
 		
 
 	def quality(self, criteria="AICC"):

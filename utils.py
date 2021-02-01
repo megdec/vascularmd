@@ -14,6 +14,19 @@ import pyvista as pv
 ############# GEOMETRY ##############
 #####################################
 
+def cart2pol(x, y):
+
+	rho = sqrt(x**2 + y**2)
+	phi = arctan2(y, x)
+
+	return np.array([rho, phi])
+
+def pol2cart(rho, phi):
+
+	x = rho * cos(phi)
+	y = rho * sin(phi)
+
+	return np.array([x, y])
 
 def rotate_vector(v, axis, theta):
 

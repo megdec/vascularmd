@@ -222,7 +222,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent= True, n = None, lbd = 0.0, criterion= "CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = True, n = None, lbd = 0.0, criterion= "CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -236,14 +236,8 @@ class Spline:
 
 		from Model import Model
 
+		
 		if n == None:
-			# Estimate length of the vessel 
-			length = 0.0
-			for i in range(1, len(D)):
-				length += norm(D[i] - D[i-1])
-
-			
-			n = int(length)
 			n = len(D) + 5
 	
 		if n < 4: # Minimum of 4 control points
@@ -265,10 +259,11 @@ class Spline:
 			if min_tangent:
 
 				alpha, beta = spatial_model.get_magnitude()
-				#print(alpha, beta)
-				thres = 10
+				thres = 5
 
 				if (alpha < thres or beta < thres) and not derivatives:
+					print('correct tangent')
+					thres = 5
 
 					#print(alpha, beta)
 					#print(end_constraint[1], end_constraint[-2])
@@ -292,7 +287,6 @@ class Spline:
 			# Curvature optimization 
 			if curvature: 
 				spatial_model = self.__constraint_curvature(spatial_model, radius_model)
-			#radius_model.spl.show(data = data)
 
 
 			P =  np.hstack((spatial_model.P, np.reshape(radius_model.P[:,-1], (radius_model.P.shape[0],1))))
@@ -309,8 +303,7 @@ class Spline:
 			if min_tangent:
 
 				alpha, beta = global_model.get_magnitude()
-				#print(alpha, beta)
-				thres = 10
+				thres = 15
 
 				if (alpha < thres or beta < thres) and not derivatives:
 					print(alpha, beta)
@@ -791,27 +784,20 @@ class Spline:
 
 
 
-	def distance(self, t, D):
+	def distance(self, D):
 
 
 		""" Compute the minimum distance between the spline and a list of points.
 
 		Keyword arguments: 
 			D -- numpy array of data points
-			t -- numpy array of times
 		"""
 
-		if len(D.shape) == 1:
-			proj = self.point(t)
-			dist =  norm(D[:-1] - proj)
+		dist = np.zeros((D.shape[0],))
 
-		else: 
-
-			dist = np.zeros((D.shape[0],))
-
-			for i in range(D.shape[0]):
-				proj = self.point(t[i])
-				dist[i] = norm(D[i, :-1] - proj)
+		for i in range(D.shape[0]):
+			proj = self.point(self.project_point_to_centerline(D[i, :-1]))
+			dist[i] = norm(D[i, :-1] - proj)
 
 		return dist
 
@@ -887,7 +873,7 @@ class Spline:
 		"""
 
 		tinit = t1
-		while abs(t1 - t0) > 10**(-3):
+		while abs(t1 - t0) > 10**(-6):
 
 			t = (t1 + t0) / 2.
 			

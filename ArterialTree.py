@@ -225,12 +225,21 @@ class ArterialTree:
 				AP, times = G.edges[e[-2]]['spline'].first_intersection(G.edges[e[-1]]['spline'])
 
 				# Distance from the bifurcation point
-				dist = norm(AP - G.nodes[n]['coords'][:-1])
+				dist1 = G.edges[e[-2]]['spline'].time_to_length(times[0]) 
+				dist2 = G.edges[e[-1]]['spline'].time_to_length(times[1]) 
+				D = G.nodes[n]['coords'][-1] * 4
 
-				if False: #abs(dist - G.nodes[n]['coords'][-1] * 2) > G.nodes[n]['coords'][-1]/2 : # Misplaced node
-					print("Readjusting bifurcation point", abs(dist - G.nodes[n]['coords'][-1] * 2), G.nodes[n]['coords'][-1] * 2)
+				if False: #abs(dist1 - D) > D/4 or abs(dist2 - D) > D/4: # Misplaced node
+						
 					# Recompute the bifurcation position
-					pts, pt, tg  = self.__bifurcation_point_estimation(n, e, pos = G.nodes[n]['coords'][-1] * 2)
+					if abs(dist1 - D) >= abs(dist2 - D):
+						pos = D - dist1
+					else: 
+						pos = D - dist2
+
+					print("Readjusting bifurcation point", abs(dist1 - D), abs(dist2 - D), D/4, pos)
+
+					pts, pt, tg  = self.__bifurcation_point_estimation(n, e, adjust = pos)
 
 					# Modify the data graph consequently
 					self._data_graph.nodes[n]['coords'] = pt
@@ -252,6 +261,7 @@ class ArterialTree:
 			
 
 
+
 	def __spline_approximation_edge(self, e):
 
 		""" Approximate centerlines using splines foe a given edge of the spline-graph """
@@ -260,7 +270,7 @@ class ArterialTree:
 
 		pts = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
 			
-		while len(pts) < 3:
+		while len(pts) <= 4:
 			# Linearly interpolate data
 			pts = np.array(linear_interpolation(pts, 1))
 
@@ -281,6 +291,25 @@ class ArterialTree:
 
 		spl = Spline()
 		spl.approximation(pts, constraint, values, False)
+
+
+		# Show result 
+	
+		"""
+		sample = spl.get_points()
+		with plt.style.context(('ggplot')):
+			
+			fig = plt.figure(figsize=(10,7))
+			ax = Axes3D(fig)
+			ax.set_facecolor('white')
+
+			ax.plot(sample[:,0], sample[:,1], sample[:,2],  c='black')
+			ax.scatter(pts[:,0], pts[:,1], pts[:,2],  c='red')
+
+		ax.set_axis_off()
+		plt.show()
+		"""
+
 
 		return spl
 
@@ -309,7 +338,7 @@ class ArterialTree:
 
 
 
-	def __bifurcation_point_estimation(self, node, edges, pos = None):
+	def __bifurcation_point_estimation(self, node, edges, adjust = 0):
 
 		""" Re-estimate the bifurcation point and tangent from the topo graph.
 
@@ -318,27 +347,54 @@ class ArterialTree:
 		pos -- distance of the reestimated bifurcation point from the original bifurcation
 		"""
 
-
 		B = self._topo_graph.nodes[node]['coords'][:-1]
+		#d0 = np.vstack((self._topo_graph.edges[edges[0]]['coords'], self._topo_graph.nodes[node]['coords']))
+		d0 = self._topo_graph.edges[edges[0]]['coords']
+		d1 = self._topo_graph.edges[edges[1]]['coords']
+		d2 = self._topo_graph.edges[edges[2]]['coords']
 
-		pts0 = np.vstack((self._topo_graph.edges[edges[0]]['coords'], self._topo_graph.nodes[node]['coords']))
-		pts1 = self._topo_graph.edges[edges[1]]['coords']
-		pts2 = self._topo_graph.edges[edges[2]]['coords']
 
+		# Get enough data points for robust estimation 
+		nb_min = 15
 
-		# Fit splines from the main branch to the daughter branches
-		D1 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts1, self._topo_graph.nodes[edges[1][1]]['coords']))
-		spl1 = Spline()
-		spl1.approximation(D1, [False, False, False, False], np.zeros((4,4)), False)
+		pts0 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], self._topo_graph.edges[edges[0]]['coords'], self._topo_graph.nodes[node]['coords']))
 
-		D2 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], pts0, pts2, self._topo_graph.nodes[edges[2][1]]['coords']))
-		spl2 = Spline()
-		spl2.approximation(D2, [False, False, False, False], np.zeros((4,4)), False)
+		"""
+		pts1 = np.vstack((self._topo_graph.edges[edges[1]]['coords'], self._topo_graph.nodes[edges[1][1]]['coords']))
+		pts2 = np.vstack((self._topo_graph.edges[edges[2]]['coords'], self._topo_graph.nodes[edges[2][1]]['coords']))
+		"""
+
+		"""
+		e_act = edges[1]
+		while pts1.shape[0] < nb_min:
+			if self._topo_graph.out_degree(e_act[1])!= 0:
+				e_next = (e_act[1], [pred for pred in self._topo_graph.successors(e_act[1])][0])  # Get a successor edge
+				pts1 = np.vstack((pts1, self._topo_graph.edges[e_next]['coords'], self._topo_graph.nodes[e_next[1]]['coords'])) # Add data
+				e_act = e_next
+			else: break
 		
+		
+		e_act = edges[2]
+		while pts2.shape[0] < nb_min:
+			if self._topo_graph.out_degree(e_act[1])!= 0:
+				e_next = (e_act[1], [pred for pred in self._topo_graph.successors(e_act[1])][0])  # Get a successor edge
+				pts2 =  np.vstack((pts2, self._topo_graph.edges[e_next]['coords'], self._topo_graph.nodes[e_next[1]]['coords'])) # Add data
+				e_act = e_next
+			else: break
+			"""
+
+
+		"""
+		spl1 = Spline()
+		spl1.approximation(np.vstack((pts0, pts1)), [False, False, False, False], np.zeros((4,4)), False)
+
+		spl2 = Spline()
+		spl2.approximation(np.vstack((pts0, pts2)), [False, False, False, False], np.zeros((4,4)), False)
+
 		# Find the separation point between the splines
 		if pos is None:
-			pos = np.mean(pts0[:,-1])
-
+			pos = np.mean(d0[:,-1])
+		
 		t1 = spl1.project_point_to_centerline(B) 
 		t2 = spl2.project_point_to_centerline(B)
 
@@ -349,19 +405,78 @@ class ArterialTree:
 		tg = (spl1.first_derivative(t1, True) + spl2.first_derivative(t2, True)) /2.0  #(spl1.tangent(t1, True) + spl2.tangent(t2, True)) / 2.0 
 		pt = (spl1.point(t1, True) + spl2.point(t2, True)) / 2.0
 
-		# Remove the points of the main branch further than the separation point
-		for i in range(len(pts0)):
-			t = spl1.project_point_to_centerline(pts0[-1][:-1]) 
-					
-			if t > t1:
+		T1 = spl1.project_point_to_centerline(pt[:-1]) 
+		T2 = spl2.project_point_to_centerline(pt[:-1]) 
+		"""
 
-				pts1 = np.vstack((pts0[-1], pts1))
-				pts2 = np.vstack((pts0[-1], pts2))
-				pts0 = pts0[:-1]
+		pos = np.mean(d0[:,-1]) + adjust
+
+		e_act = edges[0]
+		while pts0.shape[0] < nb_min:
+			if self._topo_graph.in_degree(e_act[0])!= 0:
+				e_pred = ([pred for pred in self._topo_graph.predecessors(e_act[0])][0], e_act[0]) # Get a predecessor edge
+				pts0 =  np.vstack((self._topo_graph.edges[e_pred]['coords'], self._topo_graph.nodes[e_pred[1]]['coords'], pts0)) # Add data
+				e_act = e_pred
+			else: break
+
+		# Fit splines from the main branch to the daughter branches
+		spl = Spline() 
+		spl.approximation(pts0, [False, False, False, False], np.zeros((4,4)), False) 
+
+
+		t = spl.length_to_time(spl.time_to_length(1.0) - pos) #
+		t_min = spl.project_point_to_centerline(self._topo_graph.nodes[edges[0][0]]['coords'][:-1]) 
+		if t < t_min : 
+			t = t_min 
+			print(t_min)
+
+		tg = spl.tangent(t, True) #
+		pt = spl.point(t, True) #
+	
+
+		# Show result 
+		"""
+		sample = spl.get_points()
+		with plt.style.context(('ggplot')):
+			
+			fig = plt.figure(figsize=(10,7))
+			ax = Axes3D(fig)
+			ax.set_facecolor('white')
+
+			ax.plot(sample[:,0], sample[:,1], sample[:,2],  c='red')
+			ax.scatter(pts0[:,0], pts0[:,1], pts0[:,2],  c='blue')
+			if len(d0) != 0:
+				ax.scatter(d0[:,0], d0[:,1], d0[:,2],  c='green')
+
+			ax.scatter(pt[0], pt[1], pt[2], s=40, c='black')
+			#ax.plot([pt[0], pt[0] + tg[0]], [pt[1], pt[1] + tg[1]], [pt[2], pt[2] + tg[2]],c='black')
+
+
+		ax.set_axis_off()
+		plt.show()
+		"""
+
+
+		# Remove the points of the main branch further than the separation point
+		L = len(d0)
+		for i in range(len(d0)):
+			T = spl.project_point_to_centerline(d0[-1][:-1]) 
+			
+			if T >= t :
+
+				d1 = np.vstack((d0[-1], d1))
+				d2 = np.vstack((d0[-1], d2))
+				d0 = d0[:-1]
 								
 			else: break
 
-		return [pts0, pts1, pts2], pt, tg 
+		#if len(d0) == L:
+		#	d0 = d0[:-1]
+		#d1 = np.vstack((pt + tg * pt[-1] *2 , d1))
+		#d2 = np.vstack((pt + tg * pt[-1] *2 , d2))
+
+		return [d0, d1, d2], pt, tg 
+
 
 
 
@@ -441,7 +556,7 @@ class ArterialTree:
 
 				# Compute bifurcation object
 				if bifurcation_model : 
-					bif = Bifurcation(np.array([S0, S[0], S[1]]), 1, AP = AP)
+					bif = Bifurcation(np.array([S0, S[0], S[1]]), 1)
 				else: 
 					bif = Bifurcation(np.array([S0, S[0], S[1]]), 1, spl = spl_bif, AP = AP)
 				#bif.show(True)
@@ -1390,7 +1505,7 @@ class ArterialTree:
 	############  OPERATIONS  ###########
 	#####################################
 
-	def deform(self, mesh):
+	def deform_to_mesh(self, mesh):
 
 		""" Deforms the original mesh to match a given surface mesh. 
 		Overwrite the cross section graph.
@@ -1443,6 +1558,14 @@ class ArterialTree:
 
 	def __intersection(self, mesh, center, coord):
 
+		""" Returns the first intersection point between the mesh and a ray passing through the points center and coord.
+
+		Keyword arguments: 
+		mesh -- surface mesh
+		center -- coordinate of the starting point of intersection ray
+		coord -- coordinate of a point on the intersection ray
+		"""
+
 		search_dist = 2
 		inter = coord
 		points = []
@@ -1461,6 +1584,7 @@ class ArterialTree:
 		return inter
 
 
+
 	def subgraph(self, nodes):
 
 		""" Cuts the original graph to a subgraph. 
@@ -1475,6 +1599,116 @@ class ArterialTree:
 		
 			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
 			self.__set_topo_graph()
+
+
+	
+	def cut_branch(self, e, preserve_shape = False):
+
+		""" Cuts the branch at edge e and all the downstream branches. 
+		If a cross section graph is already computed, recomputes the cross sections at the cut part.
+
+		Keyword arguments: 
+		e -- edge of the branch in topo graph as a tuple
+		"""
+
+		if self._topo_graph is None:
+			raise ValueError('Cannot make subgraph because no network was found.')
+		elif e not in [e for e in self._topo_graph.edges()]:
+			raise ValueError('Not a valid edge.')
+		else: 
+
+			# Get all downstream nodes
+			downstream_nodes = list(nx.dfs_successors(self._topo_graph, source=e[1]).values())[0]
+			downstream_edges = list(nx.dfs_edges(self._topo_graph, source=e[1]))
+
+			# Remove them from topo graph
+			for node in downstream_nodes:
+				self._topo_graph.remove_node(node)
+
+			self._topo_graph.remove_node(e[1])	
+
+
+			# Merge data and remove bifurcation point
+			if self._topo_graph.out_degree(e[0]) == 1 and self._topo_graph.in_degree(e[0]) == 1:
+
+				eprec = list(self._topo_graph.in_edges(e[0]))[0]
+				esucc = list(self._topo_graph.out_edges(e[0]))[0]
+ 
+				# Create tables of regular nodes data
+				coords = np.vstack((self._topo_graph.edges[eprec]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[esucc]['coords']))
+				# Create new edge by merging the 2 edges of regular point
+				self._topo_graph.add_edge(eprec[0], esucc[1], coords = coords)
+				# Remove regular point
+				self._topo_graph.remove_node(e[0])
+
+
+			# Propagate to full_graph
+			self._full_graph = self.topo_to_full()
+
+		
+		if self._spline_graph is not None:
+
+			# Remove them from spline graph
+			for node in downstream_nodes:
+				self._data_graph.remove_node(node)
+				self._spline_graph.remove_node(node)
+
+			self._spline_graph.remove_node(e[1])
+			self._data_graph.remove_node(e[1])
+
+			if preserve_shape:
+				if self._spline_graph.out_degree(e[0]) == 1 and self._spline_graph.in_degree(e[0]) == 1:
+					self._spline_graph.nodes[e[0]]['type'] = "reg"	
+					self._data_graph.nodes[e[0]]['type'] = "reg"
+			else:
+				if self._spline_graph.out_degree(e[0]) == 1 and self._spline_graph.in_degree(e[0]) == 1 :
+
+					# Create tables of regular nodes data
+					coords = np.vstack((self._data_graph.edges[eprec]['coords'], self._data_graph.nodes[e[0]]['coords'], self._data_graph.edges[esucc]['coords']))
+					# Create new edge by merging the 2 edges of regular point
+					self._data_graph.add_edge(eprec[0], esucc[1], coords = coords)
+					# Remove regular point
+					self._data_graph.remove_node(e[0])
+
+					# Remove bifurcation point, reapproximate the new edge
+					self._spline_graph.remove_node(e[0])
+					spl = self.__spline_approximation_edge((eprec[0], esucc[1]))
+
+					# Create new edge by merging the 2 edges of regular point
+					self._spline_graph.add_edge(eprec[0], esucc[1], spline = spl)
+
+					# Recompute Apex value
+					if self._spline_graph.nodes[eprec[0]]['type'] == "bif":
+						out = list(self._spline_graph.out_edges(eprec[0]))
+						AP, times = self._spline_graph.edges[out[0]]['spline'].first_intersection(self._spline_graph.edges[out[1]]['spline'])
+						self._spline_graph.nodes[eprec[0]]['apex'] = [AP, times]
+
+		if False: #self._crsec_graph is not None: # NOT FINISHED
+
+			U = self._crsec_graph.to_undirected()
+
+			# Remove them from crsec graph
+			for edge in downstream_edges:
+				path = list(nx.all_simple_paths(U, source=edge[0], target=edge[1]))[0]
+				print(path)
+				for i in range(1, len(path)):
+					if path[i] in [n for n in self._crsec_graph.nodes()]:
+						self._crsec_graph.remove_node(path[i])
+
+			self._crsec_graph.remove_node(e[1])
+					
+			"""
+			if preserve_shape:
+				if self._crsec_graph.out_degree(e[0]) == 1:
+					# Change bifurcation type to reg
+					self._crsec_graph.nodes[path_edge[0][1]]['type'] = "reg"
+			else: 
+				if self._crsec_graph.out_degree(e[0]) == 1:
+					# Recompute the cross sections at the former bifurcation edge
+					pass
+			"""
+
+
 
 
 	def transpose(self, val):
@@ -1539,6 +1773,221 @@ class ArterialTree:
 	#############  ANALYSIS  ############
 	#####################################
 
+	def detect_collisions(self):
+
+		""" Detects the intersecting branches in the spline graph """
+
+		branches = [e for e in self._spline_graph.edges()]
+		time = np.arange(0, 1, 0.01)
+
+		for i in range(len(branches)):
+			points_ref = self._spline_graph.edges[branches[i]].get_points()
+
+			for j in range(i, len(branches)):
+				points = self._spline_graph.edges[branches[j]].get_points()
+
+				for k in range(len(points_ref)):
+					for h in range(len(points)):
+						collision = False
+						dist = norm(points_ref[k, :-1] - points_ref[h, :-1])
+
+						if dist >= points_ref[k, -1] + points_ref[h, -1]:
+							collision = True
+						if branches[i][0] == branches[j][0] or branches[i][1] == branches[j][0] or branches[i][0] == branches[j][1]:
+							tAP = 1 # TMP
+							if time[k] < tAP[0] or time[h] < tAP[0]:
+								collision = False
+						if collision:
+							print("collision!", branches[i], branches[j]) # TMP
+
+
+	def correct_collisions(self, intersection):
+
+		""" Deforms intersecting vessels """
+
+		pass
+		
+
+	def compare_image(self, imgfile, data_type = "spline"):
+
+		""" Compare the arterial tree surface with a angiography medical image 
+
+		Keyword arguments:
+		imgfile -- name of the angiography image in nifti format
+		data_type -- type of data used for the comparison (spline or mesh)
+		"""
+
+		import nibabel as nib
+
+		# Load MRA 
+		data = nib.load(imgfile)
+		img = np.array(data.dataobj)
+		pix_dim = data.header['pixdim'][1:4] # Dimensions
+		
+		# Iterate through the centerlines
+		for e in self._spline_graph.edges():
+
+			spl = self._spline_graph.edges[e]['spline']
+			times = np.linspace(0,1,5)
+
+			for t in times:
+
+				pt = spl.point(t, True)
+				tg = spl.tangent(t)
+
+				patch, patch_pix = self.extract_patch(img, pix_dim, pt[:-1], tg, dist = 4)
+				nb_rays = 500
+
+				if data_type == "spline":
+					outline = self.extract_outline_spline(patch_pix, pt, tg, nb_rays = nb_rays)
+
+				elif data_type == "mesh":
+					outline = self.extract_outline_mesh(patch_pix, pt, tg, nb_rays = nb_rays)
+					outline2 = self.extract_outline_spline(patch_pix, pt, tg, nb_rays = nb_rays)
+					
+
+				else: 
+					raise ValueError("Wrong data type.")
+
+				# Display result
+				plt.axis('off')
+				plt.imshow(patch, origin='lower', cmap = 'gray')
+				plt.scatter(outline[:, 0], outline[:, 1], s = 5)
+				#plt.scatter(outline2[:, 0], outline2[:, 1], s = 2, color='red', alpha=0.5)
+				plt.show()
+
+
+
+	def extract_outline_spline(self, patch_pix, pt, tg, dim = 16, dist = 4, nb_rays = 60):
+
+		center = np.array([dim + 0.5, dim + 0.5]) # Center in patch referential
+		phi = np.linspace(0, 2 * pi, nb_rays + 1)[1:]
+		outline = np.zeros((len(phi), 2))
+
+		for i in range(nb_rays):
+			ray_dir = pol2cart(1, phi[i])
+			outline[i, :] = center + ray_dir * pt[-1] / patch_pix[0]
+
+		return outline
+
+
+	def extract_outline_mesh(self, patch_pix, pt, tg, dim = 16, dist = 4, nb_rays = 60):
+
+		""" Return a list of coordinates of intersection points between a plan and the surface mesh.
+
+		Keyword arguments:
+		pix_dim -- dimension of img (mm)
+		pt -- center of the patch coordinates (mm)
+		tg -- unit tangent vector
+		dim -- patch radius (vx)
+		dist -- patch radius dimension (mm)
+		"""
+
+		if self._surface_mesh is not None: 
+			mesh = self._surface_mesh
+		elif self._crsec_graph is not None: 
+			mesh = self.mesh_surface()
+		else: 
+			raise ValueError('Please compute cross sections first.')
+
+		center = np.array([dim + 0.5, dim + 0.5])
+		theta = np.linspace(0, 2 * pi, nb_rays + 1)[1:]
+		pt = pt[:-1]
+
+
+		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
+		bnr = cross(tg, nr) # Binormal vector
+		nr = nr / norm(nr) # Normalize
+		bnr = bnr / norm(bnr)
+
+		inter = []
+		for i in range(nb_rays):
+			ray_dir = rotate_vector(nr, tg, theta[i])
+			p2 = pt + ray_dir * dist
+
+			pts, ind = mesh.ray_trace(pt, p2)
+
+			for p in pts:
+				a = center[0] + dot(p - pt, nr) / patch_pix[0]
+				b = center[1] + dot(p - pt, bnr) / patch_pix[0]
+				inter.append([a, b])
+
+		return np.array(inter)
+
+
+
+	def extract_patch(self, img, pix_dim, pt, tg, dim=16, dist=4):
+
+		""" Return a MRA image patch oriented normally to the artery tangent.
+
+		Keyword arguments:
+		img -- image volume as np array
+		pix_dim -- dimension of img (mm)
+		pt -- origin coordinates (mm)
+		tg -- unit tangent vector
+		dim -- patch dimension (vx)
+		dist -- patch dimension (mm)
+		"""
+
+		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
+		bnr = cross(tg, nr) # Binormal vector
+
+		nr = nr / norm(nr) # Normalize
+		bnr = bnr / norm(bnr)
+
+		# Coord conversion 
+		patch_pix = np.array([float(dist) / float(dim)]*2)
+		step = np.linspace(0, dist, dim + 1)[1:]
+
+		patch = np.zeros((dim * 2 + 1, dim * 2 + 1))
+
+		ct = (pt / pix_dim).astype(int)
+		patch[dim, dim] = img[ct[0], ct[1], ct[2]]
+
+		# Fill patch
+		for j in range(dim):
+			# Fill cross
+			c1 = ((pt - nr * step[::-1][j]) / pix_dim).astype(int)
+			c2 = ((pt + nr * step[j]) / pix_dim).astype(int)
+
+			c3 = ((pt - bnr * step[::-1][j]) / pix_dim).astype(int)
+			c4 = ((pt + bnr * step[j]) / pix_dim).astype(int)
+
+			patch[dim, j] = img[c1[0], c1[1], c1[2]]
+			patch[dim, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
+			patch[j, dim] = img[c3[0], c3[1], c3[2]]
+			patch[dim + 1 + j, dim] = img[c4[0], c4[1], c4[2]]
+
+
+		for j in range(dim):
+
+			c1mm = (pt - nr * step[::-1][j])
+			c2mm = (pt + nr * step[j])
+				
+			c1 = (c1mm / pix_dim).astype(int)
+			c2 = (c2mm / pix_dim).astype(int)
+				
+
+			patch[dim + 1, j] = img[c1[0], c1[1], c1[2]]
+			patch[dim + 1, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
+
+			for k in range(dim):
+
+				c3 = ((c1mm - bnr * step[::-1][k]) / pix_dim).astype(int)
+				c4 = ((c1mm + bnr * step[k]) / pix_dim).astype(int)
+
+				c5 = ((c2mm - bnr * step[::-1][k]) / pix_dim).astype(int)
+				c6 = ((c2mm + bnr * step[k]) / pix_dim).astype(int)
+
+				patch[k, j] = img[c3[0], c3[1], c3[2]]
+				patch[dim + 1 + k, j] = img[c4[0], c4[1], c4[2]]
+
+				patch[k, dim + 1 + j] = img[c5[0], c5[1], c5[2]]
+				patch[dim + 1 + k, dim + 1 + j] = img[c6[0], c6[1], c6[2]]
+
+		return patch, patch_pix
+
+
 
 	def count_nodes(self):
 
@@ -1558,7 +2007,6 @@ class ArterialTree:
 				count['bif'] += 1
 
 		return count
-
 
 
 
@@ -1661,6 +2109,11 @@ class ArterialTree:
 			pos = nx.get_node_attributes(self._topo_graph, 'coords')
 			colors = {"end":'blue', "bif":'green'}
 
+			# Display topological nodes
+			for key, value in pos.items():
+				ax.scatter(value[0], value[1], value[2], c=colors[self._topo_graph.nodes[key]['type']], depthshade=False, s=40)
+				ax.text(value[0], value[1], value[2], str(key))
+
 
 			if not points and not centerline and not control_points:
 				
@@ -1673,10 +2126,6 @@ class ArterialTree:
 					ax.plot(np.array((pos[j[0]][0], pos[j[1]][0])), np.array((pos[j[0]][1], pos[j[1]][1])), np.array((pos[j[0]][2], pos[j[1]][2])), c='black', alpha=0.5)
 
 			if points: 
-				# Display topological nodes
-				for key, value in pos.items():
-					ax.scatter(value[0], value[1], value[2], c=colors[self._topo_graph.nodes[key]['type']], depthshade=False, s=40)
-
 		
 				coords = nx.get_edge_attributes(self._topo_graph, 'coords')
 				# Display edge nodes
@@ -1872,24 +2321,32 @@ class ArterialTree:
 		""" Writes centerlines as VTK polyline file.
 
 		Keywords arguments: 
-		type -- "full" or "spline"
+		type -- "full", "topo"  or "spline"
 		"""
 
 		if type == "full":
 			G = self._full_graph
 
+		elif type == "topo":
+			G = self._topo_graph
+
 		elif type == "spline":
 			G = self.spline_to_full()
+		else: 
+			raise ValueError("Wrong graph type.")
 
 
 		v = np.zeros((G.number_of_nodes(), 3)) # Vertices
 		f = [] # Connections
 		r = [] # Radius
+		iD = [] #id
 
+		G = nx.convert_node_labels_to_integers(G, first_label=1, ordering='default', label_attribute=None)
 		for p in G.nodes():
 
 			v[p-1, :] = G.nodes[p]['coords'][:-1]
 			r.append(G.nodes[p]['coords'][-1])
+			iD.append(p)
 
 			if G.in_degree(p) == 1:
 
@@ -1902,7 +2359,8 @@ class ArterialTree:
 		poly.lines = np.array(f)
 
 		# Add radius information
-		poly["scalars"] = np.array(r)
+		poly["radius"] = np.array(r)
+		poly["id"] = np.array(iD)
 		poly_tube = poly.tube(radius = 0.6)
 
 		poly_tube.save(filename)
