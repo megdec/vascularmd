@@ -626,6 +626,37 @@ def test_cut_branch():
 	mesh.save("Results/Aneurisk/mesh_surface_full.vtk")
 
 
+def test_export_openFoam():
+
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+
+	tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
+	tree.show(True, False, False)
+
+	tree.spline_approximation()
+	tree.show(False, True, False)
+
+
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	mesh.plot(show_edges=True)
+	boundary = tree.boundary_patches()
+	boundary.plot(show_edges=True)
+
+	tree.write_OpenFoam_files("Results/OpenFoam/")
 
 
 
@@ -653,4 +684,5 @@ def test_cut_branch():
 #register_swc_nii()
 #register_centerlines()
 #test_rotations()
-test_cut_branch()
+#test_cut_branch()
+test_export_openFoam()

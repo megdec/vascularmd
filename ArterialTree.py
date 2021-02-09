@@ -18,7 +18,7 @@ from utils import *
 from Bifurcation import Bifurcation
 from Spline import Spline
 
-
+from VTK_to_OpenFoam import write_files
 
 
 
@@ -969,6 +969,11 @@ class ArterialTree:
 
 		print('Meshing volume...')
 
+		# Keep parameters as attributes
+		self._layer_ratio = layer_ratio
+		self._num_a = num_a
+		self._num_b = num_b
+
 		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
 		nb_nds_bif_ogrid = int(nb_nds_ogrid +  (self._N/2 - 1) * (num_a + num_b + 3) + (self._N - 4)/4 * (((self._N - 4)/4 -1)/2))
 
@@ -1475,6 +1480,61 @@ class ArterialTree:
 			nb_faces += 1
 
 		return faces
+
+
+	#####################################
+	############# SIMULATION  ###########
+	#####################################
+
+
+	def boundary_patches(self):
+
+		if self._volume_mesh is None:
+			raise ValueError('Please perform volume meshing first')
+
+		# Arterial walls
+		if self._surface_mesh is None:
+			wall = self.mesh_surface()
+		else: 
+			wall = self._surface_mesh
+
+		boundary_blocks = pv.MultiBlock()
+		boundary_blocks["wall"] = wall
+
+		# Inlets and outlets
+		inlet_num = 0
+		outlet_num = 0
+
+		for n in self._crsec_graph.nodes():
+			if self._crsec_graph.nodes[n]['type'] == "end":
+
+				# Get crsec
+				crsec = self._crsec_graph.nodes[n]['crsec']
+				center = (crsec[0] + crsec[self._N//2])/2.0
+				vertices, faces = self.ogrid_pattern(self._N, center, crsec, self._layer_ratio, self._num_a, self._num_b)
+				pattern = pv.PolyData(vertices, faces)
+
+				if self._crsec_graph.in_degree(n) == 0: # Inlet case
+					name = "inlet_" + str(inlet_num)
+					inlet_num += 1
+				else:
+					name = "outlet_" + str(outlet_num)
+					outlet_num += 1
+
+				boundary_blocks[name] = pattern
+
+		return boundary_blocks
+
+
+	def write_OpenFoam_files(self, output_dir):
+
+		if self._volume_mesh is None:
+			raise ValueError('Please perform volume meshing first')
+
+
+		surfaces = self.boundary_patches()
+		write_files(self._volume_mesh, surfaces, output_dir)
+
 
 
 
@@ -2523,5 +2583,9 @@ class ArterialTree:
 			file.write(str(mapping[p]) + '\t' + str(i) + '\t' + str(c[0]) + '\t' + str(c[1]) + '\t' + str(c[2]) + '\t' + str(c[3]) + '\t' + str(n) + '\n')
 
 		file.close()
+
+
+
+
 
 
