@@ -196,7 +196,7 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(48, 0.2, bifurcation_model=False)
+	tree.compute_cross_sections(24, 0.2)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
@@ -363,6 +363,15 @@ def test_Model():
 	model.spl.show(data=D)
 	print(model.get_magnitude())
 
+def test_rotations():
+
+		file = open("tmp.obj", 'rb') 
+		tree = pickle.load(file)
+
+		t1 = time.time()
+		tree.compute_cross_sections(32, 0.2)
+		t2 = time.time()
+		print("The cross section computation process took ", t2 - t1, "seconds." )
 
 def test_brava():
 
@@ -371,37 +380,36 @@ def test_brava():
 		filename = "P" + str(i) + ".swc"
 		print(filename)
 		tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + filename)
-		tree.cut_branch((49,50), preserve_shape = False)
 		tree.write_vtk("topo", "Results/BraVa/registered/topo/P" + str(i) + ".vtk")
-		
-		#tree.show(False, False, False)
 	
 		t1 = time.time()
 		tree.spline_approximation()
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
 		tree.write_vtk("spline", "Results/BraVa/registered/splines/P" + str(i) + ".vtk")
-		"""
 	
+		
 		t1 = time.time()
-		tree.compute_cross_sections(24, 0.4, bifurcation_model=False)
+		tree.compute_cross_sections(32, 0.2)
 		t2 = time.time()
 		print("The cross section computation process took ", t2 - t1, "seconds." )
+
+		
 		file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'wb') 
 		pickle.dump(tree, file)
+
 
 		t1 = time.time()
 		mesh = tree.mesh_surface()
 		mesh.save("Results/BraVa/registered/surface/P" + str(i) + ".vtk")
 		t2 = time.time()
 		print("The surface meshing process took ", t2 - t1, "seconds." )
-		
-		
+		"""
 		t1 = time.time()
 		mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 		mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
 		t2 = time.time()
-		print("The surface meshing process took ", t2 - t1, "seconds." )
+		print("The volume meshing process took ", t2 - t1, "seconds." )
 		"""
 		
 def meshing_brava():
@@ -410,11 +418,11 @@ def meshing_brava():
 	file = open("Results/BraVa/registered/crsec/P" + str(i) + ".obj", 'rb') 
 	tree = pickle.load(file)
 	tree.show(False, True, False)
-	"""
-	tree.cut_branch((49,50), preserve_shape = False)
-	tree.write_vtk("spline", "Results/BraVa/registered/splines/remove_branchP" + str(i) + ".vtk")
 	
-	tree.compute_cross_sections(24, 0.4, bifurcation_model=False)
+	tree.cut_branch((49,50), preserve_shape = True)
+	tree.write_vtk("spline", "Results/BraVa/registered/splines/remove_branch_preserveP" + str(i) + ".vtk")
+	
+	tree.compute_cross_sections(24, 0.4)
 	
 	t1 = time.time()
 	mesh = tree.mesh_surface()
@@ -424,7 +432,7 @@ def meshing_brava():
 	print("The surface meshing process took ", t2 - t1, "seconds." )
 
 	
-	
+	"""
 	t1 = time.time()
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	mesh.save("Results/BraVa/volume/P" + str(i) + ".vtk")
@@ -589,7 +597,35 @@ def register_centerlines():
 			tree.write_vtk("full", "Results/BraVa/registered/centerlines/P" + str(i) + ".vtk")
 	
 
+def test_cut_branch():
+
 		
+	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+
+	tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
+	tree.show(True, False, False)
+
+	tree.spline_approximation()
+	
+	#tree.cut_branch((2,4), preserve_shape = True)
+	tree.show(False, True, False)
+
+
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	print("plot mesh")
+	mesh.plot(show_edges=True)
+	mesh.save("Results/Aneurisk/mesh_surface_full.vtk")
+
+
 
 
 
@@ -598,7 +634,7 @@ def register_centerlines():
 #test_bif_ogrid_pattern()
 #test_meshing()
 #test_bifurcation_smoothing()
-test_bifurcation_class()
+#test_bifurcation_class()
 #test_fitting()
 #test_quality_model2D()
 #test_quality_model3D()
@@ -616,3 +652,5 @@ test_bifurcation_class()
 #test_compare_image()
 #register_swc_nii()
 #register_centerlines()
+#test_rotations()
+test_cut_branch()

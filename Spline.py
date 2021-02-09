@@ -262,7 +262,6 @@ class Spline:
 				thres = 5
 
 				if (alpha < thres or beta < thres) and not derivatives:
-					print('correct tangent')
 					thres = 5
 
 					#print(alpha, beta)

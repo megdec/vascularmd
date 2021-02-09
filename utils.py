@@ -64,7 +64,7 @@ def angle(v1, v2, axis = None, signed = False):
 	if signed:
 
 		sign = np.sign(np.cross(v1, v2).dot(axis))
-		# 0 means collinear: 0 or 180. Let's call that clockwise.
+		# 0 means colinear: 0 or 180. Let's call that clockwise.
 		if sign == 0:
 			sign = 1
 	else: 
@@ -323,12 +323,17 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 #####################################
 
 
-def parallel_bif(bif, N, d):
+def parallel_bif(bif, N, d, end_ref =[None, None, None]):
 
 	# Find cross sections
-	bif.cross_sections(N, d)
+	bif.cross_sections(N, d, end_ref)
 
 	return bif
+
+def parallel_apex(spl1, spl2):
+	#Find apex
+	AP, time = spl1.first_intersection(spl2)
+	return AP, time
 
 
 def segment_crsec(spl, num, N, v0 = [], alpha = None):
@@ -350,7 +355,7 @@ def segment_crsec(spl, num, N, v0 = [], alpha = None):
 			
 
 	if alpha!=None:
-		theta = np.hstack((0.0, np.linspace(0.0, alpha, num), alpha)) # Get rotation angles
+		theta = np.linspace(0.0, alpha, num + 2) # Get rotation angles
 
 	crsec = np.zeros((num + 2, N, 3))
 

@@ -22,9 +22,7 @@ class Bifurcation:
 	#####################################
 
 	def __init__(self, S, R, spl = [], AP = []):
-
-		# Check user parameters 
-
+ 
 		
 		# Set user paramaters
 
@@ -53,6 +51,15 @@ class Bifurcation:
 
 		self.__set_tspl()# Trajectory splines
 
+		# Check crsec angle
+		a1 = angle(self._spl[0].tangent(self._tAP[0]), self._spl[0].tangent(0.0))
+		a1 = (a1*180) / pi
+
+		a2 = angle(self._spl[1].tangent(self._tAP[1]), self._spl[0].tangent(0.0))
+		a2 = (a2*180) / pi
+
+		print("Apex sections angles ", a1, a2)
+
 	
 
 	#####################################
@@ -64,6 +71,7 @@ class Bifurcation:
 
 	def get_tspl(self):
 		return self._tspl
+
 
 	def get_endsec(self):
 		return self._endsec
@@ -91,6 +99,40 @@ class Bifurcation:
 			nds2 = self._crsec[2][2][:, int(N/4)]
 
 		return np.vstack((nds1, self._AP, nds2[::-1]))
+
+	def get_reference_vectors(self):
+
+		""" Returns the reference vectors for the three end sections of the bifurcation """
+		ref_list = []
+		for i in range(3):
+				
+			if i == 0:
+					
+				# Reference vector
+				tS = self._tspl[0].project_point_to_centerline(self._SP[1])
+				ptS = self._tspl[0].point(tS)
+				nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0) 
+				ref = cross(self._endsec[0][1][:-1], nS)
+
+			elif i == 1:
+				
+				# Reference vector
+				tS = self._spl[0].project_point_to_centerline(self._SP[0])
+				ptS = self._spl[0].point(tS)
+				nS = self._spl[0].transport_vector(self._SP[0] - ptS, tS, 1.0)
+				ref = cross(nS, self._endsec[1][1][:-1])
+
+			else:
+				
+				# Reference vector
+				tS = self._spl[1].project_point_to_centerline(self._SP[1])
+				ptS = self._spl[1].point(tS)
+				nS = self._spl[1].transport_vector(self._SP[1] - ptS, tS, 1.0)
+				ref = cross(self._endsec[2][1][:-1], nS)
+	
+
+			ref_list.append(ref)
+		return ref_list
 
 
 
@@ -122,7 +164,7 @@ class Bifurcation:
 
 
 
-	def __set_spl(self, r=1.5):
+	def __set_spl(self, r=1):
 
 
 		""" Set the shape splines of the bifurcation.
@@ -130,13 +172,24 @@ class Bifurcation:
 		Keyword arguments:
 			r -- norm of the end tangents. 
 		"""
+		if False:
 
-		p0 = self._endsec[0][0] + r * self._endsec[0][1]
-		p1 = self._endsec[1][0] - r * self._endsec[1][1]
-		p2 = self._endsec[2][0] - r * self._endsec[2][1]
-		
-		spl1 = Spline(np.vstack([self._endsec[0][0], p0, p1, self._endsec[1][0]]))
-		spl2 = Spline(np.vstack([self._endsec[0][0], p0, p2, self._endsec[2][0]]))
+			p0 = self._endsec[0][0] + r * self._endsec[0][1]
+			for i in range(2):
+				AP = [self._spl[i].point(tAP[i]), self._spl[i].tangent(tAP[i])]
+				p1 = AP[0] -r * AP[1]
+				p2 = AP[0] + r * AP[1]
+				p3 = self._endsec[i+1][0] - r * self._endsec[i+1][1]
+
+
+		else:
+
+			p0 = self._endsec[0][0] + r * self._endsec[0][1]
+			p1 = self._endsec[1][0] - r * self._endsec[1][1]
+			p2 = self._endsec[2][0] - r * self._endsec[2][1]
+			
+			spl1 = Spline(np.vstack([self._endsec[0][0], p0, p1, self._endsec[1][0]]))
+			spl2 = Spline(np.vstack([self._endsec[0][0], p0, p2, self._endsec[2][0]]))
 
 		self._spl = [spl1, spl2]
 
@@ -324,8 +377,8 @@ class Bifurcation:
 				ax.scatter(nds[0,0,0], nds[0,0,1], nds[0,0,2],  c='blue')
 				ax.scatter(nds[0,-1,0], nds[0,-1,1], nds[0,-1,2],  c='red')
 
-				nds = self.get_apex_curve()
-				ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='yellow', s = 40)
+				#nds = self.get_apex_curve()
+				#ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='yellow', s = 40)
 
 
 		# Set the initial view
@@ -622,8 +675,9 @@ class Bifurcation:
 					nS = self._tspl[0].transport_vector(self._SP[1] - ptS, tS, 0.0) 
 					ref = cross(self._endsec[0][1][:-1], nS)
 
+
 				elif i == 1:
-					
+				
 					# Reference vector
 					tS = self._spl[0].project_point_to_centerline(self._SP[0])
 					ptS = self._spl[0].point(tS)
@@ -631,7 +685,7 @@ class Bifurcation:
 					ref = cross(nS, self._endsec[1][1][:-1])
 
 				else:
-					
+				
 					# Reference vector
 					tS = self._spl[1].project_point_to_centerline(self._SP[1])
 					ptS = self._spl[1].point(tS)
