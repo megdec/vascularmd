@@ -176,6 +176,52 @@ def lin_interp(p0, p1, num):
 
 
 
+def length_polyline(D):
+
+	""" Return the distance to origin for each point in a polyLine
+
+	Keyword arguments:
+	D -- list of node coordinates
+	"""
+
+	length = [0.0]
+
+	for i in range(1, len(D)):
+		length.append(length[i-1] + norm(D[i] - D[i-1]))
+
+	return length
+
+
+
+def resample(D, num = 0):
+
+	""" Resamples a polyline with equally spaced points
+
+	Keyword arguments:
+	D -- list of node coordinates
+	num -- number of resampled points
+	"""
+
+	if num == 0:
+		num = len(D)
+
+	length = np.array(length_polyline(D))
+	spacing = np.linspace(0, length[-1], num)
+
+	D_resamp = []
+	for l in spacing:
+		ind = np.argmax(length > l) -1
+		d = l - length[ind]
+
+		orient = D[ind + 1] - D[ind]
+		D_resamp.append((D[ind] + orient/norm(orient)*d).tolist())
+
+
+	return np.array(D_resamp)
+
+
+
+
 #####################################
 ######## MESHING GEOMETRY ###########
 #####################################

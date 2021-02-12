@@ -10,6 +10,7 @@ from Trifurcation import Trifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
+from Simulation import Simulation
 from utils import quality, distance, lin_interp
 
 from numpy.linalg import norm 
@@ -646,17 +647,28 @@ def test_export_openFoam():
 	mesh = tree.mesh_surface()
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
+	mesh = mesh.compute_cell_quality()
+	mesh.plot(show_edges = True, scalars = 'CellQuality')
+
 
 	t1 = time.time()
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 5, 10)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
-	mesh.plot(show_edges=True)
-	boundary = tree.boundary_patches()
+	mesh = mesh.compute_cell_quality()
+	mesh = mesh.compute_cell_sizes()
+
+	mesh.plot(show_edges = True, scalars = 'CellQuality')
+	mesh.save("Results/Aneurisk/mesh_surface_full.vtk")
+	
+
+
+	simulation = Simulation(tree, "/home/decroocq/OpenFOAM/decroocq-8/run/test")
+	boundary = simulation.boundary_patches()
 	boundary.plot(show_edges=True)
 
-	tree.write_OpenFoam_files("Results/OpenFoam/")
+	simulation.write_mesh_files()
 
 
 

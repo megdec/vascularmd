@@ -2,6 +2,7 @@ from multiprocessing import Pool, Process, cpu_count
 import pyvista as pv # Meshing
 import vtk
 from scipy.spatial import KDTree
+import warnings
 
 # Trigonometry functions
 from math import pi
@@ -62,31 +63,48 @@ class ArterialTree:
 
 	def get_full_graph(self):
 
-		if self._full_graph is not None:
-			return self._full_graph
-		else:
-			raise AttributeError('Please set the centerline data points')
+		if self._full_graph is None:
+			warnings.warn("No full graph found.")
+
+		return self._full_graph
+
 
 	def get_topo_graph(self):
 
-		if self._topo_graph is not None:
-			return self._topo_graph
-		else:
-			raise AttributeError('Please set the centerline data points')
+		if self._topo_graph is None:
+			warnings.warn("No topo graph found.")
+			
+		return self._topo_graph
 
 	def get_spline_graph(self):
 
-		if self._spline_graph is not None:
-			return self._spline_graph
-		else:
-			raise AttributeError('Please perform spline approximation first.')
+		if self._spline_graph is None:
+			warnings.warn("No full graph found.")
+			
+		return self._spline_graph
+
 
 	def get_crsec_graph(self):
 
-		if self._crsec_graph is not None:
-			return self._crsec_graph
-		else:
-			raise AttributeError('Please perform meshing first.')
+		if self._crsec_graph is None:
+			warnings.warn("No crsec graph found.")
+			
+		return self._crsec_graph
+
+	def get_surface_mesh(self):
+
+		if self._surface_mesh is None:
+			warnings.warn("No surface mesh found.")
+			
+		return self._surface_mesh
+
+
+	def get_volume_mesh(self):
+
+		if self._volume_mesh is None:
+			warnings.warn("No volume mesh found.")
+			
+		return self._volume_mesh
 
 
 
@@ -410,8 +428,6 @@ class ArterialTree:
 		self._d = d	
 
 		if self._geom_graph is None: 
-
-			print('Compute geom graph.')
 
 			# Compute the geom graph with bif objects and rotation angles
 			G = self._spline_graph.copy()
@@ -888,6 +904,11 @@ class ArterialTree:
 
 		for e in G.edges():		
 
+			flip_norm = False
+
+			if e not in [e for e in self._geom_graph.edges()]:
+				flip_norm = True
+
 			# Mesh the first cross section
 			id_first = G.nodes[e[0]]['id']
 			id_edge = G.edges[e]['id']
@@ -913,6 +934,9 @@ class ArterialTree:
 					j = i + 1
 
 				faces[nb_faces,:] = np.array([4, id_first + i, id_edge + i, id_edge + j, id_first + j])
+				if flip_norm:
+					faces[nb_faces,:] = np.array([4, id_first + i, id_first + j, id_edge + j, id_edge + i])
+
 				nb_faces += 1
 
 			for k in range(G.edges[e]['crsec'].shape[0] -1): # Edge sections
@@ -924,6 +948,8 @@ class ArterialTree:
 						j = i + 1
 
 					faces[nb_faces,:] = np.array([4, id_edge + (k * self._N) + i, id_edge + ((k + 1) * self._N) + i, id_edge + ((k + 1) * self._N) + j, id_edge + (k * self._N) + j])
+					if flip_norm:
+						faces[nb_faces,:] = np.array([4, id_edge + (k * self._N) + i, id_edge + (k * self._N) + j , id_edge + ((k + 1) * self._N) + j, id_edge + ((k + 1) * self._N) + i])
 					nb_faces += 1
 
 			id_last_edge = id_edge + ((G.edges[e]['crsec'].shape[0] -1) * self._N)
@@ -938,6 +964,9 @@ class ArterialTree:
 					j = i + 1
 
 				faces[nb_faces,:] = np.array([4, id_last_edge + i, id_last + connect[i], id_last + connect[j], id_last_edge + j])
+				if flip_norm:
+					faces[nb_faces,:] = np.array([4, id_last_edge + i, id_last_edge + j , id_last + connect[j], id_last + connect[i]])
+
 				nb_faces += 1
 		
 		faces = faces[:nb_faces]
@@ -982,8 +1011,8 @@ class ArterialTree:
 
 		# Compute faces
 		f_ogrid = self.ogrid_pattern_faces(self._N, num_a, num_b)
+		f_ogrid_flip = np.copy(f_ogrid[:,[0,1,4,3,2]])
 		f_bif_ogrid = self.bif_ogrid_pattern_faces(self._N, num_a, num_b)
-
 
 		# Add vertices and cells to the mesh
 		vertices = np.zeros((self._nb_nodes,3))
@@ -991,6 +1020,12 @@ class ArterialTree:
 		nb_cells = 0
 
 		for e in G.edges():
+
+
+			flip_norm = False
+
+			if e not in [e for e in self._geom_graph.edges()]:
+				flip_norm = True
 
 			# Mesh the first cross section
 			id_first = G.nodes[e[0]]['id']
@@ -1005,6 +1040,8 @@ class ArterialTree:
 
 			vertices[id_first:id_first + nb_nds_ogrid, :] = v
 			cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_first + f_ogrid[:,1:], id_edge + f_ogrid[:,1:]))
+			if flip_norm:
+				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid_flip.shape[0], 1)) + 8, id_first + f_ogrid_flip[:,1:], id_edge + f_ogrid_flip[:,1:]))
 			nb_cells += f_ogrid.shape[0]
 
 			# Edge cross sections
@@ -1020,6 +1057,8 @@ class ArterialTree:
 			for i in range(G.edges[e]['crsec'].shape[0] - 1):
 
 				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * i) + f_ogrid[:,1:], id_edge + (nb_nds_ogrid * (i + 1)) + f_ogrid[:,1:]))
+				if flip_norm:
+					cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid_flip.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * i) + f_ogrid_flip[:,1:], id_edge + (nb_nds_ogrid * (i + 1)) + f_ogrid_flip[:,1:]))
 				nb_cells += f_ogrid.shape[0]
 
 			# Last cross section
@@ -1053,6 +1092,11 @@ class ArterialTree:
 
 				f_ogrid_reorder = self.__reorder_faces(h, f_bif_ogrid, self._N, num_a, num_b)
 				cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_reorder)[:,1:]))
+
+				if flip_norm:
+					f_ogrid_reorder_flip = np.copy(f_ogrid_reorder[:,[0,1,4,3,2]])
+					cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid_flip)[:,1:], id_last + np.array(f_ogrid_reorder_flip)[:,1:]))
+
 				nb_cells += f_ogrid_reorder.shape[0]
 
 
@@ -1322,21 +1366,17 @@ class ArterialTree:
 
 
 
-	def ogrid_pattern(self, N, center, crsec, layer_ratio, num_a, num_b):
+	def ogrid_pattern(self, center, crsec):
 
 		""" Computes the nodes of a O-grid pattern from the cross section surface nodes.
 
 		Keyword arguments: 
 		center -- center point of the cross section as numpy array
 		crsec -- list of cross section nodes as numpy array
-		layer_ratio, num_a, num_b -- parameters of the O-grid
 		"""
-
-		if sum(layer_ratio) != 1.0:
-			raise ValueError("The sum of the layer ratios must equal 1.")
 		
-		vertices = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)
-		faces = self.ogrid_pattern_faces(N, num_a, num_b)
+		vertices = self.ogrid_pattern_vertices(center, crsec, self._layer_ratio, self._num_a, self._num_b)
+		faces = self.ogrid_pattern_faces(self._N, self._num_a, self._num_b)
 
 		return vertices, faces
 
@@ -1480,61 +1520,6 @@ class ArterialTree:
 			nb_faces += 1
 
 		return faces
-
-
-	#####################################
-	############# SIMULATION  ###########
-	#####################################
-
-
-	def boundary_patches(self):
-
-		if self._volume_mesh is None:
-			raise ValueError('Please perform volume meshing first')
-
-		# Arterial walls
-		if self._surface_mesh is None:
-			wall = self.mesh_surface()
-		else: 
-			wall = self._surface_mesh
-
-		boundary_blocks = pv.MultiBlock()
-		boundary_blocks["wall"] = wall
-
-		# Inlets and outlets
-		inlet_num = 0
-		outlet_num = 0
-
-		for n in self._crsec_graph.nodes():
-			if self._crsec_graph.nodes[n]['type'] == "end":
-
-				# Get crsec
-				crsec = self._crsec_graph.nodes[n]['crsec']
-				center = (crsec[0] + crsec[self._N//2])/2.0
-				vertices, faces = self.ogrid_pattern(self._N, center, crsec, self._layer_ratio, self._num_a, self._num_b)
-				pattern = pv.PolyData(vertices, faces)
-
-				if self._crsec_graph.in_degree(n) == 0: # Inlet case
-					name = "inlet_" + str(inlet_num)
-					inlet_num += 1
-				else:
-					name = "outlet_" + str(outlet_num)
-					outlet_num += 1
-
-				boundary_blocks[name] = pattern
-
-		return boundary_blocks
-
-
-	def write_OpenFoam_files(self, output_dir):
-
-		if self._volume_mesh is None:
-			raise ValueError('Please perform volume meshing first')
-
-
-		surfaces = self.boundary_patches()
-		write_files(self._volume_mesh, surfaces, output_dir)
-
 
 
 
