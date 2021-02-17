@@ -164,7 +164,7 @@ class Bifurcation:
 
 
 
-	def __set_spl(self, r=1):
+	def __set_spl(self, r=1.5):
 
 
 		""" Set the shape splines of the bifurcation.
