@@ -863,7 +863,7 @@ class Spline:
 
 	def intersection(self, spl, v0, t0, t1):
 
-		""" Returns the intersection point and time between two splines, given a initial vector v0.
+		""" Returns the intersection point and time between two splines models, given a initial vector v0.
 
 		Keywords arguments: 
 		spl -- Spline object
@@ -889,6 +889,36 @@ class Spline:
 				
 
 		return pt, [t, t2]
+
+
+
+	def first_intersection_centerline(self, spl, t0=0, t1=1):
+
+		""" Returns the intersection point and time between a the spline and a spline model
+
+		Keywords arguments: 
+		spl -- Spline object
+		v0 -- reference vector for the search
+		t0, t1 -- Times in between the search occurs
+		"""
+
+		tinit = t1
+		while abs(t1 - t0) > 10**(-6):
+
+			t = (t1 + t0) / 2.
+			pt = self.point(t)
+			
+			t2 = spl.project_point_to_centerline(pt)
+			pt2 = spl.point(t2, True)
+
+			if norm(pt - pt2[:-1]) <= pt2[-1]:
+				t0 = t
+			else: 
+				t1 = t
+				
+
+		return pt, [t, t2]
+
 
 
 	#####################################

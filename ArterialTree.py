@@ -17,9 +17,9 @@ import networkx as nx
 
 from utils import *
 from Bifurcation import Bifurcation
+from Multifurcation import Multifurcation
 from Spline import Spline
 
-from VTK_to_OpenFoam import write_files
 
 
 
@@ -237,6 +237,8 @@ class ArterialTree:
 			self._spline_graph.add_node(e[1], coords = spl.point(1.0, True), type = self._data_graph.nodes[e[1]]['type'])
 			self._spline_graph.add_edge(e[0], e[1], spline = spl) 
 
+		# Reorder multifurcations 
+		self.__reorder_multifurcations()
 
 		# Compute apex
 		if parallel:
@@ -244,7 +246,7 @@ class ArterialTree:
 			args = []
 			for n in self._spline_graph.nodes():
 				if self._spline_graph.nodes[n]['type'] == "bif":
-					args.append([self._spline_graph.edges[e]['spline'] for e in self._spline_graph.out_edges(n)])
+					args.append([[self._spline_graph.edges[e]['spline'] for e in self._spline_graph.out_edges(n)]])
 
 
 			p = Pool(cpu_count())
@@ -258,7 +260,6 @@ class ArterialTree:
 					j = 0
 					for e in self._spline_graph.out_edges(n):
 						self._spline_graph.edges[e]['apex_time'] = ap_list[i][1][j]
-
 						j += 1
 					i += 1
 		else:
@@ -269,17 +270,159 @@ class ArterialTree:
 					edges = [e for e in self._spline_graph.out_edges(n)]
 					spl = [self._spline_graph.edges[e]['spline'] for e in edges]
 
-					AP, times = spl[0].first_intersection(spl[1])
+					AP = []
+					tAP = []
+
+					for i in range(len(spl)):
+						tAP.append([])
+
+					# Find apex
+					for i in range(len(spl) - 1):
+						apex, time = spl[i].first_intersection(spl[i+1])
+						AP.append(apex)
+						tAP[i].append(time[0])
+						tAP[i+1].append(time[1])
+
 					self._spline_graph.nodes[n]['apex'] = AP
 
 					for i in range(len(edges)):
-						self._spline_graph.edges[edges[i]]['apex_time'] = times[i]
+						self._spline_graph.edges[edges[i]]['apex_time'] = tAP[i]
 
+
+
+	def correct_topology(self):
+
+		""" Merge branches if the bifurcation point is too close """
+
+		problem_edges = []
+		for e in self._spline_graph.edges():
+
+			if self._spline_graph.nodes[e[0]]['type'] == "bif" and self._spline_graph.nodes[e[1]]['type'] == "bif":
+				spl = self._spline_graph.edges[e]['spline']
+				tAP = self._spline_graph.edges[e]['apex_time']
+
+				if spl.length() - spl.time_to_length(tAP) <= spl.radius(0.0):
+					print("Short segment detected.")
+					problem_edges.append(e)
+
+		for e in problem_edges:
+
+			for edg in self._spline_graph.out_edges(e[1]):
+
+				# Change topo graph
+				coords = np.vstack((self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords'], self._topo_graph.edges[edg]['coords']))
+				self._topo_graph.add_edge(e[0], edg[1], coords = coords)
+
+				# Change data graph
+				coords = np.vstack((self._data_graph.edges[e]['coords'], self._data_graph.nodes[e[1]]['coords'], self._data_graph.edges[edg]['coords']))
+				self._data_graph.add_edge(e[0], edg[1], coords = coords)
+
+			self._topo_graph.remove_node(e[1])
+			self._data_graph.remove_node(e[1])
+			self._spline_graph.remove_node(e[1])
+
+			# Recompute splines
+			for edg in self._data_graph.out_edges(e[0]):
+
+				spl = self.__spline_approximation_edge(edg)
+				self._spline_graph.add_edge(edg[0], edg[1], spline = spl)
+
+		problem_nodes = [e[0] for e in problem_edges]
+		self.__reorder_multifurcations(nodes=problem_nodes)
+
+		# Recompute apex points
+		for n in problem_nodes:
+			AP = []
+			tAP = []
 			
+			edg_list = [edg for edg in self._spline_graph.out_edges(n)]
+			edg_list.sort()
+
+			for i in range(len(edg_list)):
+				tAP.append([])
+
+			for i in range(len(edg_list) - 1):
+
+				spl1 = self._spline_graph.edges[edg_list[i]]['spline']
+				spl2 = self._spline_graph.edges[edg_list[i+1]]['spline']
+				apex, times = spl1.first_intersection(spl2) 
+
+				AP.append(apex)
+				tAP[i].append(times[0])
+				tAP[i+1].append(times[1])
+
+			self._spline_graph.nodes[n]['apex'] = AP
+
+			for i in range(len(edg_list)):
+				self._spline_graph.edges[edg_list[i]]['apex_time'] = tAP[i]
+				
+
+
+
+	def __reorder_multifurcations(self, nodes = []):
+
+		""" Relabel the nodes of the graphs to have multifurcations in ascending order """
+		if len(nodes) == 0:
+			for n in self._spline_graph.nodes():
+				if self._spline_graph.nodes[n]['type'] == "bif":
+					if self._spline_graph.out_degree(n) > 2:
+						nodes.append(n)
+
+		for n in nodes:
+
+			# Reorder splines if necessary
+			pt = []
+			node_id = []
+
+			for edg in self._spline_graph.out_edges(n):
+				spl = self._spline_graph.edges[edg]['spline']
+				t = spl.length_to_time(3)
+				pt.append(spl.point(t))
+				node_id.append(edg[1])
+			
+
+			angles = np.zeros((len(pt), len(pt)))
+
+			for i in range(len(pt)):
+				for j in range(len(pt)):
+					if j > i:
+						# Compute angle
+						v1 = pt[i] - self._spline_graph.nodes[n]['coords'][:-1]
+						v2 = pt[j] - self._spline_graph.nodes[n]['coords'][:-1]
+						a = angle(v1, v2)
+						angles[i, j] = a
+						angles[j, i] = a
+					
+			
+			ind = np.argmax(angles)
+			ind = np.unravel_index(ind, (len(pt), len(pt)))
+			order = [ind[0]]
+			angles[:, ind[0]] = [2*pi] * len(pt)
+
+				
+
+			for i in range(len(pt)-1):
+				
+				ind = np.argmin(angles[order[i-1]])
+				order.append(ind)
+				angles[:, ind] = [2*pi] * len(pt)
+				
+
+			# Relabel nodes 
+			all_id = [n for n in self._spline_graph.nodes()]
+			label_dict = dict(zip(all_id, all_id))
+
+			for i in range(len(order)):
+				label_dict[node_id[i]] = node_id[order[i]]
+
+			self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict)
+			self._data_graph = nx.relabel_nodes(self._data_graph, label_dict)
+			self._spline_graph = nx.relabel_nodes(self._spline_graph, label_dict)
+
 
 	def __spline_approximation_edge(self, e):
 
-		""" Approximate centerlines using splines for a given edge of the spline-graph """
+		""" Approximate centerlines using splines for a given edge of the spline_graph """
 
 		G = self._data_graph
 
@@ -373,9 +516,9 @@ class ArterialTree:
 
 		t = spl.length_to_time(spl.time_to_length(1.0) - pos) #
 		t_min = spl.project_point_to_centerline(self._topo_graph.nodes[edges[0][0]]['coords'][:-1]) 
+
 		if t < t_min : 
 			t = t_min 
-			print(t_min)
 
 		tg = spl.tangent(t, True) #
 		pt = spl.point(t, True) #
@@ -434,11 +577,14 @@ class ArterialTree:
 			nmax = max(list(G.nodes())) + 1
 
 			# Cut the splines to separate the bifurcations
-			for e in self._spline_graph.edges():			
+			sorted_edges = [e for e in self._spline_graph.edges()]
+			sorted_edges.sort()
+			for e in sorted_edges:	
+
 				if self._spline_graph.nodes[e[0]]['type'] == "bif":
 
 					spl = self._spline_graph.edges[e]['spline']
-					tAP = self._spline_graph.edges[e]['apex_time']
+					tAP = max(self._spline_graph.edges[e]['apex_time']) # Get maximum apex if more than one
 					lAP = spl.time_to_length(tAP) 
 					rad = spl.radius(tAP)
 
@@ -467,6 +613,7 @@ class ArterialTree:
 				if self._spline_graph.nodes[n]['type'] == "bif":
 
 					e_out = [e for e in G.out_edges(n)]
+					print(e_out)
 					spl_out = [G.edges[e]['spline'] for e in e_out]
 
 					S = [[spl_out[0].point(0.0, True), spl_out[0].tangent(0.0, True)]]
@@ -477,10 +624,8 @@ class ArterialTree:
 					# Get apex
 					AP = self._spline_graph.nodes[n]['apex'] 
 					# Create bifurcation
-					#bif = Bifurcation(S, 1, spl = spl_out, AP = AP)
-					# Create bifurcation  TMP WITH MODEL 
-					bif = Bifurcation(S, 1)
-
+					bif = Multifurcation(S, 1, spl = spl_out, AP = AP)
+			
 					ref = bif.get_reference_vectors()
 
 					G.nodes[n]['type'] = "sep"
@@ -2112,17 +2257,21 @@ class ArterialTree:
 		""" Returns the number of nodes of each type in the graph.
 		"""
 
-		count = {'reg' : 0, 'bif' : 0, 'end' : 0}
+		count = {'reg' : 0, 'bif' : 0, 'inlet' : 0, 'outlet' : 0, 'other' : 0}
 
 
 		for n in self._full_graph.nodes():
 
 			if self._full_graph.in_degree(n) == 1 and self._full_graph.out_degree(n) == 1:
 				count['reg'] += 1
-			elif self._topo_graph.out_degree(n) == 0:
-				count['end'] += 1
-			else:
+			elif self._full_graph.in_degree(n) == 0 and self._full_graph.out_degree(n) == 1:
+				count['inlet'] += 1
+			elif self._full_graph.in_degree(n) == 1 and self._full_graph.out_degree(n) == 0:
+				count['outlet'] += 1
+			elif self._full_graph.out_degree(n) > 1:
 				count['bif'] += 1
+			else: 
+				count['other'] += 1
 
 		return count
 
@@ -2146,7 +2295,7 @@ class ArterialTree:
 				step = int(pts.shape[0]/(p*pts.shape[0]))
 
 				if step > 0:
-					pts =  pts[:-1:step]
+					pts =  pts[:-1:step][1:]
 				else:
 					pts = pts[int(pts.shape[0]/2)]
 			else: 
@@ -2236,7 +2385,8 @@ class ArterialTree:
 					ax.text(value[0], value[1], value[2], str(key))
 
 				# Plot connecting lines
-				for i,j in enumerate(self._topo_graph.edges()):
+				pos = nx.get_node_attributes(self._full_graph, 'coords')
+				for i,j in enumerate(self._full_graph.edges()):
 					ax.plot(np.array((pos[j[0]][0], pos[j[1]][0])), np.array((pos[j[0]][1], pos[j[1]][1])), np.array((pos[j[0]][2], pos[j[1]][2])), c='black', alpha=0.5)
 
 			if points: 
@@ -2393,90 +2543,97 @@ class ArterialTree:
 
 		return G
 
+		c = pv.read(filename)
+
 
 
 	def __vtk_to_graph(self, filename):
 
-
 		""" Converts vmtk centerline to a graph.
 
 		Keyword arguments:
-		filename -- path to vmtk .vtk or .vtp centerline file
+		filename -- path to vmtk .vtk or .vtp centerline file with branch extracted
+		type -- vtk centerline data type, either branch or group
 		"""
-		G = nx.DiGraph()
-		c = pv.read(filename)
 
-		pts = c.points.tolist()
-		radius = c.point_arrays['MaximumInscribedSphereRadius']
+		G = nx.DiGraph() # Create graph
 
-		# Store the different centerlines
-		CL = []
-		p0 = pts[0] + [radius[0]]
-		cl = [p0]
-		
-		for i in range(1,len(pts)):
-			p = pts[i] + [radius[i]]
+		centerline = pv.read(filename)
+		nb_centerlines = centerline.cell_arrays['CenterlineIds'].max() + 1
 
-			if i>0 and norm(np.array(p) - np.array(pts[i-1] + [radius[i-1]])) > 20: #p == p0:
-				CL.append(cl)
-				cl = []
-			else:
-				cl.append(p) 
+		cells = centerline.GetLines()
+		cells.InitTraversal()
+		idList = vtk.vtkIdList()
 
-		CL.append(cl)
+		radiusData = centerline.GetPointData().GetScalars('MaximumInscribedSphereRadius') 
+		centerlineIds = centerline.GetCellData().GetScalars('CenterlineIds') 
 
-		# Write nodes and edges
-		pts_mem = []
+		connect_list = []
+		for i in range(nb_centerlines):
+			connect_list.append([])
 
-		# Write first centerline
-		k = 0
-		for pt in CL[0]:
-			G.add_node(k, coords=pt)
+		g = 0
+		while cells.GetNextCell(idList):
 
-			if k > 0:
-				G.add_edge(k-1, k, coords = [])
+			if g > 0 and c_id != centerlineIds.GetValue(g):
+				start_found = False
+			
+			c_id = centerlineIds.GetValue(g)
 
-			pts_mem.append(pt)
-			k = k + 1
-
-		# Write other centerlines
-		for i in range(1, len(CL)):
-			for j in range(len(CL[i])):
-				p = CL[i][j]
-
-				newcl = True
-				for pts in pts_mem:
-					if norm(np.array(p) - np.array(pts)) < 1:
-						newcl = False
-
-				if newcl:
-					j = j - 10
-					p = CL[i][j]
-					break
-					
-
-			# Find closest point from p and write edge
-			min_d = 1000
-			for g in range(len(pts_mem)):
-				d = norm(np.array(p)[:-1] - np.array(pts_mem[g])[:-1])
-				if d < min_d:
-					min_p = g
-					min_d = d
+			connect = []
+			if c_id == 0:
 				
-			G.add_node(k, coords=p)
-			pts_mem.append(p)
-			G.add_edge(min_p, k, coords = [])
-			k = k + 1
+				for i in range(0, idList.GetNumberOfIds()):
 
-			# Write the rest of the centerline
-			for h in range(j+1, len(CL[i])):
-				p = CL[i][h]
-				G.add_node(k, coords=p)
-				pts_mem.append(p)
-				G.add_edge(k-1, k, coords = [])
-				k = k + 1	
+					pId = idList.GetId(i)
+					pt = centerline.GetPoint(pId)
+					radius = radiusData.GetValue(pId)
+					
+					connect.append(pId)
+					G.add_node(pId, coords=np.array([pt[0], pt[1], pt[2], radius]))
+
+			else: 
+
+				# Build kd tree of the points of the graph
+				pt_coords = np.array(list(nx.get_node_attributes(G, 'coords').values()))
+				pt_ids = list(nx.get_node_attributes(G, 'coords').keys())
+				kdtree = KDTree(pt_coords[:,:-1])
+
+				# For all successive points, find the minimum distance to the graph
+				for i in range(0, idList.GetNumberOfIds()):
+
+					pId = idList.GetId(i)
+					pt = centerline.GetPoint(pId)
+					radius = radiusData.GetValue(pId)
+
+					if not start_found:
+						d, idx = kdtree.query(pt)
+						# If the distance exceeds a given threshold
+						if d > 0.05:
+							start_found = True
+							connect.append(pt_ids[idx])
+							connect.append(pId) # Write bifucation edge
+
+							G.add_node(pId, coords=np.array([pt[0], pt[1], pt[2], radius])) # write point to graph
+							start_found = True
+					else:
+
+						# Write nodes and edges
+						connect.append(pId) 
+						G.add_node(pId, coords=np.array([pt[0], pt[1], pt[2], radius])) 
+
+			connect_list[c_id] += connect
+			g+=1
+	
+		for connect in connect_list:
+			# Add connecting edges
+			for j in range(len(connect)-1):
+				if connect[j] != connect[j+1]:
+					G.add_edge(connect[j], connect[j+1], coords = np.array([]).reshape(0,4))
 
 		return G
+
+
 
 
 	#####################################

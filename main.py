@@ -7,6 +7,7 @@ from geomdl import BSpline, operations
 
 from Bifurcation import Bifurcation
 from Trifurcation import Trifurcation
+from Multifurcation import Multifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
@@ -15,6 +16,7 @@ from utils import quality, distance, lin_interp
 
 from numpy.linalg import norm 
 import time
+import vtk
 
 
 def test_bifurcation_class():
@@ -50,6 +52,22 @@ def test_trifurcation_class():
 
 	trif = Trifurcation(np.array([S0, S3, S2, S1]), 0.5)
 	mesh = trif.mesh_surface()
+	mesh.plot(show_edges=True)
+
+
+def test_multifurcation_class():
+
+	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
+	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
+	S2 = np.array([[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]])
+	S3 = (S1 + S2) / 2
+	S3[0,:] = S3[0,:] + 4* S3[1,:]
+
+
+
+	multi = Multifurcation([S0, S1, S2], 0.5)
+	multi.show(True)
+	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
 
 
@@ -175,17 +193,21 @@ def test_deformation():
 def test_meshing():
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
-	tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
+	tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp")
 
 	#tree.subgraph([1,2,3,4,5,6])
 	#tree.subgraph([1,2])
 	
 	#tree.write_vtk("full", "Results/test.vtk")
-	tree.deteriorate_centerline(1, [0.0, 0.0, 0.0, 0.0])
+	tree.deteriorate_centerline(0.2, [0.0, 0.0, 0.0, 0.0])
 	tree.show(True, False, False)
 	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
 	tree.spline_approximation()
 	tree.show(True, True, False)
+	tree.correct_topology()
+	tree.show(True, True, False)
+
 	#tree.write_vtk("spline", "Results/test_fitting.vtk")
 
 
@@ -662,22 +684,23 @@ def test_export_openFoam():
 	mesh.plot(show_edges = True, scalars = 'CellQuality')
 	mesh.save("Results/Aneurisk/mesh_surface_full.vtk")
 	
-
-
 	simulation = Simulation(tree, "/home/decroocq/OpenFOAM/decroocq-8/run/test")
-	boundary = simulation.boundary_patches()
-	boundary.plot(show_edges=True)
 
 	simulation.write_mesh_files()
+	simulation.write_pressure_boundary_condition_file()
+	simulation.write_velocity_boundary_condition_file([0.2])
+
+
 
 
 
 #test_tree_class()
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
-#test_meshing()
+#test_multifurcation_class()
+test_meshing()
 #test_bifurcation_smoothing()
-test_bifurcation_class()
+#test_bifurcation_class()
 #test_fitting()
 #test_quality_model2D()
 #test_quality_model3D()
@@ -698,3 +721,4 @@ test_bifurcation_class()
 #test_rotations()
 #test_cut_branch()
 #test_export_openFoam()
+

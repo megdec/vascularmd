@@ -373,13 +373,24 @@ def parallel_bif(bif, N, d, end_ref =[None, None, None]):
 
 	# Find cross sections
 	bif.cross_sections(N, d, end_ref)
-
 	return bif
 
-def parallel_apex(spl1, spl2):
-	#Find apex
-	AP, time = spl1.first_intersection(spl2)
-	return AP, time
+def parallel_apex(spl):
+
+	AP = []
+	tAP = []
+
+	for i in range(len(spl)):
+		tAP.append([])
+
+	# Find apex
+	for i in range(len(spl) - 1):
+		apex, time = spl[i].first_intersection(spl[i+1])
+		AP.append(apex)
+		tAP[i].append(time[0])
+		tAP[i+1].append(time[1])
+
+	return AP, tAP
 
 
 def segment_crsec(spl, num, N, v0 = [], alpha = None):

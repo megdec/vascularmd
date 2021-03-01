@@ -58,7 +58,6 @@ class Bifurcation:
 		a2 = angle(self._spl[1].tangent(self._tAP[1]), self._spl[0].tangent(0.0))
 		a2 = (a2*180) / pi
 
-		print("Apex sections angles ", a1, a2)
 
 	
 
@@ -166,7 +165,6 @@ class Bifurcation:
 
 	def __set_spl(self, r=1.5):
 
-
 		""" Set the shape splines of the bifurcation.
 
 		Keyword arguments:
@@ -190,6 +188,7 @@ class Bifurcation:
 			
 			spl1 = Spline(np.vstack([self._endsec[0][0], p0, p1, self._endsec[1][0]]))
 			spl2 = Spline(np.vstack([self._endsec[0][0], p0, p2, self._endsec[2][0]]))
+		
 
 		self._spl = [spl1, spl2]
 
@@ -226,9 +225,7 @@ class Bifurcation:
 		for ind in [[0, 1], [1, 0]]:
 		
 			t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() / 2.0)
-			#t = self._spl[ind[0]].length_to_time(self._spl[ind[0]].length() -  2*self._spl[ind[0]].radius(self._tAP[ind[0]]))
-			#if t<0:
-			#	t = 0.5
+			t = self._spl[ind[0]].first_intersection_centerline(self._spl[ind[1]], t0=0, t1=1)[1][0]
 
 			ptAP = self._spl[ind[0]].point(self._tAP[ind[0]])
 			nAP = self._AP - ptAP
@@ -263,6 +260,7 @@ class Bifurcation:
 		n = n / norm(n)
 
 		self._CP = np.array([self.__send_to_surface(self._B, n, [0, 1]), self.__send_to_surface(self._B, -n, [0, 1])])
+		print("n", n, "bif CP", self._CP, "bif B", self._B)
 
 
 
@@ -529,8 +527,9 @@ class Bifurcation:
 			nds.append(nds_seg)
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		 #self.smooth(1)#self.R
+		#self.smooth(2)#self.R
 		#self.local_smooth(0)
+		self.resample()
 		
 		return self._crsec
 
@@ -692,7 +691,7 @@ class Bifurcation:
 					nS = self._spl[1].transport_vector(self._SP[1] - ptS, tS, 1.0)
 					ref = cross(self._endsec[2][1][:-1], nS)
 
-
+				print("bif", ref)
 			ref = ref / norm(ref)
 
 			angle_list = (2 * pi / N) * np.arange(N)
@@ -708,6 +707,12 @@ class Bifurcation:
 	########## POST PROCESSING  #########
 	#####################################
 
+	def resample(self):
+		""" Resamples the cells of the bifurcation """
+
+		init_mesh = self.mesh_surface()
+		self.smooth(5)
+		self.deform(init_mesh)
 
 	def smooth(self, n_iter):
 
@@ -857,14 +862,14 @@ class Bifurcation:
 
 	def __send_to_surface(self, O, n, ind):
 
-		pt = self.__projection(O, n, 0, 5.0, ind[0])
+		pt = self.__projection(O, n, 0, 2.5, ind[0])
 
 		# Check distance to spl2
 		t = self._spl[ind[1]].project_point_to_centerline(pt)
 		pt2 = self._spl[ind[1]].point(t, True)
 		
 		if norm(pt - pt2[:-1]) -  pt2[-1] < -10**(-3):
-			pt = self.__projection(pt, n, 0.0, 5.0, ind[1])
+			pt = self.__projection(pt, n, 0.0, 2.0, ind[1])
 
 		return pt
 
@@ -890,7 +895,7 @@ class Bifurcation:
 		t = self._spl[ind].project_point_to_centerline(O + c1 * n)
 		pt = self._spl[ind].point(t, True)
 
-		if norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
+		if False: #norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
 			return self.__projection(O, n, c0, c1 - 0.01, ind)
 
 		else:
