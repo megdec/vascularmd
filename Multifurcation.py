@@ -468,7 +468,7 @@ class Multifurcation:
 
 		nodes_num = np.arange(2, len(bif_crsec)).tolist()
 		l = len(nodes_num) // len(self._tspl)
-		#ind = nodes_num.reshape((4, -1))
+
 		ind = []
 		for i in range(len(self._tspl)):
 			ind.append(nodes_num[i*l:(i+1)*l])
