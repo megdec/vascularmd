@@ -9,6 +9,9 @@ from numpy import dot, cross, arctan2
 
 import pyvista as pv
 
+import matplotlib.pyplot as plt # Tools for plots
+from scipy.spatial import KDTree
+
 
 #####################################
 ############# GEOMETRY ##############
@@ -225,6 +228,318 @@ def resample(D, num = 0):
 #####################################
 ######## MESHING GEOMETRY ###########
 #####################################
+
+def search_intersection(data, center, radius, i):
+
+	intersections = []
+	indices = []
+
+	for j in range(i, data.shape[0]-1):
+		coef_dir =  (data[j+1, 1] - data[j, 1])/(data[j+1, 0] - data[j, 0]) 
+		ord_org = data[j,1] - coef_dir * data[j, 0]
+		v = np.array([coef_dir, ord_org])
+
+		A = v[0]**2 + 1
+		B = -2*center[0] + 2*v[0]*(v[1] - center[1])
+		C = center[0]**2 + (v[1]- center[1])**2 - radius**2
+
+		Delta = B**2 - 4*A*C
+
+		if Delta >= 0:
+
+			if Delta == 0:
+				x = -B / (2*A)
+				y = v[0] * x + v[1]
+				sol = [np.array([x, y])]
+
+			if Delta > 0:
+
+				x1 = (-B + sqrt(Delta))/ (2*A)
+				y1 =  v[0] * x1 + v[1]
+				sol = [np.array([x1, y1])]
+
+				x2 = (-B - sqrt(Delta))/ (2*A)
+				y2 =  v[0] * x2 + v[1]
+				sol.append(np.array([x2, y2]))
+			
+
+			for k in range(len(sol)):
+				if sol[k][0] >= data[j,0] and sol[k][0] <= data[j+1,0] and sol[k][1] >= data[j,1] and sol[k][1] <= data[j+1,1]: # The intersection is on the segment
+					intersections.append(sol[k])
+					indices.append(j)
+
+	return intersections, indices
+
+
+
+def smooth_polyline(data, radius):
+	""" Smoothes a polyline using the inscribed circle method """
+
+	figure, axes = plt.subplots()
+	axes.set_aspect(1)
+
+	axes.plot(data[:,0], data[:,1])
+	axes.scatter(data[:,0], data[:,1])
+
+	coefs = np.zeros((data.shape[0]-1, 2))
+	normals =  np.zeros((data.shape[0]-1, 2))
+
+	# Get parallel line for every point
+	for i in range(data.shape[0] - 1):
+
+		n = (data[i+1] - data[i])[::-1]
+		if False: #n[1] <= 0:
+			n = n * np.array([1,-1])
+		else: 
+			n = n * np.array([-1, 1])
+
+		n = n / norm(n)
+		normals[i, :] = n
+		pt = data[i] + n * radius
+
+		coefs[i, 0] =  (data[i+1, 1] - data[i, 1])/(data[i+1, 0] - data[i, 0]) 
+		coefs[i, 1] = pt[1] - coefs[i, 0] * pt[0]
+		
+	coefs = np.around(coefs, 3)
+	normals = np.around(normals, 3)
+	axes.plot([data[:-1,0], data[:-1,0] + normals[:,0] * radius] , [data[:-1,1], data[:-1,1] + normals[:,1] * radius])
+
+
+	# Search for intersections
+	for i in range(data.shape[0]-1):
+		print("search point", i)
+		a = coefs[i, 0]
+		b = coefs[i, 1]
+
+		for j in range(i+2, data.shape[0]-1):
+
+			c = coefs[j, 0]
+			d = coefs[j, 1]
+
+			if a != c:
+
+				x = (b-d)/(c-a)
+				y = a*x + b
+				center = np.array([x, y])
+
+				inter1 = center - normals[j, :] * radius
+				inter2 = center - normals[i, :] * radius
+
+					
+				# Search if the intersections lies in the segments
+				if (norm(data[j, :] - inter1) <= norm(data[j, :] - data[j + 1, :]) and norm(data[j+1, :] - inter1) < norm(data[j, :] - data[j + 1, :])):
+					if (norm(data[i, :] - inter2) <= norm(data[i, :] - data[i + 1, :]) and norm(data[i+1, :] - inter2) < norm(data[i, :] - data[i + 1, :])):
+
+						axes.scatter(inter1[0], inter1[1])	
+						axes.scatter(inter2[0], inter2[1])	
+						axes.scatter(center[0], center[1])
+
+						circle = plt.Circle(center, radius=radius, alpha=0.3, color='red')
+						axes.add_artist(circle)
+							
+
+						project = [inter2]
+
+						for k in range(i, j+1):
+							project.append(data[k,:])
+							
+						project.append(inter1)
+
+						angles = [0.0]
+						for k in range(len(project)-1):
+							angles.append(angles[-1] + norm(project[k] - project[k+1]))
+
+						# Compute angle between both intersections
+						angles = angles / max(angles)
+						v0 = project[0]- center
+						v1 = project[-1] - center
+						r, phi0 =cart2pol(v0[0], v0[1])
+						r, phi1 =cart2pol(v1[0], v1[1])
+						angles = angles * (phi1 - phi0)
+
+						count = i
+						for k in range(1, len(angles) - 1):
+							data[count] = pol2cart(radius, phi0 + angles[k]) + center
+							count+=1
+
+						break
+
+	plt.scatter(data[:,0], data[:,1])		
+	plt.show()
+
+	return data
+
+
+def smooth_polylineorg(data, radius):
+	""" Smoothes a polyline using the inscribed circle method """
+
+	figure, axes = plt.subplots()
+	axes.set_aspect(1)
+
+	axes.plot(data[:,0], data[:,1])
+	axes.scatter(data[:,0], data[:,1])
+
+
+
+	# Get normals for every point
+
+	for i in range(data.shape[0]):
+
+		if i - 1 < 0:
+			n = (data[i+1] - data[i])[::-1]
+
+			if n[1] <= 0:
+				n = n * np.array([1,-1])
+			else: 
+				n = n * np.array([-1, 1])
+
+		elif i + 1 == data.shape[0]:
+			n = (data[i] - data[i-1])[::-1]
+
+			if n[1] <= 0:
+				n = n * np.array([1,-1])
+			else: 
+				n = n * np.array([-1, 1])
+		else:
+
+			n = (data[i+1] - data[i])[::-1]
+
+			if n[1] <= 0:
+				n = n * np.array([1,-1])
+			else: 
+				n = n * np.array([-1, 1])
+
+
+			n1 = (data[i+1] - data[i])[::-1]
+
+			if n1[1] <= 0:
+				n1 = n1 * np.array([1,-1])
+			else: 
+				n1 = n1 * np.array([-1, 1])
+
+			n2 = (data[i] - data[i-1])[::-1]
+
+			if n2[1] <= 0:
+				n2 = n2 * np.array([1,-1])
+			else: 
+				n2 = n2 * np.array([-1, 1])
+
+			n = (n1 / norm(n1) + n2 / norm(n2)) / 2.0
+
+		n = n / norm(n)
+		axes.plot([data[i,0], data[i,0] + n[0]], [data[i,1], data[i,1] + n[1]])
+
+		center = data[i] + n * radius
+
+		# Search for intersections
+		intersections = search_intersection(data, center, radius, i+1)[0]
+		
+	
+		if len(intersections)>0:
+
+			print("collision")
+
+			# Dichotomie
+			b0 = data[i-1] + n * radius
+			b1 = data[i] + n * radius
+
+			while norm(b1-b0) > 10e-3:
+				b = (b0 + b1) / 2.0
+				nb_inter = len(search_intersection(data, b, radius, i+1)[0])
+
+				if nb_inter == 1:
+					b0 = b
+					b1 = b
+				if nb_inter > 1:
+					b1 = b
+				if nb_inter < 1:
+					b0 = b
+
+			new_c = plt.Circle(b1, radius=radius, alpha=0.3, color='red')
+			axes.add_artist(new_c)
+			intersection, indices = search_intersection(data, b1, radius, i+1)
+			
+			project = [b1 - n*radius]
+
+			for k in range(i, indices[0]+1):
+				project.append(data[k,:])
+				
+			project.append(intersection[0])
+
+			coefs = [0.0]
+			for k in range(len(project)-1):
+				coefs.append(coefs[-1] + norm(project[k] - project[k+1]))
+
+			coefs = coefs / max(coefs)
+			v0 = project[0]- b1
+			v1 = project[-1] - b1
+			r, phi0 =cart2pol(v0[0], v0[1])
+			r, phi1 =cart2pol(v1[0], v1[1])
+			coefs = coefs * (phi1 - phi0)
+
+			count = i
+			for k in range(1, len(coefs) - 1):
+				data[count] = pol2cart(radius, phi0 + coefs[k]) + b1
+				count+=1
+
+
+			"""
+
+			c = (data[i+1, 1] - data[i, 1])/(data[i+1, 0] - data[i, 0]) 
+			d = center[1] - c * center[0]	
+			axes.plot([1, 10], [c*1+d, c*10+d])		
+
+			for j in segment:
+		
+				a = (data[j+1, 1] - data[j, 1])/(data[j+1, 0] - data[j, 0]) 
+				b = data[j,1] - a * data[j, 0]
+				
+				A = -4*((a+c)**2)
+				B = 8*(d-b)*(a-c)
+				C = -4*((b-d)**2) + 4*(a**2 +1)*(radius**2)
+
+				Delta = B**2 - 4*A*C
+				print("Delta", Delta, "B", B, "A", A)
+
+				if Delta >= 0:
+
+					if Delta == 0:
+						x = -B / (2*A)
+						y = c * x + d
+						sol = [np.array([x, y])]
+
+					if Delta > 0:
+
+						x1 = (-B + sqrt(Delta))/ (2*A)
+						y1 =  c * x1 + d
+						sol = [np.array([x1, y1])]
+
+						x2 = (-B - sqrt(Delta))/ (2*A)
+						y2 =  c * x2 + d
+						sol.append(np.array([x2, y2]))
+					print(sol)
+
+					for k in range(len(sol)):
+						if sol[k][0] <= data[j,0] and sol[k][0] <= data[j+1,0] and sol[k][1] <= data[j,1] and sol[k][1] <= data[j+1,1]: # The intersection is on the segment
+							circle = plt.Circle(sol, radius=radius, alpha=0.3)
+							axes.add_artist(circle)
+							"""
+
+			break
+
+
+			# Find the last fitting circle by dichotomie
+
+			# Project points to the circle 
+
+	axes.scatter(data[:,0], data[:,1])		
+	plt.show()
+
+	return data
+
+
+
+
 
 def neighbor_faces(vertices, faces):
 	""" Create a numpy array of the neighbor cells of every vertices"""

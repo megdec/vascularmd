@@ -299,11 +299,13 @@ class ArterialTree:
 
 			if self._spline_graph.nodes[e[0]]['type'] == "bif" and self._spline_graph.nodes[e[1]]['type'] == "bif":
 				spl = self._spline_graph.edges[e]['spline']
-				tAP = self._spline_graph.edges[e]['apex_time']
+				tAP = max(self._spline_graph.edges[e]['apex_time'])
 
-				if spl.length() - spl.time_to_length(tAP) <= spl.radius(0.0):
-					print("Short segment detected.")
+				if (spl.length() - spl.time_to_length(tAP)) <= spl.radius(0.0):
 					problem_edges.append(e)
+
+		print(len(problem_edges), "short segments were detected.")
+		problem_edges.sort(reverse=True)
 
 		for e in problem_edges:
 
@@ -328,10 +330,13 @@ class ArterialTree:
 				self._spline_graph.add_edge(edg[0], edg[1], spline = spl)
 
 		problem_nodes = [e[0] for e in problem_edges]
-		self.__reorder_multifurcations(nodes=problem_nodes)
+
+		label_dict = self.__reorder_multifurcations(nodes=problem_nodes)
 
 		# Recompute apex points
-		for n in problem_nodes:
+		for n_org in problem_nodes:
+			n = label_dict[n_org]
+
 			AP = []
 			tAP = []
 			
@@ -346,6 +351,10 @@ class ArterialTree:
 				spl1 = self._spline_graph.edges[edg_list[i]]['spline']
 				spl2 = self._spline_graph.edges[edg_list[i+1]]['spline']
 				apex, times = spl1.first_intersection(spl2) 
+
+				# Check that apex is correct
+
+				# If not, compute the other apex points 
 
 				AP.append(apex)
 				tAP[i].append(times[0])
@@ -368,15 +377,26 @@ class ArterialTree:
 					if self._spline_graph.out_degree(n) > 2:
 						nodes.append(n)
 
+
+		# Label dictionnary 
+		all_id = [n for n in self._spline_graph.nodes()]
+		label_dict = dict(zip(all_id, all_id))
+
+		for n in nodes:
+			if n not in [n for n in self._spline_graph.nodes()]:
+				nodes.remove(n)
+
+
 		for n in nodes:
 
 			# Reorder splines if necessary
 			pt = []
 			node_id = []
-
-			for edg in self._spline_graph.out_edges(n):
+			edges = [edg for edg in self._spline_graph.out_edges(n)]
+			edges.sort()
+			for edg in edges:
 				spl = self._spline_graph.edges[edg]['spline']
-				t = spl.length_to_time(3)
+				t = spl.length_to_time(6)
 				pt.append(spl.point(t))
 				node_id.append(edg[1])
 			
@@ -399,25 +419,23 @@ class ArterialTree:
 			order = [ind[0]]
 			angles[:, ind[0]] = [2*pi] * len(pt)
 
-				
-
 			for i in range(len(pt)-1):
 				
 				ind = np.argmin(angles[order[i-1]])
 				order.append(ind)
 				angles[:, ind] = [2*pi] * len(pt)
+
 				
+			# Relabel nodes
+			for i in range(len(node_id)):
+				label_dict[node_id[order[i]]] = node_id[i]
 
-			# Relabel nodes 
-			all_id = [n for n in self._spline_graph.nodes()]
-			label_dict = dict(zip(all_id, all_id))
 
-			for i in range(len(order)):
-				label_dict[node_id[i]] = node_id[order[i]]
+		self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict)
+		self._data_graph = nx.relabel_nodes(self._data_graph, label_dict)
+		self._spline_graph = nx.relabel_nodes(self._spline_graph, label_dict)
 
-			self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict)
-			self._data_graph = nx.relabel_nodes(self._data_graph, label_dict)
-			self._spline_graph = nx.relabel_nodes(self._spline_graph, label_dict)
+		return label_dict
 
 
 	def __spline_approximation_edge(self, e):
@@ -499,8 +517,6 @@ class ArterialTree:
 
 		pts0 = np.vstack((self._topo_graph.nodes[edges[0][0]]['coords'], self._topo_graph.edges[edges[0]]['coords'], self._topo_graph.nodes[node]['coords']))
 
-		pos = np.mean(d0[:,-1]) + adjust
-
 		e_act = edges[0]
 		while pts0.shape[0] < nb_min:
 			if self._topo_graph.in_degree(e_act[0])!= 0:
@@ -508,6 +524,8 @@ class ArterialTree:
 				pts0 =  np.vstack((self._topo_graph.edges[e_pred]['coords'], self._topo_graph.nodes[e_pred[1]]['coords'], pts0)) # Add data
 				e_act = e_pred
 			else: break
+
+		pos = self._topo_graph.nodes[node]['coords'][-1]/2.0 + adjust
 
 		# Fit splines from the main branch to the daughter branches
 		spl = Spline() 
@@ -624,6 +642,7 @@ class ArterialTree:
 					AP = self._spline_graph.nodes[n]['apex'] 
 					# Create bifurcation
 					bif = Multifurcation(S, 1, spl = spl_out, AP = AP)
+					bif.show(True)
 			
 					ref = bif.get_reference_vectors()
 
@@ -1761,7 +1780,17 @@ class ArterialTree:
 	############  OPERATIONS  ###########
 	#####################################
 
-	def deform_to_mesh(self, mesh):
+	def deform_volume_to_mesh(self, mesh):
+
+		""" Deforms the original mesh to match a given surface mesh. 
+		Overwrite the cross section graph.
+
+		Keywords arguments: 
+		mesh -- a surface mesh in vtk format
+		"""
+		pass
+
+	def deform_surface_to_mesh(self, mesh):
 
 		""" Deforms the original mesh to match a given surface mesh. 
 		Overwrite the cross section graph.
@@ -2296,7 +2325,7 @@ class ArterialTree:
 
 			pts = self._topo_graph.edges[e]['coords']
 
-			if p != 0:
+			if p != 0 and pts.shape[0]!=0:
 				# Resampling
 				step = int(pts.shape[0]/(p*pts.shape[0]))
 
@@ -2304,8 +2333,6 @@ class ArterialTree:
 					pts =  pts[:-1:step][1:]
 				else:
 					pts = pts[int(pts.shape[0]/2)]
-			else: 
-				pts = pts[int(pts.shape[0]/2)]
 
 
 			rand = np.hstack((np.random.normal(0, noise[0], (pts.shape[0], 1)), np.random.normal(0, noise[1], (pts.shape[0], 1)), np.random.normal(0, noise[2], (pts.shape[0], 1)), np.random.normal(0, noise[3], (pts.shape[0], 1))))

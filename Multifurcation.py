@@ -107,7 +107,60 @@ class Multifurcation:
 			ref_list.append(ref / norm(ref))
 			
 		return ref_list
-		
+	
+
+	def get_crsec_normals(self):
+
+		mesh = self.mesh_surface()
+		mesh.compute_normals(cell_normals=False, inplace=True)
+		normals = mesh['Normals']
+
+		pts = self._crsec
+
+		# Get points and re-order them in the original structure
+		bif_normals = normals[:len(pts[1])] # Fill bifurcation
+		end_normals = []
+		nds_normals = []
+		N = len(pts[0][0])
+
+		j = len(pts[1])
+		for s in range(len(self._tspl)):
+			end_normals.append(mesh.points[j:j+N]) # Fill end_sections
+			j += N
+
+			n = []
+			for i in range(len(pts[2][s])):
+				n.append(mesh.points[j:j+N].tolist()) # Fill connecting nodes
+				j += N
+			nds_normals.append(np.array(n))
+
+		return bif_normals, end_normals, nds_normals	
+
+
+	def get_curves(self):
+		""" Get all the curves along bifurcation """
+
+		curve_set = []
+		normals_set = []
+		bif_normals, end_normals, nds_normals = self.get_crsec_normals()
+		end_crsec, bif_crsec, nds_crsec, connect = self._crsec
+		connect = np.array(connect)
+
+		for i in range(2, len(bif_crsec)):
+
+
+			ind = np.where(connect == i)
+			ind = list(zip(ind[0], ind[1]))
+
+			curve_set.append(np.vstack((end_crsec[ind[0][0]][ind[0][1]], nds_crsec[ind[0][0]][:, ind[0][1]], bif_crsec[i],  nds_crsec[ind[1][0]][:, ind[1][1]][::-1], end_crsec[ind[1][0]][ind[1][1]])))
+			normals_set.append(np.vstack((end_normals[ind[0][0]][ind[0][1]], nds_normals[ind[0][0]][:, ind[0][1]], bif_normals[i],  nds_normals[ind[1][0]][:, ind[1][1]][::-1], end_normals[ind[1][0]][ind[1][1]])))
+
+		return curve_set, normals_set
+
+
+	def set_curves(self, curve_set):
+		""" Set all the curves along bifurcation is crsec format """
+		pass
 
 
 
@@ -236,6 +289,7 @@ class Multifurcation:
 		n = sum(normals) / len(normals)
 
 		self._CP = [self.__send_to_surface(self._B, n, 0), self.__send_to_surface(self._B, -n, 0)]
+		self._B = sum(self._CP) / 2.0
 
 
 
@@ -440,7 +494,7 @@ class Multifurcation:
 		
 
 
-	def cross_sections(self, N, d, end_ref = [None, None, None]):
+	def cross_sections(self, N, d, end_ref = None):
 
 
 		""" Returns the nodes of the surface mesh ordered by transverse sections
@@ -613,7 +667,7 @@ class Multifurcation:
 
 
 
-	def __end_sections(self, N, end_ref=[None, None, None]):
+	def __end_sections(self, N, end_ref = None):
 
 
 		""" Returns the nodes of end sections.
@@ -631,7 +685,7 @@ class Multifurcation:
 
 			sec = np.zeros((N,3))
 
-			if end_ref[i] is not None: 
+			if end_ref is not None: 
 				ref = end_ref[i]
 			else: 
 
@@ -755,7 +809,7 @@ class Multifurcation:
 		pt = self.__projection(O, n, 0, 2.5, ind)
 
 		ind_list = np.arange(0, len(self._spl)).tolist()
-		ind_list.pop(ind)
+		ind_list.remove(ind)
 
 		# Check distance to other splines
 		for i in ind_list:

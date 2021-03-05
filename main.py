@@ -6,13 +6,12 @@ import pyvista as pv
 from geomdl import BSpline, operations
 
 from Bifurcation import Bifurcation
-from Trifurcation import Trifurcation
 from Multifurcation import Multifurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
 from Simulation import Simulation
-from utils import quality, distance, lin_interp
+from utils import quality, distance, lin_interp, smooth_polyline
 
 from numpy.linalg import norm 
 import time
@@ -29,6 +28,7 @@ def test_bifurcation_class():
 
 	bif = Bifurcation(np.array([S0, S1, S2]), 0.5)
 	bif.cross_sections(24, 0.2)
+
 
 
 	mesh = bif.mesh_surface()
@@ -66,6 +66,7 @@ def test_multifurcation_class():
 
 
 	multi = Multifurcation([S0, S1, S2], 0.5)
+	multi.get_curves()
 	multi.show(True)
 	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
@@ -195,18 +196,20 @@ def test_meshing():
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
 	tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp")
+	#tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0083/centerline/centerline.vtp")
+
 
 	#tree.subgraph([1,2,3,4,5,6])
 	#tree.subgraph([1,2])
 	
 	#tree.write_vtk("full", "Results/test.vtk")
-	tree.deteriorate_centerline(0.2, [0.0, 0.0, 0.0, 0.0])
+	tree.deteriorate_centerline(0.1, [0.0, 0.0, 0.0, 0.0])
 	tree.show(True, False, False)
 	#tree.write_vtk("full", "Results/test_deteriorate.vtk")
 	tree.spline_approximation()
-	tree.show(True, True, False)
+	tree.show(False, True, False)
 	tree.correct_topology()
-	tree.show(True, True, False)
+	tree.show(False, True, False)
 
 	#tree.write_vtk("spline", "Results/test_fitting.vtk")
 
@@ -234,7 +237,7 @@ def test_meshing():
 	mesh.save("Results/Aneurisk/mesh_surface.vtk")
 	#mesh.save("Results/mesh_surface.stl")
 
-	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 1, 1)
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
 	mesh = mesh.compute_cell_quality()
 	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
 	mesh.plot(show_edges=True, scalars= 'CellQuality')
@@ -261,20 +264,30 @@ def test_fitting():
 	spl.show(False, False, data=D)
 
 
-def test_fitting_angle(): 
+def test_circle_smooth(): 
 
-	p0 = np.array([0,0])
-	p1 = np.array([5,15])
-	p2 = np.array([10,0])
-	num = 5
+	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
+	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
+	S2 = np.array([[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]])
 
-	D = np.array(lin_interp(p0, p1, num) + lin_interp(p1, p2, num))
-	values = np.vstack((D[0], np.zeros((2,2)), D[-1]))
-	values = np.vstack((D[0], (D[1] - D[0]), (D[-1] - D[-2]), D[-1]))
 
-	spl = Spline()
-	spl.approximation(D, [1,0,0,1], values, False, False, lbd = 100, criterion = "None")
-	spl.show(data=D)
+	multi = Multifurcation([S0, S1, S2], 0)
+	multi.cross_sections(24, 0.15)
+	curves, normals = multi.get_curves()
+
+	curve = curves[0][:,[0, 2]]
+	print(curve.shape)
+
+
+	p0 = np.array([0,15])
+	p1 = np.array([5,0])
+	p2 = np.array([10,15])
+	num = 10
+
+	D = np.array(lin_interp(p0, p1, num) + lin_interp(p1, p2, num)[1:])
+	curve = smooth_polyline(curve, 1.5)
+	smooth_polyline(curve, 1.5)
+
 
 
 def test_quality_model2D():
@@ -698,7 +711,7 @@ def test_export_openFoam():
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
 #test_multifurcation_class()
-test_meshing()
+#test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()
@@ -721,4 +734,5 @@ test_meshing()
 #test_rotations()
 #test_cut_branch()
 #test_export_openFoam()
+test_circle_smooth()
 

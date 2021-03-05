@@ -222,7 +222,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = True, n = None, lbd = 0.0, criterion= "CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = False, n = None, lbd = 0.0, criterion= "CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
