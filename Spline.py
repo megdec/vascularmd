@@ -364,8 +364,6 @@ class Spline:
 			opt_lbd = (b + a) / 2
 			model.set_lambda(opt_lbd)
 			#print("optimized lambda : ", opt_lbd)
-		 
-
 
 		return model
 
@@ -547,7 +545,7 @@ class Spline:
 
 		length = np.array(self._length_tab)
 
-		if type(L) == list:
+		if type(L) == list or type(L) == np.ndarray:
 
 			T = []
 			for i in range(len(L)):
@@ -596,14 +594,14 @@ class Spline:
 
 		length = np.array(self._length_tab)
 
-		if type(T) == list:
+		if type(T) == list or type(T) == np.ndarray:
 
 			L = []
 			for i in range(len(T)):
 
 				i1 = int(np.floor(T[i] / self._spl.delta))
 
-				if i1 == len(length) - 1:
+				if i1 >= len(length) - 1:
 					L.append(length[-1])
 				else:
 					i2 = i1 + 1

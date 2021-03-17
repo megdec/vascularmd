@@ -7,6 +7,7 @@ from geomdl import BSpline, operations
 
 from Bifurcation import Bifurcation
 from Multifurcation import Multifurcation
+from Nfurcation import Nfurcation
 from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
@@ -65,7 +66,8 @@ def test_multifurcation_class():
 
 
 
-	multi = Multifurcation([S0, S1, S2], 0.5)
+	multi = Nfurcation([S0, S1, S2], 0.5)
+	multi.cross_sections(48, 0.1)
 	multi.get_curves()
 	multi.show(True)
 	mesh = multi.mesh_surface()
@@ -74,16 +76,17 @@ def test_multifurcation_class():
 
 def test_trifurcation_nonplanar():
 
-	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
-	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
-	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
-	S3 = (np.array(S1) + np.array(S2)) / 2
-	S3[0] = S3[0] + 4* S3[1]
-	S3[0, :-1] = S3[0, :-1] + 3* np.array([0.2,0.8,0])
-	S3 = S3.tolist()
+	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
+	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
+	S2 = np.array([[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]])
+	S3 = (S1 + S2) / 2
+	S3[0,:] = S3[0,:] + 4* S3[1,:]
+
+	S3[0, :-1] = S3[0, :-1] + 1* np.array([0.2,0.8,0])
 
 
-	trif = Trifurcation(np.array([S0, S3, S2, S1]), 0.5)
+
+	trif = Multifurcation(np.array([S0, S2, S3, S1]), 0.5)
 	mesh = trif.mesh_surface()
 	mesh.plot(show_edges=True)
 
@@ -193,10 +196,14 @@ def test_deformation():
 
 def test_meshing():
 
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0099.vtp"
+
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
-	tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp")
+	tree = ArterialTree("TestPatient", "BraVa", file)
 	#tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0083/centerline/centerline.vtp")
+	
 
 
 	#tree.subgraph([1,2,3,4,5,6])
@@ -222,7 +229,7 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2)
+	tree.compute_cross_sections(48, 0.1, False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
@@ -272,7 +279,7 @@ def test_circle_smooth():
 
 
 	multi = Multifurcation([S0, S1, S2], 0)
-	multi.cross_sections(24, 0.15)
+	multi.cross_sections(24, 0.15) # 0.2
 	curves, normals = multi.get_curves()
 
 	curve = curves[0][:,[0, 2]]
@@ -285,8 +292,8 @@ def test_circle_smooth():
 	num = 10
 
 	D = np.array(lin_interp(p0, p1, num) + lin_interp(p1, p2, num)[1:])
-	curve = smooth_polyline(curve, 1.5)
-	smooth_polyline(curve, 1.5)
+	curve = smooth_polyline(curve, 1.9)
+	smooth_polyline(curve, 1.9) #1.5
 
 
 
@@ -711,7 +718,7 @@ def test_export_openFoam():
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
 #test_multifurcation_class()
-#test_meshing()
+test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()
@@ -734,5 +741,6 @@ def test_export_openFoam():
 #test_rotations()
 #test_cut_branch()
 #test_export_openFoam()
-test_circle_smooth()
+#test_circle_smooth()
+#test_trifurcation_nonplanar()
 

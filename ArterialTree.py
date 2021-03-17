@@ -1,4 +1,5 @@
-from multiprocessing import Pool, Process, cpu_count
+from multiprocessing import Pool, Process, cpu_count, set_start_method
+
 import pyvista as pv # Meshing
 import vtk
 from scipy.spatial import KDTree
@@ -18,6 +19,7 @@ import networkx as nx
 from utils import *
 from Bifurcation import Bifurcation
 from Multifurcation import Multifurcation
+from Nfurcation import Nfurcation
 from Spline import Spline
 
 
@@ -633,15 +635,24 @@ class ArterialTree:
 					e_out = [e for e in G.out_edges(n)]
 					spl_out = [G.edges[e]['spline'] for e in e_out]
 
-					S = [[spl_out[0].point(0.0, True), spl_out[0].tangent(0.0, True)]]
-
-					for i in range(len(spl_out)):
-						S.append([spl_out[i].point(1.0, True), spl_out[i].tangent(1.0, True)])
-
 					# Get apex
 					AP = self._spline_graph.nodes[n]['apex'] 
+
+					C = [[spl_out[0].point(0.0, True), spl_out[0].tangent(0.0, True)]]
+					AC = []
+
+					for i in range(len(spl_out)):
+						tAP = spl_out[i].project_point_to_centerline(AP[0])
+						AC.append([spl_out[i].point(tAP, True), spl_out[i].tangent(tAP, True)])
+						C.append([spl_out[i].point(1.0, True), spl_out[i].tangent(1.0, True)])
+
+
 					# Create bifurcation
-					bif = Multifurcation(S, 1, spl = spl_out, AP = AP)
+					#bif = Multifurcation(S, 1, spl = spl_out, AP = AP)
+					# spline model
+					#bif = Nfurcation("spline", [spl_out, AP, 0.5])
+					# Five crsec model
+					bif = Nfurcation("crsec", [C, AC, AP, 0.5])
 					bif.show(True)
 			
 					ref = bif.get_reference_vectors()
@@ -818,11 +829,16 @@ class ArterialTree:
 						bif_id.append(ids)
 
 			# Return bifurcations with cross sections
+			print('Start Pool')
 			p = Pool(cpu_count())
 			bif_list = p.starmap(parallel_bif, args)	
+			print('End Pool')
 
 			# Add crsec to graph
 			for i in range(len(bif_list)):
+				#TMP
+				mesh = bif_list[i].mesh_surface()
+				mesh.save("Results/Bifurcations/bifurcation_" + str(i) + ".vtk")
 
 				end_crsec, bif_crsec, nds, connect_index = bif_list[i].get_crsec()
 				self._crsec_graph.nodes[bif_id[i][0]]['crsec'] = bif_crsec
@@ -891,12 +907,16 @@ class ArterialTree:
 						end_ref.append(self._geom_graph.nodes[e]['ref'])
 
 					end_crsec, bif_crsec, nds, ind = bif.cross_sections(N, d, end_ref=end_ref)
+					#TMP
+					mesh = bif.mesh_surface()
+					mesh.save("Results/Bifurcations/bifurcation_" + str(n) + ".vtk")
+
 					self._crsec_graph.nodes[n]['crsec'] = bif_crsec
 
-				for j in range(len(ids)):
-					self._crsec_graph.nodes[ids[j]]['crsec'] = end_crsec[j]
-					self._crsec_graph.edges[(ids[j], n)]['crsec'] = nds[j]
-					self._crsec_graph.edges[(ids[j], n)]['connect'] = connect_index[j]
+					for j in range(len(ids)):
+						self._crsec_graph.nodes[ids[j]]['crsec'] = end_crsec[j]
+						self._crsec_graph.edges[(ids[j], n)]['crsec'] = nds[j]
+						self._crsec_graph.edges[(ids[j], n)]['connect'] = ind[j]
 
 			# Compute edges sections
 			print('Meshing edges.')
@@ -925,7 +945,7 @@ class ArterialTree:
 					else: 
 						connect = np.vstack((np.arange(connect_id, N), np.arange(0, connect_id)))
 
-					self._crsec_graph.edges[e]['crsec'] = connect
+					self._crsec_graph.edges[e]['connect'] = connect.tolist()
 
 		nx.set_node_attributes(self._crsec_graph, None, name='id') # Add id attribute for meshing
 	
@@ -2722,7 +2742,6 @@ class ArterialTree:
 		poly_tube = poly.tube(radius = 0.6)
 
 		poly_tube.save(filename)
-
 
 
 

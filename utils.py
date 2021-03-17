@@ -1,7 +1,6 @@
 # Python 3
 
 import numpy as np # Tools for matrices
-
 # Trigonometry functions
 from math import pi, sin, cos, tan, atan, acos, asin, sqrt
 from numpy.linalg import norm 
@@ -307,7 +306,7 @@ def smooth_polyline(data, radius):
 
 	# Search for intersections
 	for i in range(data.shape[0]-1):
-		print("search point", i)
+	
 		a = coefs[i, 0]
 		b = coefs[i, 1]
 
@@ -684,7 +683,7 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 #####################################
 
 
-def parallel_bif(bif, N, d, end_ref =[None, None, None]):
+def parallel_bif(bif, N, d, end_ref = None):
 
 	# Find cross sections
 	bif.cross_sections(N, d, end_ref)
