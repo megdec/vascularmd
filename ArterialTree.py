@@ -686,15 +686,27 @@ class ArterialTree:
 							sep_end = True
 							break
 
-					if sep_end:
+					if sep_end: # Inlet vessel case
 						ref1 = G.nodes[path[-1]]['ref']
+						ref_org = G.nodes[path[-1]]['ref']
 						
 						for i in reversed(range(1, len(path))):
 							spl = G.edges[(path[i-1], path[i])]['spline']
-						
-							# Transport ref vector back
+							
+							# Transport ref vector back to the inlet
 							ref1 = spl.transport_vector(ref1, 1.0, 0.0)
+
+							# Transport vector back up to estimate the rounding error
+							ref_back = spl.transport_vector(ref1, 0.0, 1.0)
+							a = angle(ref_org, ref_back, axis = spl.tangent(1.0), signed = True)
+
 							G.nodes[path[i-1]]['ref'] = ref1
+							ref_org = ref1
+							print("error", a)
+
+							# Set angle to correct rounding error
+							G.edges[(path[i-1], path[i])]['alpha'] = -a
+
 
 					else: # Simple tube case
 						spl = G.edges[(path[0], path[1])]['spline']
