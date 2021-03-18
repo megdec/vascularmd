@@ -26,11 +26,8 @@ def test_bifurcation_class():
 	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
 	S2 = [[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]]
 
-
 	bif = Bifurcation(np.array([S0, S1, S2]), 0.5)
 	bif.cross_sections(24, 0.2)
-
-
 
 	mesh = bif.mesh_surface()
 	bif.show(nodes = True)
@@ -41,7 +38,7 @@ def test_bifurcation_class():
 	#mesh.save("Results/bifurcation.vtk")
 
 
-def test_trifurcation_class():
+def test_multifurcation_class():
 
 	S0 =[[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]]
 	S1 = [[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]]
@@ -51,12 +48,18 @@ def test_trifurcation_class():
 	S3 = S3.tolist()
 
 
-	trif = Trifurcation(np.array([S0, S3, S2, S1]), 0.5)
-	mesh = trif.mesh_surface()
+	bif = Multifurcation(np.array([S0, S1, S2]), 0.5)
+	mesh = bif.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	curve_set, normals_set = bif.get_curves()
+	bif.set_curves(curve_set)
+	mesh = bif.mesh_surface()
 	mesh.plot(show_edges=True)
 
 
-def test_multifurcation_class():
+
+def test_nfurcation_class():
 
 	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
 	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
@@ -717,8 +720,8 @@ def test_export_openFoam():
 #test_tree_class()
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
-#test_multifurcation_class()
-test_meshing()
+test_multifurcation_class()
+#test_meshing()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()

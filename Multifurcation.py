@@ -160,7 +160,29 @@ class Multifurcation:
 
 	def set_curves(self, curve_set):
 		""" Set all the curves along bifurcation is crsec format """
-		pass
+
+		end_crsec, bif_crsec, nds_crsec, connect = self._crsec
+		connect = np.array(connect)
+
+		k = 0
+		for i in range(2, len(bif_crsec)):
+
+			ind = np.where(connect == i)
+			ind = list(zip(ind[0], ind[1]))
+
+			j = 0
+			end_crsec[ind[0][0]][ind[0][1]] = curve_set[k][j]
+			nds_crsec[ind[0][0]][:, ind[0][1]] = curve_set[k][j+1:j+1 + nds_crsec[ind[0][0]].shape[0]]
+			j = j + 1 + nds_crsec[ind[0][0]].shape[0]
+
+			bif_crsec[i] = curve_set[k][j]
+			nds_crsec[ind[1][0]][:, ind[1][1]] = curve_set[k][j+1:-1][::-1]
+			end_crsec[ind[1][0]][ind[1][1]] = curve_set[k][-1]
+
+			k += 1
+
+		self._crsec = end_crsec, bif_crsec, nds_crsec, connect 
+
 
 
 
