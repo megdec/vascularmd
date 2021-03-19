@@ -271,14 +271,9 @@ def search_intersection(data, center, radius, i):
 
 
 
-def smooth_polyline(data, radius):
+def smooth_polyline(data, radius, display= False):
 	""" Smoothes a polyline using the inscribed circle method """
 
-	figure, axes = plt.subplots()
-	axes.set_aspect(1)
-
-	axes.plot(data[:,0], data[:,1])
-	axes.scatter(data[:,0], data[:,1])
 
 	coefs = np.zeros((data.shape[0]-1, 2))
 	normals =  np.zeros((data.shape[0]-1, 2))
@@ -287,7 +282,7 @@ def smooth_polyline(data, radius):
 	for i in range(data.shape[0] - 1):
 
 		n = (data[i+1] - data[i])[::-1]
-		if False: #n[1] <= 0:
+		if n[1] <= 0:
 			n = n * np.array([1,-1])
 		else: 
 			n = n * np.array([-1, 1])
@@ -301,7 +296,15 @@ def smooth_polyline(data, radius):
 		
 	coefs = np.around(coefs, 3)
 	normals = np.around(normals, 3)
-	axes.plot([data[:-1,0], data[:-1,0] + normals[:,0] * radius] , [data[:-1,1], data[:-1,1] + normals[:,1] * radius])
+
+
+	if display: 
+		figure, axes = plt.subplots()
+		axes.set_aspect(1)
+
+		axes.plot(data[:,0], data[:,1])
+		axes.scatter(data[:,0], data[:,1], color = 'blue', alpha = 0.5)
+		axes.plot([data[:-1,0], data[:-1,0] + normals[:,0] * radius] , [data[:-1,1], data[:-1,1] + normals[:,1] * radius])
 
 
 	# Search for intersections
@@ -329,17 +332,18 @@ def smooth_polyline(data, radius):
 				if (norm(data[j, :] - inter1) <= norm(data[j, :] - data[j + 1, :]) and norm(data[j+1, :] - inter1) < norm(data[j, :] - data[j + 1, :])):
 					if (norm(data[i, :] - inter2) <= norm(data[i, :] - data[i + 1, :]) and norm(data[i+1, :] - inter2) < norm(data[i, :] - data[i + 1, :])):
 
-						axes.scatter(inter1[0], inter1[1])	
-						axes.scatter(inter2[0], inter2[1])	
-						axes.scatter(center[0], center[1])
+						if display : 
+							axes.scatter(inter1[0], inter1[1], color = 'black', s = 10)	
+							axes.scatter(inter2[0], inter2[1], color = 'black', s = 10)	
+							axes.scatter(center[0], center[1], color = 'black', s = 10)
 
-						circle = plt.Circle(center, radius=radius, alpha=0.3, color='red')
-						axes.add_artist(circle)
-							
+							circle = plt.Circle(center, radius=radius, alpha=0.3, color='gray')
+							axes.add_artist(circle)
+								
 
 						project = [inter2]
 
-						for k in range(i, j+1):
+						for k in range(i+1, j+1):
 							project.append(data[k,:])
 							
 						project.append(inter1)
@@ -350,21 +354,23 @@ def smooth_polyline(data, radius):
 
 						# Compute angle between both intersections
 						angles = angles / max(angles)
-						v0 = project[0]- center
+						v0 = project[0] - center
 						v1 = project[-1] - center
 						r, phi0 =cart2pol(v0[0], v0[1])
 						r, phi1 =cart2pol(v1[0], v1[1])
 						angles = angles * (phi1 - phi0)
 
-						count = i
+						count = i + 1
 						for k in range(1, len(angles) - 1):
 							data[count] = pol2cart(radius, phi0 + angles[k]) + center
 							count+=1
+						#data = resample(data)
 
 						break
 
-	plt.scatter(data[:,0], data[:,1])		
-	plt.show()
+	if display:
+		plt.scatter(data[:,0], data[:,1], color = 'red', alpha = 0.5)		
+		plt.show()
 
 	return data
 
