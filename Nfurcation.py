@@ -1,6 +1,7 @@
 # Python 3
 import numpy as np # Tools for matrices
 import pyvista as pv # Meshing
+import pickle
 
 # Trigonometry functions
 from math import pi
@@ -129,6 +130,8 @@ class Nfurcation:
 
 	def get_crsec_normals(self):
 
+		""" Returns the mesh normals for the nodes of the bifurcation in crsec format """
+
 		mesh = self.mesh_surface()
 		mesh.compute_normals(cell_normals=False, inplace=True)
 		normals = mesh['Normals']
@@ -156,32 +159,86 @@ class Nfurcation:
 
 
 	def get_curves(self):
-		""" Get all the curves along bifurcation """
+
+		""" Get all the curves along bifurcation and the projection referential """
 
 		curve_set = []
-		normals_set = []
+		referential_set = []
 		bif_normals, end_normals, nds_normals = self.get_crsec_normals()
 		end_crsec, bif_crsec, nds_crsec, connect = self._crsec
 		connect = np.array(connect)
 
+		N = (len(bif_crsec) - 2) // len(nds_crsec)
+
+		count = 0
 		for i in range(2, len(bif_crsec)):
 
+			if count == N: 
+				count = 0
 
 			ind = np.where(connect == i)
 			ind = list(zip(ind[0], ind[1]))
 
 			curve_set.append(np.vstack((end_crsec[ind[0][0]][ind[0][1]], nds_crsec[ind[0][0]][:, ind[0][1]], bif_crsec[i],  nds_crsec[ind[1][0]][:, ind[1][1]][::-1], end_crsec[ind[1][0]][ind[1][1]])))
-			normals_set.append(np.vstack((end_normals[ind[0][0]][ind[0][1]], nds_normals[ind[0][0]][:, ind[0][1]], bif_normals[i],  nds_normals[ind[1][0]][:, ind[1][1]][::-1], end_normals[ind[1][0]][ind[1][1]])))
 
-		return curve_set, normals_set
+			normal = bif_normals[i]
+			normal = normal / norm(normal)
+			if count == 0:
+				t1 = bif_crsec[0] - bif_crsec[i]
+				t2 = bif_crsec[i] - bif_crsec[i + 1] 
+			elif count == N-1:
+				t1 = bif_crsec[i-1] - bif_crsec[i]
+				t2 = bif_crsec[i] - bif_crsec[1] 
+			else: 
+				t1 = bif_crsec[i-1] - bif_crsec[i]
+				t2 = bif_crsec[i] - bif_crsec[i + 1] 
+
+			tangent = (t1 + t2) / 2.
+			tangent = tangent / norm(tangent)			
+
+			binormal = cross(tangent, normal)
+			binormal = binormal / norm(binormal)
+
+			tangent = cross(normal, binormal)
+			tangent = tangent / norm(tangent)	
+
+			origin = bif_crsec[i]
+
+
+			referential_set.append(np.vstack((binormal, normal, tangent, origin)))
+			count += 1
+
+		return curve_set, referential_set
 
 
 	def set_curves(self, curve_set):
+
 		""" Set all the curves along bifurcation is crsec format """
-		pass
+
+		end_crsec, bif_crsec, nds_crsec, connect = self._crsec
+		connect = np.array(connect)
+
+		k = 0
+		for i in range(2, len(bif_crsec)):
+
+			ind = np.where(connect == i)
+			ind = list(zip(ind[0], ind[1]))
+
+			j = 0
+			end_crsec[ind[0][0]][ind[0][1]] = curve_set[k][j]
+			nds_crsec[ind[0][0]][:, ind[0][1]] = curve_set[k][j+1:j+1 + nds_crsec[ind[0][0]].shape[0]]
+			j = j + 1 + nds_crsec[ind[0][0]].shape[0]
+
+			bif_crsec[i] = curve_set[k][j]
+			nds_crsec[ind[1][0]][:, ind[1][1]] = curve_set[k][j+1:-1][::-1]
+			end_crsec[ind[1][0]][ind[1][1]] = curve_set[k][-1]
+
+			k += 1
+
+		self._crsec = [end_crsec, bif_crsec, nds_crsec, connect]
 
 
-
+		
 
 
 	#####################################
@@ -189,7 +246,7 @@ class Nfurcation:
 	#####################################
 
 
-	def set_R(self, R):#(?)
+	def set_R(self, R):
 
 		""" Set the R parameter of the bifurcation."""
 
@@ -202,15 +259,16 @@ class Nfurcation:
 
 		Keyword arguments:
 			AP_crsec -- crsec sections at the apical region
-			r -- norm of the end tangents. 
 		"""
 
-		
+		relax = 0.25
+
 		# Compute the shape splines from cross sections
 		self._spl = []
 
 		# Correct the radius 
 		if len(AP_crsec) < 0:
+			print('correct radius')
 			D0, D1, D2 = self._endsec[0][0][-1]*2, self._endsec[1][0][-1]*2, self._endsec[2][0][-1]*2
 			AP_crsec[0][0][-1] = ((sqrt(2) * D0*D1)/(sqrt(D1**2 + D2**2))) / 2.
 			AP_crsec[1][0][-1] = ((sqrt(2) * D0*D2)/(sqrt(D1**2 + D2**2))) / 2.
@@ -221,15 +279,15 @@ class Nfurcation:
 			C0, C1, C2 = self._endsec[0][0], AP_crsec[i-1][0], self._endsec[i][0] 
 			T0, T1, T2 = self._endsec[0][1], AP_crsec[i-1][1], self._endsec[i][1] 
 
-			p0 = C0 + 0.25 * norm(C1 - C0) * T0
-			p0[-1] = C0[-1] + 0.25 * abs((C1[-1] - C0[-1]))
-			p1 = C1 - 0.25 * norm(C1 - C0) * T1
-			p1[-1] = C1[-1] - 0.25 * abs((C1[-1] - C0[-1]))
+			p0 = C0 + relax * norm(C1 - C0) * T0
+			p0[-1] = C0[-1] + relax * abs((C1[-1] - C0[-1]))
+			p1 = C1 - relax * norm(C1 - C0) * T1
+			p1[-1] = C1[-1] - relax * abs((C1[-1] - C0[-1]))
 
-			p2 = C1 + 0.25 * norm(C2 - C1) * T1
-			p2[-1] = C1[-1] + 0.25 * abs((C2[-1] - C1[-1]))
-			p3 = C2 - 0.25 * norm(C2 - C1) * T2
-			p3[-1] = C2[-1] - 0.25 * abs((C2[-1] - C1[-1]))
+			p2 = C1 + relax * norm(C2 - C1) * T1
+			p2[-1] = C1[-1] + relax * abs((C2[-1] - C1[-1]))
+			p3 = C2 - relax * norm(C2 - C1) * T2
+			p3[-1] = C2[-1] - relax * abs((C2[-1] - C1[-1]))
 
 			# Fit splines
 			spl1 = Spline()
@@ -242,7 +300,7 @@ class Nfurcation:
 
 			P = np.vstack((P1[:-1], P2))
 
-			knot = [0.0, 0.0, 0.0, 0.25, 0.5, 0.5, 0.75, 1.0, 1.0, 1.0]
+			knot = [0.0, 0.0, 0.0, relax, 0.5, 0.5, (1 - relax), 1.0, 1.0, 1.0]
 
 			self._spl.append(Spline(control_points = P, knot = knot))
 
@@ -373,9 +431,11 @@ class Nfurcation:
 
 
 
-	def __set_tspl(self, r=6):
+	def __set_tspl(self):
 
 		""" Set the coordinates of the trajectory splines. """
+
+		relax = 0.15
 
 		tspl = []
 		key_pts = self._SP[::-1] + self._AP
@@ -393,21 +453,27 @@ class Nfurcation:
 
 			tg1 = ((key_pts[i] - self._B) + (key_pts[i2] - self._B)) / 2.0
 
+			tg0 = tg0 / norm(tg0)
+			tg1 = tg1 / norm(tg1)
+
 			p0 = self._endsec[i][0][:-1]
 			p1 = self._B
 
+			pint0 = p0 + tg0 * norm(p0 - p1) * relax
+			pint1 = p1 +  tg1 * norm(p0 - p1) * relax
 
-			d = norm(p0 - p1)
+			# Fit spline
+			spl = Spline()
+			spl.approximation(np.vstack((p0, pint0,  pint1, p1)), [1,1,1,1], np.vstack((p0, tg0, tg1, p1)), False, n = 4, radius_model=False, criterion= "None")
 
-			pint0 = np.array(p0) + tg0 * (d/r) / norm(tg0)
-			pint1 = np.array(p1) +  tg1 * (d/r) / norm(tg1)
-
-			P = np.vstack([p0, pint0,  pint1, p1])
+			P = spl.get_control_points()
 			P = np.hstack((P, np.zeros((4,1))))
 
 			tspl.append(Spline(P))
 
 		self._tspl = tspl
+
+
 
 
 
@@ -511,7 +577,7 @@ class Nfurcation:
 	#####################################
 
 
-	def mesh_surface(self, N=24, d=0.2):
+	def mesh_surface(self, N=48, d=0.1):
 
 		""" Returns the surface mesh of the bifurcation
 
@@ -642,7 +708,8 @@ class Nfurcation:
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
 		self.resample()
-		self.smooth(1)
+		#self.projection_sphere(0.8)
+		#self.smooth(1)
 		return self._crsec
 
 
@@ -655,37 +722,43 @@ class Nfurcation:
 		Keyword arguments: 
 		tind -- index of the trajectory spline
 		ind -- index of the shape spline of reference 
-		P0, P1 -- end points
+		P0, P1 -- end points as np array
 		n -- number of nodes
 		"""
 
-		P0 = np.array(P0)
-		P1 = np.array(P1)
+		pts = np.zeros((n, 3))
+
+		# Initial trajectory approximation
 
 		# Method 1 using surface splines
+		relax = 0.15
 		d = norm(P0 - P1)
 
 		tg0 = self._tspl[tind].tangent(0.0)
 		tg1 = -self._tspl[tind].tangent(1.0)
 
-		pint0 = P0 +  tg0 * (d/6) / norm(tg0)
-		pint1 = P1 +  tg1 * (d/6) / norm(tg1)
+		tg0 = tg0 / norm(tg0)
+		tg1 = tg1 / norm(tg1)
+
+		pint0 = P0 +  tg0 * norm(P0 - P1) * relax
+		pint1 = P1 +  tg1 * norm(P0 - P1) * relax
+
+
 		P = np.vstack([P0, pint0,  pint1, P1])
 		P = np.hstack((P, np.zeros((4,1))))
 		
-		tsplsurf = Spline(P)
-		tsamp = tsplsurf.resample_time(n)
-		pts = []
-		for t in tsamp:
-			pts.append(tsplsurf.point(t))
-		pts = np.array(pts)
+		trajectory = Spline(P)
+		times = trajectory.resample_time(n)
+		
+		for i in range(n):
+			pts[i, :] = trajectory.point(times[i])
+		
 
 		# Method 2 using linear interpolation
-		#pts = []
-		#for i in range(len(P0)):
-		#	pts.append(np.linspace(P0[i], P1[i], n + 2)[1:-1].tolist())
-		#pts = np.array(pts).transpose()
+		#for i in range(3):
+		#	pts[:, i] = np.linspace(P0[i], P1[i], n + 2)[1:-1]	
 
+	
 		nds = np.zeros((n,3))
 		for i in range(n):
 
@@ -696,6 +769,24 @@ class Nfurcation:
 			
 			pt = self.__send_to_surface(P, n, ind)
 			nds[i] = pt
+	
+
+
+		# Method 3 using the trajectory splines themselves
+		"""
+		t0 = self._tspl[tind].project_point_to_centerline(P0)
+		t1 = self._tspl[tind].project_point_to_centerline(P1)
+		times = np.linspace(t0, t1, n+2)[1:-1]
+
+		nds = np.zeros((n,3))
+		for i in range(n):
+
+			P = self._tspl[tind].point(times[i])
+			
+			pt = self.__send_to_surface(P, n, ind)
+			nds[i] = pt
+		"""
+
 		
 		return nds
 
@@ -833,6 +924,52 @@ class Nfurcation:
 		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
 		self.set_crsec(mesh)
 
+
+	def projection_sphere(self, radius):
+
+		if self._crsec == None:
+			raise ValueError('Please first perform cross section computation.')
+		else:
+			pts = self._crsec
+
+		curve_set, referential_set = self.get_curves()
+
+		
+		# Set the curve in the projection referential
+		curve_set_referential = []
+		for i in range(len(curve_set)):
+			curve = curve_set[i]
+			curve_referential = np.zeros(curve.shape)
+
+			for j in range(len(curve)):
+				v1, v2, v3, origin = referential_set[i][0], referential_set[i][1], referential_set[i][2], referential_set[i][3]
+				curve_referential[j] = np.array([dot(curve[j], v1), dot(curve[j], v2), dot(curve[j], v3)])
+
+			curve_set_referential.append(curve_referential)
+
+		# Smooth data 
+		for i in range(len(curve_set_referential)):
+			data = curve_set_referential[i][:,:-1]
+			data_smooth = smooth_polyline(data, radius)
+			curve_set_referential[i][:,:-1] = data_smooth
+
+		# Project back in original referential
+		curve_set_back = []
+		for i in range(len(curve_set)):
+			curve = curve_set_referential[i]
+			curve_back = np.zeros(curve.shape)
+
+			for j in range(len(curve)):
+				v1, v2, v3, origin = referential_set[i][0], referential_set[i][1], referential_set[i][2], referential_set[i][3]
+				# Write original referential to the projection referential
+				v1, v2, v3 = np.array([dot(np.array([1,0,0]), v1), dot(np.array([1,0,0]), v2), dot(np.array([1,0,0]), v3)]), np.array([dot(np.array([0,1,0]), v1), dot(np.array([0,1,0]), v2), dot(np.array([0,1,0]), v3)]), np.array([dot(np.array([0,0,1]), v1), dot(np.array([0,0,1]), v2), dot(np.array([0,0,1]), v3)])
+
+				curve_back[j] = np.array([dot(curve[j], v1), dot(curve[j], v2), dot(curve[j], v3)])
+
+			curve_set_back.append(curve_back)
+		
+		# Set curves
+		self.set_curves(curve_set_back)
 
 
 
