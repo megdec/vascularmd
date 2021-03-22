@@ -14,9 +14,11 @@ from Model import Model
 from Simulation import Simulation
 from utils import quality, distance, lin_interp, smooth_polyline
 
-from numpy.linalg import norm 
+from numpy.linalg import norm
+from numpy import dot, cross
 import time
 import vtk
+import copy
 
 
 def test_bifurcation_class():
@@ -61,20 +63,23 @@ def test_multifurcation_class():
 
 def test_nfurcation_class():
 
-	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
-	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
-	S2 = np.array([[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]])
-	S3 = (S1 + S2) / 2
-	S3[0,:] = S3[0,:] + 4* S3[1,:]
+	file = open('Results/Furcations/Bifurcations/C0082_furcation_0.obj', 'rb') 	 
+	multi = pickle.load(file)
 
-
-
-	multi = Nfurcation([S0, S1, S2], 0.5)
 	multi.cross_sections(48, 0.1)
-	multi.get_curves()
-	multi.show(True)
+
 	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
+
+	multi.projection_sphere(0.8)
+	mesh = multi.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	multi.smooth(2)
+
+	mesh = multi.mesh_surface()
+	mesh.plot(show_edges=True)
+
 
 
 def test_trifurcation_nonplanar():
@@ -200,7 +205,7 @@ def test_deformation():
 def test_meshing():
 
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0099.vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0083.vtp"
 
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/braVa_p3_full.swc")
 	#tree = ArterialTree("TestPatient", "BraVa", "Data/refence_mesh_simplified_centerline.swc")
@@ -232,7 +237,7 @@ def test_meshing():
 	#tree.show(True, False, False)
 
 	t1 = time.time()
-	tree.compute_cross_sections(48, 0.1, False)
+	tree.compute_cross_sections(48, 0.1, True)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 	#file = open('Results/tube_tree.obj', 'wb') 
@@ -274,19 +279,68 @@ def test_fitting():
 	spl.show(False, False, data=D)
 
 
+def test_transport():
+
+	tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0083.vtp")
+
+	crsec = tree.get_topo_graph()
+	D = crsec.edges[(1,2)]["coords"][::2]
+
+	#D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.0 6141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
+	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
+
+	values = np.vstack((D[0], (D[1] - D[0])*15, (D[-1] - D[-2])*15, D[-1]))
+
+	n = 6
+	
+	spl = Spline()
+	spl.approximation(D, [True, False, True, True], values, True, False, lbd = 0, criterion="None")
+	spl.show(False, False, data=D)
+	"""
+
+	v = cross(spl.tangent(1.0), np.array([0,0,1]))
+	v = v / norm(v)
+	tg0 = spl.tangent(0.0)
+	tg1 = spl.tangent(1.0)
+	print("v", v)
+	print("v", cross(cross(tg0, cross(cross(tg1, v), tg0)), tg1))
+
+	tg = spl.tangent(1.0)
+	tg = tg / norm(tg)
+
+	ref = cross(tg, v)
+	ref = ref / norm(ref)
+	print("ref", ref)
+	print("up", v)
+
+	tg = spl.tangent(0.0)
+	tg = tg / norm(tg) 
+
+	v = cross(ref, tg)
+	v = v/norm(v)
+	print("down", v)
+
+	tg = spl.tangent(0.0)
+	tg = tg / norm(tg)
+	ref = cross(tg, v)
+	ref = ref / norm(ref)
+	print("ref", ref)
+	print("down", v)
+
+	tg = spl.tangent(1.0)
+	tg = tg / norm(tg)
+	v = cross(ref, tg)
+	v = v / norm(v)
+	print("up", v)
+	"""
+
+	
+	#v_down = spl.transport_vector(v, 1.0, 0.0)
+	#v_up = spl.transport_vector(v_down, 0.0, 1.0)
+	#print("v", v, "v_down", v_down, "v_up", v_up)
+
+
 def test_circle_smooth(): 
-
-	S0 = np.array([[ 32.08761717, 167.06666271, 137.34338173,   1.44698439], [ 0.65163598, -0.50749161,  0.56339026, -0.02035281]])
-	S1 = np.array([[ 32.54145209, 166.84075994, 141.89954624,   0.73235938], [-0.7741084 ,  0.39475545,  0.49079378, -0.06360652]])
-	S2 = np.array([[ 37.10561944, 165.62299463, 140.86549835,   1.08367909], [ 0.95163039, -0.03598218,  0.30352055, -0.03130735]])
-
-
-	multi = Multifurcation([S0, S1, S2], 0)
-	multi.cross_sections(24, 0.15) # 0.2
-	curves, normals = multi.get_curves()
-
-	curve = curves[0][:,[0, 2]]
-	print(curve.shape)
 
 
 	p0 = np.array([0,15])
@@ -295,8 +349,7 @@ def test_circle_smooth():
 	num = 10
 
 	D = np.array(lin_interp(p0, p1, num) + lin_interp(p1, p2, num)[1:])
-	curve = smooth_polyline(curve, 1.9)
-	smooth_polyline(curve, 1.9) #1.5
+	smooth_polyline(D, 1.9, True) #1.5
 
 
 
@@ -714,14 +767,51 @@ def test_export_openFoam():
 	simulation.write_velocity_boundary_condition_file([0.2])
 
 
+def write_bifurcations_aneurisk(patient):
 
+	filename = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/" + patient + ".vtp"
+
+	tree = ArterialTree("TestPatient", "BraVa", filename)
+
+	tree.deteriorate_centerline(0.1, [0.0, 0.0, 0.0, 0.0])
+
+	tree.spline_approximation()
+	tree.correct_topology()
+
+	tree.compute_cross_sections(24, 0.2, False)
+
+	mesh = tree.mesh_surface()
+
+	mesh.plot(show_edges=True)
+	mesh.save("Results/Aneurisk/mesh_surface.vtk")
+
+	bifurcations = tree.get_bifurcations()
+
+	for i in range(len(bifurcations)):
+
+		# Mesh bifurcations
+		mesh = bifurcations[i].mesh_surface()
+		mesh = mesh.compute_cell_quality()
+		mesh.plot(show_edges = True, scalars = 'CellQuality')
+
+
+		if bifurcations[i].n == 2: 
+			folder = "Results/Furcations/Bifurcations/"
+		else: 
+			folder = "Results/Furcations/Trifurcations/"
+
+		mesh.save(folder + patient + "_furcation_" + str(i) + ".vtk")
+		file = open(folder + patient + "_furcation_" + str(i) + ".obj", 'wb') 	 
+		pickle.dump(bifurcations[i], file)
 
 
 #test_tree_class()
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
-test_multifurcation_class()
+##test_multifurcation_class()
+#test_nfurcation_class()
 #test_meshing()
+#test_transport()
 #test_bifurcation_smoothing()
 #test_bifurcation_class()
 #test_fitting()
@@ -747,3 +837,6 @@ test_multifurcation_class()
 #test_circle_smooth()
 #test_trifurcation_nonplanar()
 
+write_bifurcations_aneurisk("C0099")
+
+	

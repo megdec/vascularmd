@@ -281,6 +281,8 @@ def smooth_polyline(data, radius, display= False):
 	# Get parallel line for every point
 	for i in range(data.shape[0] - 1):
 
+		coefs[i, 0] =  (data[i+1, 1] - data[i, 1])/(data[i+1, 0] - data[i, 0]) 
+
 		n = (data[i+1] - data[i])[::-1]
 		if n[1] <= 0:
 			n = n * np.array([1,-1])
@@ -291,7 +293,7 @@ def smooth_polyline(data, radius, display= False):
 		normals[i, :] = n
 		pt = data[i] + n * radius
 
-		coefs[i, 0] =  (data[i+1, 1] - data[i, 1])/(data[i+1, 0] - data[i, 0]) 
+		
 		coefs[i, 1] = pt[1] - coefs[i, 0] * pt[0]
 		
 	coefs = np.around(coefs, 3)
@@ -466,7 +468,7 @@ def smooth_polylineorg(data, radius):
 			
 			project = [b1 - n*radius]
 
-			for k in range(i, indices[0]+1):
+			for k in range(i+1, indices[0]+1):
 				project.append(data[k,:])
 				
 			project.append(intersection[0])
@@ -777,3 +779,4 @@ def single_crsec(spl, t, v, N):
 		nds[i, :] = spl.project_time_to_surface(n, t)
 
 	return nds
+

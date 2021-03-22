@@ -4,6 +4,7 @@ import pyvista as pv # Meshing
 import vtk
 from scipy.spatial import KDTree
 import warnings
+import pickle
 
 # Trigonometry functions
 from math import pi
@@ -109,6 +110,19 @@ class ArterialTree:
 		return self._volume_mesh
 
 
+	def get_bifurcations(self):
+
+		""" Returns a list of all bifurcation objects in the network """
+
+		if self._crsec_graph is None:
+			raise ValueError("No crsec graph found.")
+		else:
+
+			bifurcations = []
+			for n in self._geom_graph.nodes(): 
+				if self._geom_graph.nodes[n]['type'] == "bif":
+					bifurcations.append(self._geom_graph.nodes[n]['bifurcation'])
+			return bifurcations
 
 
 	#####################################
@@ -646,10 +660,9 @@ class ArterialTree:
 						AC.append([spl_out[i].point(tAP, True), spl_out[i].tangent(tAP, True)])
 						C.append([spl_out[i].point(1.0, True), spl_out[i].tangent(1.0, True)])
 
-
 					# Create bifurcation
-					#bif = Multifurcation(S, 1, spl = spl_out, AP = AP)
-					# spline model
+
+					# Spline model
 					#bif = Nfurcation("spline", [spl_out, AP, 0.5])
 					# Five crsec model
 					bif = Nfurcation("crsec", [C, AC, AP, 0.5])
@@ -702,7 +715,6 @@ class ArterialTree:
 
 							G.nodes[path[i-1]]['ref'] = ref1
 							ref_org = ref1
-							print("error", a)
 
 							# Set angle to correct rounding error
 							G.edges[(path[i-1], path[i])]['alpha'] = -a
@@ -841,16 +853,11 @@ class ArterialTree:
 						bif_id.append(ids)
 
 			# Return bifurcations with cross sections
-			print('Start Pool')
 			p = Pool(cpu_count())
 			bif_list = p.starmap(parallel_bif, args)	
-			print('End Pool')
-
+	
 			# Add crsec to graph
 			for i in range(len(bif_list)):
-				#TMP
-				mesh = bif_list[i].mesh_surface()
-				mesh.save("Results/Bifurcations/bifurcation_" + str(i) + ".vtk")
 
 				end_crsec, bif_crsec, nds, connect_index = bif_list[i].get_crsec()
 				self._crsec_graph.nodes[bif_id[i][0]]['crsec'] = bif_crsec
@@ -919,9 +926,6 @@ class ArterialTree:
 						end_ref.append(self._geom_graph.nodes[e]['ref'])
 
 					end_crsec, bif_crsec, nds, ind = bif.cross_sections(N, d, end_ref=end_ref)
-					#TMP
-					mesh = bif.mesh_surface()
-					mesh.save("Results/Bifurcations/bifurcation_" + str(n) + ".vtk")
 
 					self._crsec_graph.nodes[n]['crsec'] = bif_crsec
 
@@ -947,15 +951,19 @@ class ArterialTree:
 
 					crsec = self.__segment_crsec(spl, num, N, v0, alpha)
 
-					self._crsec_graph.edges[e]['crsec'] = crsec[1:-1]
-					self._crsec_graph.nodes[e[0]]['crsec'] = crsec[0]
-					self._crsec_graph.nodes[e[-1]]['crsec'] = crsec[-1]
+
+					self._crsec_graph.edges[e]['crsec'] = crsec[1:-1, :, :]
+					if self._geom_graph.nodes[e[0]]['type'] != "sep":
+						self._crsec_graph.nodes[e[0]]['crsec'] = crsec[0, :, :]
+
+					if self._geom_graph.nodes[e[1]]['type'] != "sep":
+						self._crsec_graph.nodes[e[1]]['crsec'] = crsec[-1, :, :]
 
 					# Write connection index
 					if connect_id == 0:
 						connect = np.arange(0, N)
 					else: 
-						connect = np.vstack((np.arange(connect_id, N), np.arange(0, connect_id)))
+						connect = np.hstack((np.arange(connect_id, N), np.arange(0, connect_id)))
 
 					self._crsec_graph.edges[e]['connect'] = connect.tolist()
 

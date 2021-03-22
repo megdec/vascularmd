@@ -658,8 +658,7 @@ class Spline:
 		tg = self.tangent(t0)
 
 		#if dot(v, tg) > 0.001:
-			#print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
-
+		#	print(colored('Warning : The vector to transport was not normal to the spline (', 'red'), colored(dot(v, tg), 'red'), colored(')', 'red'))
 		v = cross(tg, cross(v, tg)) # Make sure than v is normal to the spline
 		v = v / norm(v)
 
@@ -672,8 +671,8 @@ class Spline:
 
 			v = cross(ref, tg)
 			v = v / norm(v)
+
 			ref = cross(tg, v)
-			
 
 		return v
 

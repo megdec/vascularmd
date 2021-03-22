@@ -202,6 +202,9 @@ class Nfurcation:
 			tangent = cross(normal, binormal)
 			tangent = tangent / norm(tangent)	
 
+			if count > (N - 1)//2:
+				tangent = -tangent
+
 			origin = bif_crsec[i]
 
 
@@ -383,8 +386,8 @@ class Nfurcation:
 		b = 0
 		for i in range(self.n):
 			for j in range(len(self._key_pts[i])):
-				a += self._spl[i].point(self._key_pts[i][j]) * self._spl[i].radius(self._key_pts[i][j])**2
-				b += self._spl[i].radius(self._key_pts[i][j])**2
+				a += self._spl[i].point(self._key_pts[i][j]) * 1/(self._spl[i].radius(self._key_pts[i][j]))
+				b += 1/(self._spl[i].radius(self._key_pts[i][j]))
 
 		self._B = a / b
 
@@ -714,6 +717,8 @@ class Nfurcation:
 
 
 
+
+
 	def __bifurcation_connect(self, tind, ind, P0, P1, n):
 
 
@@ -731,11 +736,11 @@ class Nfurcation:
 		# Initial trajectory approximation
 
 		# Method 1 using surface splines
-		relax = 0.15
+		relax = 0.1
 		d = norm(P0 - P1)
 
 		tg0 = self._tspl[tind].tangent(0.0)
-		tg1 = -self._tspl[tind].tangent(1.0)
+		tg1 = P0 - P1
 
 		tg0 = tg0 / norm(tg0)
 		tg1 = tg1 / norm(tg1)
@@ -743,11 +748,18 @@ class Nfurcation:
 		pint0 = P0 +  tg0 * norm(P0 - P1) * relax
 		pint1 = P1 +  tg1 * norm(P0 - P1) * relax
 
+		# Fit spline
+		spl = Spline()
+		spl.approximation(np.vstack((P0, pint0, pint1, P1)), [1,1,1,1], np.vstack((P0, tg0, tg1, P1)), False, n = 3, radius_model=False, criterion= "None")
 
-		P = np.vstack([P0, pint0,  pint1, P1])
+		P = spl.get_control_points()
 		P = np.hstack((P, np.zeros((4,1))))
+
+		#P = np.vstack([P0, pint0,  pint1, P1])
+		#P = np.hstack((P, np.zeros((4,1))))
 		
 		trajectory = Spline(P)
+		#times = np.linspace(0, 1, n+2)[1:-1]
 		times = trajectory.resample_time(n)
 		
 		for i in range(n):
@@ -758,7 +770,7 @@ class Nfurcation:
 		#for i in range(3):
 		#	pts[:, i] = np.linspace(P0[i], P1[i], n + 2)[1:-1]	
 
-	
+		
 		nds = np.zeros((n,3))
 		for i in range(n):
 
@@ -769,11 +781,10 @@ class Nfurcation:
 			
 			pt = self.__send_to_surface(P, n, ind)
 			nds[i] = pt
-	
+		
 
-
-		# Method 3 using the trajectory splines themselves
 		"""
+		# Method 3 using the trajectory splines themselves
 		t0 = self._tspl[tind].project_point_to_centerline(P0)
 		t1 = self._tspl[tind].project_point_to_centerline(P1)
 		times = np.linspace(t0, t1, n+2)[1:-1]
@@ -782,10 +793,12 @@ class Nfurcation:
 		for i in range(n):
 
 			P = self._tspl[tind].point(times[i])
+			n =  pts[i] - P
+			n = n / norm(n)
 			
 			pt = self.__send_to_surface(P, n, ind)
 			nds[i] = pt
-		"""
+			"""
 
 		
 		return nds
@@ -950,7 +963,7 @@ class Nfurcation:
 		# Smooth data 
 		for i in range(len(curve_set_referential)):
 			data = curve_set_referential[i][:,:-1]
-			data_smooth = smooth_polyline(data, radius)
+			data_smooth = smooth_polyline(data, radius, True)
 			curve_set_referential[i][:,:-1] = data_smooth
 
 		# Project back in original referential
