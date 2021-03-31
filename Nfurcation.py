@@ -27,7 +27,7 @@ class Nfurcation:
 
 		""" Keyword arguments:
 		method -- furcation model used (spline or crsec)
-		if "spline" : args = [[spl1, spl2, ...], [AP1, AP2,...], R]
+		if "spline" : args = [[spl1, spl2, ...], [[AP1], [AP2],...], R]
 		if "crsec" : args = [[crsec1, crsec2, ...], [AP_crsec1, AP_crsec2...], AP, R]
 		if "angle" : args = [[crsec1, crsec2, ...], [a1, a2...], R]
 		"""
@@ -35,7 +35,7 @@ class Nfurcation:
 		self.model = model
 		
 		# Set user paramaters
-		self.R = args[2]  # Minimum curvature for rounded apex
+		self.R = args[-1]  # Minimum curvature for rounded apex
 
 		if model == "spline":
 
@@ -52,17 +52,21 @@ class Nfurcation:
 				self._endsec[0] = np.vstack((self._spl[i].point(0.0, True), self._spl[i].tangent(0.0, True)))
 				self._endsec[i+1] = np.vstack((self._spl[i].point(1.0, True), self._spl[i].tangent(1.0, True)))
 
+			self.n = len(self._endsec) - 1
+			self.__set_tAP() # Times at apex
+			self.__set_apexsec()
+
 		elif model == "crsec":
 
 			# Set end sections
 			self._endsec = args[0]
+			self._apexsec = args[1]
+			self.n = len(self._endsec) - 1
+
 			self._AP = args[2]
-			self.__set_spl(args[1])
+			self.__set_spl()
+			self.__set_tAP() # Times at apex
 
-		self.n = len(self._endsec) - 1
-
-
-		self.__set_tAP() # Times at apex
 
 		self.__set_key_pts() # Set key points times
 		self.__set_B() # Geometric center (np array)
@@ -70,6 +74,9 @@ class Nfurcation:
 		self.__set_CP() # Common points (np array)
 
 		self.__set_tspl() # Trajectory splines
+		self._crsec = None
+		self._N = 24 # Number of nodes in a cross section
+		self._d = 0.2 # Ratio of density of cross section
 
 	
 
@@ -86,6 +93,9 @@ class Nfurcation:
 	def get_endsec(self):
 		return self._endsec
 
+	def get_apexsec(self):
+		return self._apexsec
+
 	def get_B(self):
 		return self._B
 
@@ -98,6 +108,18 @@ class Nfurcation:
 
 	def get_tAP(self):
 		return self._tAP
+
+	def get_N(self):
+		return self._N
+
+	def get_d(self):
+		return self.d
+
+	def get_R(self):
+		return self.R
+
+	def get_n(self):
+		return self.n 
 
 	def get_reference_vectors(self):
 
@@ -214,7 +236,7 @@ class Nfurcation:
 		return curve_set, referential_set
 
 
-	def set_curves(self, curve_set):
+	def curves_to_crsec(self, curve_set):
 
 		""" Set all the curves along bifurcation is crsec format """
 
@@ -248,6 +270,8 @@ class Nfurcation:
 	###### SET SHAPE PARAMETERS  ########
 	#####################################
 
+	def set_crsec(self, crsec):
+		self._crsec = crsec
 
 	def set_R(self, R):
 
@@ -255,32 +279,61 @@ class Nfurcation:
 
 		self.R = R
 
+	def __set_apexsec(self):
 
-	def __set_spl(self, AP_crsec): 
+		self._apexsec = []
+		for i in range(len(self._spl)):
+			self._apexsec.append(np.vstack((self._spl[i].point(self._tAP[i][0], True), self._spl[i].tangent(self._tAP[i][0], True))))
+
+
+	def set_apexsec_radius(self, radius, branch_id):
+
+		""" Change the radius of the apex cross section of index i but keep the apex position. Only works for bifurcations!
+		Keyword arguments:
+		radius -- Value of the radius to apply
+		branch_id -- id of the apex section to modify """
+
+		v = self._apexsec[branch_id][0][:-1] - self._AP[0]
+		v = v / norm(v)
+		
+		self._apexsec[branch_id][0][:-1] = self._AP[0] + v * radius
+		self._apexsec[branch_id][0][-1] = radius
+
+		# Recompute the shape splines
+		self.__set_spl()
+		self.__set_tAP() # Times at apex
+
+		self.__set_key_pts() # Set key points times
+		self.__set_B() # Geometric center (np array)
+		self.__set_SP() # Separation points (np array)
+		self.__set_CP() # Common points (np array)
+
+		self.__set_tspl() # Trajectory splines
+	
+
+
+	def __set_spl(self): 
 
 		""" Set the shape splines of the bifurcation.
-
-		Keyword arguments:
-			AP_crsec -- crsec sections at the apical region
 		"""
 
-		relax = 0.25
+		relax = 0.15
 
 		# Compute the shape splines from cross sections
 		self._spl = []
 
 		# Correct the radius 
-		if len(AP_crsec) < 0:
+		if len(self._apexsec) < 0:
 			print('correct radius')
 			D0, D1, D2 = self._endsec[0][0][-1]*2, self._endsec[1][0][-1]*2, self._endsec[2][0][-1]*2
-			AP_crsec[0][0][-1] = ((sqrt(2) * D0*D1)/(sqrt(D1**2 + D2**2))) / 2.
-			AP_crsec[1][0][-1] = ((sqrt(2) * D0*D2)/(sqrt(D1**2 + D2**2))) / 2.
+			self._apexsec[0][0][-1] = ((sqrt(2) * D0*D1)/(sqrt(D1**2 + D2**2))) / 2.
+			self._apexsec[1][0][-1] = ((sqrt(2) * D0*D2)/(sqrt(D1**2 + D2**2))) / 2.
 	
 
 		for i in range(1, len(self._endsec)):
 
-			C0, C1, C2 = self._endsec[0][0], AP_crsec[i-1][0], self._endsec[i][0] 
-			T0, T1, T2 = self._endsec[0][1], AP_crsec[i-1][1], self._endsec[i][1] 
+			C0, C1, C2 = self._endsec[0][0], self._apexsec[i-1][0], self._endsec[i][0] 
+			T0, T1, T2 = self._endsec[0][1], self._apexsec[i-1][1], self._endsec[i][1] 
 
 			p0 = C0 + relax * norm(C1 - C0) * T0
 			p0[-1] = C0[-1] + relax * abs((C1[-1] - C0[-1]))
@@ -308,13 +361,23 @@ class Nfurcation:
 			self._spl.append(Spline(control_points = P, knot = knot))
 
 		# Check angles of the apex cross sections and apply rotation correction if necessary
-		#for i in range(self.n):
-		#	vec = (AP_crsec[i-1][0][:-1] - self._AP[0])
-		#	OP = AP_crsec[i-1][0][:-1] + AP_crsec[i-1][0][-1] * vec / norm(vec)
+		for i in range(self.n):
+			vec = (self._apexsec[i-1][0][:-1] - self._AP[0])
+			OP = self._apexsec[i-1][0][:-1] + self._apexsec[i-1][0][-1] * vec / norm(vec)
 
-			# Test if OP is at the surface of all splines
+			# Test if OP is at the surface of all other splines
+			ind_list = np.arange(0, self.n).tolist()
+			ind_list.remove(i)
 
-			# If not, rotation
+			for ind in ind_list:
+
+				t = self._spl[ind].project_point_to_centerline(OP)
+				pt = self._spl[ind].point(t, True)
+
+				if norm(pt[:-1] - OP) < pt[-1]:
+					print("Error crsec")
+
+					# If not, rotation(?)
 
 
 	def __set_tAP(self): 
@@ -412,7 +475,7 @@ class Nfurcation:
 			nS = self._spl[ind].transport_vector(-nAP0, 1.0, t) 
 		
 			ptS = self._spl[ind].point(t)  
-			SP.append(self.__send_to_surface(ptS, nS / norm(nS), spl_ind[ind]))	
+			SP.append(self.send_to_surface(ptS, nS / norm(nS), spl_ind[ind]))	
 
 		self._SP = SP
 
@@ -430,7 +493,7 @@ class Nfurcation:
 
 		n = sum(normals) / len(normals)
 
-		self._CP = [self.__send_to_surface(self._B, n, 0), self.__send_to_surface(self._B, -n, 0)]
+		self._CP = [self.send_to_surface(self._B, n, 0), self.send_to_surface(self._B, -n, 0)]
 
 
 
@@ -480,7 +543,7 @@ class Nfurcation:
 
 
 
-	def set_crsec(self, mesh):
+	def mesh_to_crsec(self, mesh):
 
 		pts = self._crsec
 
@@ -580,7 +643,7 @@ class Nfurcation:
 	#####################################
 
 
-	def mesh_surface(self, N=48, d=0.1):
+	def mesh_surface(self):
 
 		""" Returns the surface mesh of the bifurcation
 
@@ -591,7 +654,7 @@ class Nfurcation:
 		"""
 
 		if self._crsec == None:
-			end_crsec, bif_crsec, nds, ind = self.cross_sections(N, d)
+			end_crsec, bif_crsec, nds, ind = self.cross_sections(self._N, self._d)
 		else: 
 			end_crsec, bif_crsec, nds, ind = self._crsec
 
@@ -648,8 +711,7 @@ class Nfurcation:
 		#mesh.plot(show_edges = True)
 
 		return mesh
-		
-		
+
 
 
 	def cross_sections(self, N, d, end_ref = None):
@@ -710,9 +772,12 @@ class Nfurcation:
 			nds.append(nds_seg)
 
 		self._crsec = [end_crsec, bif_crsec, nds, connect_index]
-		self.resample()
-		#self.projection_sphere(0.8)
-		#self.smooth(1)
+		self._N = N
+		self._d = d
+
+		#self.relaxation(5)
+		#self.smooth_apex(0.5)
+		#self.smooth(20)
 		return self._crsec
 
 
@@ -754,9 +819,6 @@ class Nfurcation:
 
 		P = spl.get_control_points()
 		P = np.hstack((P, np.zeros((4,1))))
-
-		#P = np.vstack([P0, pint0,  pint1, P1])
-		#P = np.hstack((P, np.zeros((4,1))))
 		
 		trajectory = Spline(P)
 		#times = np.linspace(0, 1, n+2)[1:-1]
@@ -779,27 +841,8 @@ class Nfurcation:
 			n =  pts[i] - P
 			n = n / norm(n)
 			
-			pt = self.__send_to_surface(P, n, ind)
+			pt = self.send_to_surface(P, n, ind)
 			nds[i] = pt
-		
-
-		"""
-		# Method 3 using the trajectory splines themselves
-		t0 = self._tspl[tind].project_point_to_centerline(P0)
-		t1 = self._tspl[tind].project_point_to_centerline(P1)
-		times = np.linspace(t0, t1, n+2)[1:-1]
-
-		nds = np.zeros((n,3))
-		for i in range(n):
-
-			P = self._tspl[tind].point(times[i])
-			n =  pts[i] - P
-			n = n / norm(n)
-			
-			pt = self.__send_to_surface(P, n, ind)
-			nds[i] = pt
-			"""
-
 		
 		return nds
 
@@ -854,7 +897,7 @@ class Nfurcation:
 		for i in range(n):
 
 			n = rotate_vector(v1, cross(v1, v2), theta[i])
-			nds[i, :] = self.__send_to_surface(self._B, n, 0)
+			nds[i, :] = self.send_to_surface(self._B, n, 0)
 
 		return nds
 
@@ -912,12 +955,14 @@ class Nfurcation:
 	########## POST PROCESSING  #########
 	#####################################
 
-	def resample(self):
+	def relaxation(self, it = 5):
 		""" Resamples the cells of the bifurcation """
 
-		init_mesh = self.mesh_surface()
-		self.smooth(5)
-		self.deform(init_mesh)
+		for i in range(it):
+
+			init_mesh = self.mesh_surface()
+			self.smooth(1)
+			self.deform(init_mesh)
 
 
 	def smooth(self, n_iter):
@@ -935,10 +980,10 @@ class Nfurcation:
 
 		mesh = self.mesh_surface()
 		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
-		self.set_crsec(mesh)
+		self.mesh_to_crsec(mesh)
 
 
-	def projection_sphere(self, radius):
+	def smooth_apex(self, radius):
 
 		if self._crsec == None:
 			raise ValueError('Please first perform cross section computation.')
@@ -947,7 +992,6 @@ class Nfurcation:
 
 		curve_set, referential_set = self.get_curves()
 
-		
 		# Set the curve in the projection referential
 		curve_set_referential = []
 		for i in range(len(curve_set)):
@@ -960,10 +1004,13 @@ class Nfurcation:
 
 			curve_set_referential.append(curve_referential)
 
-		# Smooth data 
-		for i in range(len(curve_set_referential)):
+		# Smooth apex curves
+		start_curve = len(curve_set) // (self.n + 1) 
+		end_curve = len(curve_set) - start_curve 
+
+		for i in range(start_curve, end_curve): #range(len(curve_set_referential)): To smooth all the curves
 			data = curve_set_referential[i][:,:-1]
-			data_smooth = smooth_polyline(data, radius, True)
+			data_smooth = smooth_polyline(data, radius)
 			curve_set_referential[i][:,:-1] = data_smooth
 
 		# Project back in original referential
@@ -982,7 +1029,7 @@ class Nfurcation:
 			curve_set_back.append(curve_back)
 		
 		# Set curves
-		self.set_curves(curve_set_back)
+		self.curves_to_crsec(curve_set_back)
 
 
 
@@ -1047,7 +1094,7 @@ class Nfurcation:
 	#####################################
 
 
-	def __send_to_surface(self, O, n, ind):
+	def send_to_surface(self, O, n, ind):
 
 		""" Sends a point to the surface defined by all shape splines according to direction n """
 
@@ -1086,30 +1133,38 @@ class Nfurcation:
 		# Checking inital born
 		if c1<c0:
 			raise ValueError("We must have c1>c0.")
-		
-		t = self._spl[ind].project_point_to_centerline(O + c1 * n)
-		pt = self._spl[ind].point(t, True)
 
-		if False: #norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
-			return self.__projection(O, n, c0, c1 - 0.01, ind)
-
+		t = self._spl[ind].project_point_to_centerline(O)
+		if False: #t == 1.0 or t == 0.0:
+			# Out of the spline, don't project!
+			return O
+			
 		else:
+		
+			t = self._spl[ind].project_point_to_centerline(O + c1 * n)
 
-			while abs(c0 - c1)> 10**(-3):
+			pt = self._spl[ind].point(t, True)
 
-				c = (c0 + c1) / 2.0
+			if False: #norm(pt[:-1] - (O + c1 * n)) < pt[-1]: # Incorrect initial born
+				return self.__projection(O, n, c0, c1 - 0.01, ind)
 
-				t = self._spl[ind].project_point_to_centerline(O + c * n)
-				pt = self._spl[ind].point(t, True)
+			else:
 
-				if norm(pt[:-1] - (O + c * n)) < pt[-1]:
-					c0 = c
-				else:
-					c1 = c
+				while abs(c0 - c1)> 10**(-3):
 
-			pt = O + ((c0 + c1) / 2.0) * n
+					c = (c0 + c1) / 2.0
 
-			return pt
+					t = self._spl[ind].project_point_to_centerline(O + c * n)
+					pt = self._spl[ind].point(t, True)
+
+					if norm(pt[:-1] - (O + c * n)) < pt[-1]:
+						c0 = c
+					else:
+						c1 = c
+
+				pt = O + ((c0 + c1) / 2.0) * n
+
+				return pt
 
 
 

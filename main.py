@@ -20,6 +20,8 @@ import time
 import vtk
 import copy
 
+from combine_nfurcation import *
+
 
 def test_bifurcation_class():
 
@@ -63,19 +65,19 @@ def test_multifurcation_class():
 
 def test_nfurcation_class():
 
-	file = open('Results/Furcations/Bifurcations/C0082_furcation_0.obj', 'rb') 	 
+	file = open('Results/Furcations/Fine/Bifurcations/C0082_furcation_0.obj', 'rb') 	 
 	multi = pickle.load(file)
 
-	multi.cross_sections(48, 0.1)
+	#multi.cross_sections(48, 0.1)
 
 	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
 
-	multi.projection_sphere(0.8)
+	multi.smooth_apex(0.5)
 	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
 
-	multi.smooth(2)
+	#multi.smooth(1)
 
 	mesh = multi.mesh_surface()
 	mesh.plot(show_edges=True)
@@ -279,65 +281,6 @@ def test_fitting():
 	spl.show(False, False, data=D)
 
 
-def test_transport():
-
-	tree = ArterialTree("TestPatient", "BraVa", "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0083.vtp")
-
-	crsec = tree.get_topo_graph()
-	D = crsec.edges[(1,2)]["coords"][::2]
-
-	#D = np.array([[93.91046111154787, 181.88254391779975, 214.13217284407793, 0.9308344650856465], [93.0 6141936094309, 178.7939280727319, 213.35499871161392, 1.285582084835041], [87.12149585611041, 173.88847286748307, 213.0933392632536, 1.245326754665641], [88.72064373772372, 167.85629776284827, 213.23791337736043, 1.2156057018939763], [95.63034638734848, 166.47106157620692, 217.3498134331477, 0.5916894764860996], [87.59871877556981, 172.384069768833, 219.1565118077874, 0.16595909410171705], [96.06576337092793, 175.64169053013188, 221.47013007324222, 0.44741711425241704], [96.49090672544531, 174.13046182636438, 223.0878945823948, 0.28742055566016933]])
-	#D = np.array([[ 95.17, 184.3606, 213.4994, 0.93], [ 93.93, 181.8806, 214.1194, 0.93], [ 91.76, 178.1606, 213.4994, 1.24], [ 89.28, 175.0606, 212.8794, 1.24], [ 87.42, 172.5806, 213.4994, 1.24], [ 88.01283199, 172.01515466, 213.12311999, 1.26105746]])
-
-	values = np.vstack((D[0], (D[1] - D[0])*15, (D[-1] - D[-2])*15, D[-1]))
-
-	n = 6
-	
-	spl = Spline()
-	spl.approximation(D, [True, False, True, True], values, True, False, lbd = 0, criterion="None")
-	spl.show(False, False, data=D)
-	"""
-
-	v = cross(spl.tangent(1.0), np.array([0,0,1]))
-	v = v / norm(v)
-	tg0 = spl.tangent(0.0)
-	tg1 = spl.tangent(1.0)
-	print("v", v)
-	print("v", cross(cross(tg0, cross(cross(tg1, v), tg0)), tg1))
-
-	tg = spl.tangent(1.0)
-	tg = tg / norm(tg)
-
-	ref = cross(tg, v)
-	ref = ref / norm(ref)
-	print("ref", ref)
-	print("up", v)
-
-	tg = spl.tangent(0.0)
-	tg = tg / norm(tg) 
-
-	v = cross(ref, tg)
-	v = v/norm(v)
-	print("down", v)
-
-	tg = spl.tangent(0.0)
-	tg = tg / norm(tg)
-	ref = cross(tg, v)
-	ref = ref / norm(ref)
-	print("ref", ref)
-	print("down", v)
-
-	tg = spl.tangent(1.0)
-	tg = tg / norm(tg)
-	v = cross(ref, tg)
-	v = v / norm(v)
-	print("up", v)
-	"""
-
-	
-	#v_down = spl.transport_vector(v, 1.0, 0.0)
-	#v_up = spl.transport_vector(v_down, 0.0, 1.0)
-	#print("v", v, "v_down", v_down, "v_up", v_up)
 
 
 def test_circle_smooth(): 
@@ -462,15 +405,7 @@ def test_Model():
 	model.spl.show(data=D)
 	print(model.get_magnitude())
 
-def test_rotations():
 
-		file = open("tmp.obj", 'rb') 
-		tree = pickle.load(file)
-
-		t1 = time.time()
-		tree.compute_cross_sections(32, 0.2)
-		t2 = time.time()
-		print("The cross section computation process took ", t2 - t1, "seconds." )
 
 def test_brava():
 
@@ -486,10 +421,11 @@ def test_brava():
 		t2 = time.time()
 		print("The approximation process took ", t2 - t1, "seconds." )
 		tree.write_vtk("spline", "Results/BraVa/registered/splines/P" + str(i) + ".vtk")
+		tree.correct_topology()
 	
 		
 		t1 = time.time()
-		tree.compute_cross_sections(32, 0.2)
+		tree.compute_cross_sections(32, 0.2, False)
 		t2 = time.time()
 		print("The cross section computation process took ", t2 - t1, "seconds." )
 
@@ -805,11 +741,110 @@ def write_bifurcations_aneurisk(patient):
 		pickle.dump(bifurcations[i], file)
 
 
+def write_relaxation(filein, fileout, it):
+
+	file = open(filein, 'rb') 
+	bif = pickle.load(file)
+	bif.relaxation(it)
+
+	# Mesh bifurcations
+	mesh = bif.mesh_surface()
+	mesh = mesh.compute_cell_quality()
+	mesh.plot(show_edges = True, scalars = 'CellQuality')
+	
+	mesh.save(fileout + "_relaxation_" + str(it) + ".vtk")
+	file = open(fileout + "_relaxation_" + str(it) + ".obj", 'wb') 	 
+	pickle.dump(bif, file)
+
+
+
+def write_smooth_apex(filein, fileout, radius):
+
+	file = open(filein, 'rb') 
+	bif = pickle.load(file)
+	bif.smooth_apex(radius)
+
+	# Mesh bifurcations
+	mesh = bif.mesh_surface()
+	mesh = mesh.compute_cell_quality()
+	mesh.plot(show_edges = True, scalars = 'CellQuality')
+	
+	mesh.save(fileout + "_smooth_apex_" + str(radius) + ".vtk")
+	file = open(fileout + "_smooth_apex_" + str(radius) + ".obj", 'wb') 	 
+	pickle.dump(bif, file)
+
+
+def write_smooth_relax(filein, fileout, it, radius):
+
+	file = open(filein, 'rb') 
+	bif = pickle.load(file)
+	bif.smooth_apex(radius)
+	bif.relaxation(it)
+
+	# Mesh bifurcations
+	mesh = bif.mesh_surface()
+	mesh = mesh.compute_cell_quality()
+	mesh.plot(show_edges = True, scalars = 'CellQuality')
+	
+	mesh.save(fileout + "_relaxation_" + str(it) + "_smooth_" + str(radius) + ".vtk")
+	file = open(fileout + "_relaxation_" + str(it) + "_smooth_" + str(radius) + ".obj", 'wb') 	 
+	pickle.dump(bif, file)
+
+
+
+def test_combine_bif():
+
+	file = open("Results/Furcations/Bifurcations/C0099_furcation_2.obj", 'rb') 
+	bif1 = pickle.load(file)
+
+	file = open("Results/Furcations/Bifurcations/C0099-2_furcation_1.obj", 'rb') 
+	bif2 = pickle.load(file)
+
+	endsec1 = bif1.get_endsec()
+	apexsec1 = bif1.get_apexsec()
+
+	endsec2 = bif2.get_endsec()
+	apexsec2 = bif2.get_apexsec()
+
+	ap1 = bif1.get_AP()
+	ap2 = bif2.get_AP()
+
+	endsec2[0] = apexsec1[0]
+
+	bif1 = Nfurcation("crsec", [endsec1, apexsec1, ap1, 0.5])
+	bif2 = Nfurcation("crsec", [endsec2, apexsec2, ap2, 0.5])
+	bif2.set_apexsec_radius(0.72,0)
+
+	mesh1 = bif1.mesh_surface()
+	mesh2 = bif2.mesh_surface()
+
+	plotter = pv.Plotter()    # instantiate the plotter
+	plotter.add_mesh(mesh1, show_edges = True)    # add a mesh to the scene
+	plotter.add_mesh(mesh2, show_edges = True)  
+	cpos = plotter.show()     # show the rendering window
+
+	bifs = combine_nfurcation([bif1, bif2], [0])
+	mesh1 = bifs[0].mesh_surface()
+	mesh2 = bifs[1].mesh_surface()
+
+	plotter = pv.Plotter()    # instantiate the plotter
+	plotter.add_mesh(mesh1, show_edges = True)    # add a mesh to the scene
+	plotter.add_mesh(mesh2, show_edges = True)  
+	cpos = plotter.show()     # show the rendering window
+
+	patient = "C0099"
+	mesh1.save("Results/Furcations/Combine/" + patient + "_half1.vtk")
+	mesh2.save("Results/Furcations/Combine/" + patient + "_half2.vtk")
+
+
+
+
+
 #test_tree_class()
 #test_ogrid_pattern()
 #test_bif_ogrid_pattern()
 ##test_multifurcation_class()
-#test_nfurcation_class()
+test_nfurcation_class()
 #test_meshing()
 #test_transport()
 #test_bifurcation_smoothing()
@@ -837,6 +872,18 @@ def write_bifurcations_aneurisk(patient):
 #test_circle_smooth()
 #test_trifurcation_nonplanar()
 
-write_bifurcations_aneurisk("C0099")
+#for p in ["C0032", "C0082", "C0083", "C0099", "C0091"]:#["C0032", "C0078", "C0082", "C0083", "C0099", "C0091"]:
+#	print(p)
+#	write_bifurcations_aneurisk(p)
+#test_combine_bif()
+
+#for it in [1,2,5,10]:
+#	write_relaxation("Results/Furcations/Bifurcations/C0082_furcation_0.obj", "Results/Furcations/Relaxation/C0082_furcation_0", it)
+
+#for r in [0.1, 0.3, 0.5, 0.7]:
+#	write_smooth_apex("Results/Furcations/Bifurcations/C0082_furcation_0.obj", "Results/Furcations/Smooth/C0082_furcation_0", r)
+
+#for it in [1,2,5,10]:
+#	write_smooth_relax("Results/Furcations/Bifurcations/C0082_furcation_0.obj", "Results/Furcations/Smooth_Relax/C0082_furcation_0", it, 0.5)
 
 	

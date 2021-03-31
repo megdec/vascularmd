@@ -593,7 +593,6 @@ class ArterialTree:
 
 		N -- number of nodes in a transverse section (multiple of 4)
 		d -- longitudinal density of nodes as a proportion of the radius
-		bifurcation_model -- (true) bifurcation based on a model (false) bifurcation based on the data
 		"""
 
 		if self._spline_graph is None:
@@ -663,10 +662,10 @@ class ArterialTree:
 					# Create bifurcation
 
 					# Spline model
-					#bif = Nfurcation("spline", [spl_out, AP, 0.5])
+					bif = Nfurcation("spline", [spl_out, AP, 0.5])
 					# Five crsec model
-					bif = Nfurcation("crsec", [C, AC, AP, 0.5])
-					bif.show(True)
+					#bif = Nfurcation("crsec", [C, AC, AP, 0.5])
+					#bif.show(True)
 			
 					ref = bif.get_reference_vectors()
 

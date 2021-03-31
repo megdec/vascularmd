@@ -238,7 +238,7 @@ class Spline:
 
 		
 		if n == None:
-			n = len(D) + 5
+			n = len(D)
 	
 		if n < 4: # Minimum of 4 control points
 			n = 4
