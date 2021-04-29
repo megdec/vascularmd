@@ -7,9 +7,14 @@ from numpy.linalg import norm
 from numpy import dot, cross, arctan2
 
 import pyvista as pv
+import vtk
 
 import matplotlib.pyplot as plt # Tools for plots
 from scipy.spatial import KDTree
+#from Spline import Spline
+import networkx as nx
+
+
 
 
 #####################################
@@ -138,7 +143,6 @@ def directed_angle_negative(v1, v2, u):
 
 
 
-
 def linear_interpolation(nodes, num):
 
 	""" Linearly interpolate num nodes between each given 4D node.
@@ -180,16 +184,17 @@ def lin_interp(p0, p1, num):
 
 def length_polyline(D):
 
-	""" Return the distance to origin for each point in a polyLine
+	""" Return the length of a polyLine
 
 	Keyword arguments:
 	D -- list of node coordinates
 	"""
 
-	length = [0.0]
+	length = np.zeros((D.shape[0],))
+	length[0] = 0.0
 
 	for i in range(1, len(D)):
-		length.append(length[i-1] + norm(D[i] - D[i-1]))
+		length[i] = length[i-1] + norm(D[i] - D[i-1])
 
 	return length
 
@@ -222,6 +227,116 @@ def resample(D, num = 0):
 	return np.array(D_resamp)
 
 
+def averaging_knot(data, p):
+
+		""" Returns a B-spline averaging knot vector."""
+		p = 3
+		n = len(data)
+		t = chord_length_parametrization(data)
+
+		knot = [0.0] * p # First knot of multiplicity p
+
+		for i in range(p, n):
+			knot.append((1.0 / (p - 1.0)) * sum(t[i-3+1:i]))
+
+		knot = knot + [1.0] * p
+
+		return knot
+
+
+def optimal_knot(nb_max, data):
+	from Spline import Spline
+
+	""" Search of dominant points in data data. """
+	# Approximation of the curvature values
+
+	data  = order_points(data)
+
+	n = 4
+	spl = Spline()
+	spl.approximation(data, [0,0,0,0], np.zeros((4,4)), False, n = n)
+
+	ASE_act = spl.ASE(data)
+	ASE_prec = (ASE_act[0] + 1, ASE_act[1] + 1)
+
+	
+	thres = 10**(-2)
+	while n <= len(data) and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
+		n += 1
+
+		spl = Spline()
+		spl.approximation(data, [0,0,0,0], np.zeros((4,4)), False, n = n)
+
+		ASE_prec = ASE_act[:]
+		ASE_act = spl.ASE(data)
+
+	spl = Spline()
+	spl.approximation(data, [0,0,0,0], np.zeros((4,4)), False, n = n)
+	spl.show(data=data)
+		
+	print(n)
+
+	# Plot curvature curve
+	times, dist = spl.distance(data)
+	curv = spl.curvature(times)
+	plt.plot(times, curv, color='black')
+	
+
+	# Find dominant points
+	dominant = data[0]
+	ind = [0]
+	for i in range(1, len(data) -1):
+		if (curv[i-1] > curv[i] and curv[i + 1] > curv[i]) or (curv[i-1] < curv[i] and curv[i + 1] < curv[i]):
+			dominant = np.vstack((dominant, data[i]))
+			ind.append(i)
+
+	dominant = np.vstack((dominant, data[-1]))
+	ind.append(len(data)-1)
+
+	plt.scatter(times[ind], curv[ind])
+	plt.scatter(times[ind], np.zeros((1, len(ind))), color = 'black')
+	
+	print(len(dominant))
+	knot = averaging_knot(dominant, 3)
+	plt.scatter(knot, np.zeros((1, len(knot))), color = 'black', s=10)
+	plt.show()
+
+	spl = Spline()
+	spl.approximation(data, [0,0,0,0], np.zeros((4,4)), False, n = len(dominant))
+	spl.show(data=data)
+	print(spl.ASE(data))
+
+	spl = Spline()
+	spl.approximation(data, [0,0,0,0], np.zeros((4,4)), False, n = len(dominant), knot = knot)
+	spl.show(data=data)
+	print(spl.ASE(data))
+
+	return knot
+
+
+
+
+def order_points(points):
+	''' Reorder points to form the shortest possible polyline '''
+
+	# Create kneighbor graph
+	kdtree = KDTree(points[:,:-1])
+	G = nx.Graph()
+	G.add_nodes_from(range(len(points)))
+	nb = 5
+
+	for i in range(len(points)):
+		d, idx = kdtree.query(points[i, :-1], k=nb)
+		for j in range(nb):
+			G.add_edge(i, idx[j], distance = d[j])
+
+	path = dict(nx.all_pairs_dijkstra_path(G, weight = 'distance'))
+
+	print(list(path.keys()))
+
+	points = points[list(path.keys()), :]
+
+	return points
 
 
 #####################################
@@ -452,21 +567,43 @@ def smooth_polyline(data, radius, show=False):
 
 	def display(dataorg, normals, data, inter1, inter2, center, radius):
 
-		figure, axes = plt.subplots()
-		axes.set_aspect(1)
 
-		axes.plot(dataorg[:,0], dataorg[:,1])
-		axes.scatter(dataorg[:,0], dataorg[:,1], color = 'blue', alpha = 0.5)
-		axes.plot([dataorg[:-1,0], dataorg[:-1,0] + normals[:,0] * radius] , [dataorg[:-1,1], dataorg[:-1,1] + normals[:,1] * radius])
 
-		axes.scatter(inter1[0], inter1[1], color = 'orange', s = 40)	
-		axes.scatter(inter2[0], inter2[1], color = 'black', s = 40)	
-		axes.scatter(center[0], center[1], color = 'black', s = 10)
+		figure, axes = plt.subplots(2, 1)
+		ax1 = axes[0]
+		ax2 = axes[1]
 
-		circle = plt.Circle(center, radius=radius, alpha=0.3, color='gray')
-		axes.add_artist(circle)
+		ax1.set_aspect(1)
+		ax2.set_aspect(1)
 
-		plt.scatter(data[:,0], data[:,1], color = 'red', alpha = 0.5)		
+		colorline = 'red'
+		colorcircle = 'grey'
+
+		ylim = [dataorg[1:-1, 1].min() - 0.1, dataorg[1:-1, 1].max() + 0.1]
+		xlim = [dataorg[1:-1, 0].min() - 0.1, dataorg[1:-1, 0].max() + 0.1]
+		ylim[1] = max(ylim[1], center[1] + radius + 0.1)
+		ax1.set_ylim(ylim)
+
+		ax2.sharex(ax1)
+		ax2.sharey(ax1)
+
+		plt.xticks([])
+		plt.yticks([])
+
+		ax1.plot(dataorg[1:-1,0], dataorg[1:-1,1], color = colorline, linewidth=2)
+		ax1.scatter(dataorg[1:-1,0], dataorg[1:-1,1], color = colorline, s=30)
+
+		ax1.scatter(center[0], center[1], color = 'black', s = 20)
+
+		circle = plt.Circle(center, radius=radius, alpha=0.4, color=colorcircle)
+		ax1.add_artist(circle)
+
+		circle2 = plt.Circle(center, radius=radius, alpha=0.4, color=colorcircle)
+		ax2.add_artist(circle2)
+		ax2.scatter(center[0], center[1], color = 'black', s = 20)
+
+		ax2.scatter(data[1:-1,0], data[1:-1,1], color = colorline, s=30)		
+		ax2.plot(data[1:-1,0], data[1:-1,1], color = colorline,linewidth=2)	
 		plt.show()
 
 
@@ -507,7 +644,7 @@ def smooth_polyline(data, radius, show=False):
 
 		# Search for intersections
 
-		for i in range(start, data.shape[0]-1):
+		for i in range(start, data.shape[0]-2):
 
 			for j in range(i+2, data.shape[0]-1):
 
@@ -530,122 +667,14 @@ def smooth_polyline(data, radius, show=False):
 						
 			if found:
 				start = j
+				if start > data.shape[0]-4:
+					found = False
+					break
 				if show:
 					display(dataorg, normals, data, inter1, inter2, center, radius)
 				break
 
-
-
-	data = data[1:-1,:]
-
-	return data
-
-
-def smooth_polylineorg(data, radius, display= False):
-	""" Smoothes a polyline using the inscribed circle method """
-
-
-	coefs = np.zeros((data.shape[0]-1, 2))
-	normals =  np.zeros((data.shape[0]-1, 2))
-
-	# Get parallel line for every point
-	for i in range(data.shape[0] - 1):
-
-		coefs[i, 0] =  (data[i+1, 1] - data[i, 1])/(data[i+1, 0] - data[i, 0]) 
-
-		n = (data[i+1] - data[i])[::-1]
-		if n[1] <= 0:
-			n = n * np.array([1,-1])
-		else: 
-			n = n * np.array([-1, 1])
-
-		n = n / norm(n)
-		normals[i, :] = n
-		pt = data[i] + n * radius
-
-		
-		coefs[i, 1] = pt[1] - coefs[i, 0] * pt[0]
-		
-	coefs = np.around(coefs, 3)
-	normals = np.around(normals, 3)
-
-
-	if display: 
-		figure, axes = plt.subplots()
-		axes.set_aspect(1)
-
-		axes.plot(data[:,0], data[:,1])
-		axes.scatter(data[:,0], data[:,1], color = 'blue', alpha = 0.5)
-		axes.plot([data[:-1,0], data[:-1,0] + normals[:,0] * radius] , [data[:-1,1], data[:-1,1] + normals[:,1] * radius])
-
-
-	# Search for intersections
-	for i in range(data.shape[0]-1):
-	
-		a = coefs[i, 0]
-		b = coefs[i, 1]
-
-		for j in range(i+2, data.shape[0]-1):
-
-			c = coefs[j, 0]
-			d = coefs[j, 1]
-
-			if a != c:
-
-				x = (b-d)/(c-a)
-				y = a*x + b
-				center = np.array([x, y])
-
-				inter1 = center - normals[j, :] * radius
-				inter2 = center - normals[i, :] * radius
-
-					
-				# Search if the intersections lies in the segments
-				if (norm(data[j, :] - inter1) <= norm(data[j, :] - data[j + 1, :]) and norm(data[j+1, :] - inter1) < norm(data[j, :] - data[j + 1, :])):
-					if (norm(data[i, :] - inter2) <= norm(data[i, :] - data[i + 1, :]) and norm(data[i+1, :] - inter2) < norm(data[i, :] - data[i + 1, :])):
-
-						if display : 
-							axes.scatter(inter1[0], inter1[1], color = 'black', s = 10)	
-							axes.scatter(inter2[0], inter2[1], color = 'black', s = 10)	
-							axes.scatter(center[0], center[1], color = 'black', s = 10)
-
-							circle = plt.Circle(center, radius=radius, alpha=0.3, color='gray')
-							axes.add_artist(circle)
-								
-
-						project = [inter2]
-
-						for k in range(i+1, j+1):
-							project.append(data[k,:])
-							
-						project.append(inter1)
-
-						angles = [0.0]
-						for k in range(len(project)-1):
-							angles.append(angles[-1] + norm(project[k] - project[k+1]))
-
-						# Compute angle between both intersections
-						angles = angles / max(angles)
-						v0 = project[0] - center
-						v1 = project[-1] - center
-						r, phi0 =cart2pol(v0[0], v0[1])
-						r, phi1 =cart2pol(v1[0], v1[1])
-						angles = angles * (phi1 - phi0)
-
-						count = i + 1
-						for k in range(1, len(angles) - 1):
-							data[count] = pol2cart(radius, phi0 + angles[k]) + center
-							count+=1
-						#data = resample(data)
-
-						break
-
-	if display:
-		plt.scatter(data[:,0], data[:,1], color = 'red', alpha = 0.5)		
-		plt.show()
-
-	return data
-
+	return data[1:-1,:]
 
 
 
@@ -785,18 +814,117 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 	return np.mean(tab), np.min(tab), np.max(tab)
 	
 
+def split_tubes(path_in, file_in, path_out, bifurcations = True):
+	""" Take vmtk file, split the network in tubes and write swc files """
+			
 
+	centerline = pv.read(path_in + file_in)
+	nb_centerlines = centerline.cell_arrays['CenterlineIds'].max() + 1
+
+	cells = centerline.GetLines()
+	cells.InitTraversal()
+	idList = vtk.vtkIdList()
+
+	radiusData = centerline.GetPointData().GetScalars('MaximumInscribedSphereRadius') 
+	centerlineIds = centerline.GetCellData().GetScalars('CenterlineIds') 
+
+	centerlines = []
+	# Write centerline points
+	for i in range(nb_centerlines):
+		centerlines.append(np.array([]).reshape(0,4))
+
+	g = 0
+	pos = 0
+
+	while cells.GetNextCell(idList):
+
+		if g > 0 and c_id != centerlineIds.GetValue(g):
+			pos += 1
+			
+		c_id = centerlineIds.GetValue(g)
+
+		for i in range(0, idList.GetNumberOfIds()):
+
+			pId = idList.GetId(i)
+			pt = centerline.GetPoint(pId)
+			radius = radiusData.GetValue(pId)
+
+			centerlines[pos] = np.vstack((centerlines[pos], np.array([pt[0], pt[1], pt[2], radius])))
+		g += 1
+
+	# Write swc file
+	for i in range(nb_centerlines):
+
+		file_out = file_in[:-4] + "_tube_" + str(i) + ".swc" 
+		file = open(path_out + file_out, 'w') 
+
+		for j in range(centerlines[i].shape[0]):
+
+			if j == 0:
+				n = -1
+				m = 1
+			else:
+				n = j - 1
+				m = 3
+
+			c = centerlines[i][j]
+
+			file.write(str(j) + '\t' + str(m) + '\t' + str(c[0]) + '\t' + str(c[1]) + '\t' + str(c[2]) + '\t' + str(c[3]) + '\t' + str(n) + '\n')
+
+		file.close()
+
+		
+def evaluate_model(spl1, data, spl2):
+	""" Returns evaluation measures of the tube model : length, curvature, radius derivative, square distance to original spatial data, square distance to original radius"""
+
+	# Compute length
+	l1 = spl1.length()
+	l2 = spl2.length()
+
+	# Compute curvature
+	t1 = spl1.get_times()
+	curv1 = spl1.curvature(t1)
+
+	t2 = spl2.get_times()
+	curv2 = spl2.curvature(t2)
+
+	# Radius derivative
+	rad_der1 = spl1.first_derivative(t1)
+	rad_der2 = spl2.first_derivative(t2)
+
+	# Distance to data
+	times, dist_spatial = spl2.distance(data)
+	rad_estim = spl2.point(times, True)
+	dist_rad = abs(data[:,-1] - rad_estim[:,-1])
+
+	return l1, l2, curv1, curv2, rad_der1, rad_der2, dist_spatial, dist_rad
+
+
+def chord_length_parametrization(D):
+
+	""" Returns the chord length parametrization for data D.
+
+	Keyword arguments:
+	D -- data points
+	"""
+		
+	t = [0.0]
+	for i in range(1, len(D)):
+		t.append(t[i-1] + np.linalg.norm(D[i] - D[i-1]))
+	t = [time / max(t) for time in t]
+
+	return t
 
 #####################################
 ##########  MULTIPROCESSING  ########
 #####################################
 
 
-def parallel_bif(bif, N, d, end_ref = None):
+def parallel_bif(bif, N, d, end_ref):
 
-	# Find cross sections
 	bif.cross_sections(N, d, end_ref)
 	return bif
+
 
 def parallel_apex(spl):
 
@@ -881,3 +1009,57 @@ def single_crsec(spl, t, v, N):
 
 	return nds
 
+
+def intersection(self, spl, v0, t0, t1):
+
+	""" Returns the intersection point and time between two splines models, given a initial vector v0.
+
+	Keywords arguments: 
+	spl -- Spline object
+	v0 -- reference vector for the search
+	t0, t1 -- Times in between the search occurs
+	"""
+
+	def is_inside(t, v, spl):
+
+		pt = self.project_time_to_surface(v, t) 
+			
+		t2 = spl.project_point_to_centerline(pt)
+		pt2 = spl.point(t2, True)
+
+		if norm(pt - pt2[:-1]) <= pt2[-1]:
+			return True
+		else: 
+			return False
+
+
+	tinit = t1
+	# Check search interval
+	if is_inside(t1, v0, spl):
+		print("t1 is not set correctly.")
+
+	v = self.transport_vector(v0, tinit, t0)
+	if not is_inside(t0, v, spl):
+		pass
+		#print("t0 is not set correctly.")
+
+	while abs(t1 - t0) > 10**(-6):
+
+		t = (t1 + t0) / 2.
+		v = self.transport_vector(v0, tinit, t)
+		#pt = self.project_time_to_surface(v, t) 
+			
+		#t2 = spl.project_point_to_centerline(pt)
+		#pt2 = spl.point(t2, True)
+
+		if is_inside(t, v, spl): #norm(pt - pt2[:-1]) <= pt2[-1]:
+			t0 = t
+		else: 
+			t1 = t
+
+	t = (t0 + t1) / 2.
+	v = self.transport_vector(v0, tinit, t)
+	pt = self.project_time_to_surface(v, t) 
+	t2 = spl.project_point_to_centerline(pt)	
+
+	return pt, [t, t2]

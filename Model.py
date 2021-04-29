@@ -39,7 +39,7 @@ class Model:
 			self._t = t
 
 		if knot is None: 
-			self._knot = self.uniform_knot()
+			self._knot = self.uniform_knot() #self.averaging_knot()
 		else: 
 			self._knot = knot
 
@@ -101,7 +101,7 @@ class Model:
 		return sign0 * norm(tg0), sign1 * norm(tg1)
 		
 
-	def quality(self, criteria="AICC"):
+	def quality(self, criteria="CV"):
 
 		""" Returns the smoothing criteria value (AIC, AICC, SBC, CV, GCV) for the given data.
 
@@ -156,6 +156,33 @@ class Model:
 			for i in range(m):
 				res += norm(self._D[i] - De[i])**2
 
+		elif criteria == "ASE":
+			
+			SE = np.sum((self._D - De)**2, axis = 1)
+			ASE_spatial = np.sum(SE[:-1]) / len(self._D)
+			ASE_radius = SE[-1] / len(self._D)
+
+			res = [ASE_spatial, ASE_radius]
+			
+
+		elif criteria == "ASEder":
+			# Estimation of the first derivative
+			length = length_polyline(self._D)
+			data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
+
+			for i in range(1, len(self._D)-1):
+				data_der[i-1] = (self._D[i+1] - self._D[i-1]) / (length[i+1] - length[i-1])
+
+
+			# ASEder computation
+			estim = self.spl.tangent(self._t, True)
+
+			SE = np.sum((data_der - estim)**2, axis = 1)
+			ASEder_spatial = np.sum(SE[:-1]) / len(data_der)
+			ASEder_radius = SE[-1] / len(data_der)
+			res = [ASEder_spatial, ASEder_radius]
+
+
 		else: 
 			raise ValueError('Invalid criteria name')
 
@@ -173,10 +200,12 @@ class Model:
 
 			m, x = self._D.shape
 			D = self._D.reshape((m * x, 1))
+
 		
 		# Write matrix M2 
 		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
 		M2 = np.dot(self._N.transpose(), D - self._Q1) - self._lbd * self._Q2
+
 
 		# Solve the system
 		P = np.dot(np.linalg.pinv(M1), M2)
@@ -193,6 +222,7 @@ class Model:
 				P = P[:-1]
 
 			P = P.reshape((int(len(P) / x), x))	
+	
 	
 		if self._end_constraint[1]:
 			P = np.concatenate([np.transpose(np.expand_dims(Pt[1,:], axis=1)), P])

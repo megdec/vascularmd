@@ -317,7 +317,7 @@ class Nfurcation:
 		""" Set the shape splines of the bifurcation.
 		"""
 
-		relax = 0.15
+		relax = 0.25
 
 		# Compute the shape splines from cross sections
 		self._spl = []
@@ -445,6 +445,7 @@ class Nfurcation:
 		""" Set the coordinates of the geometric center of the nfurcation. """
 
 		# Antiga 2015
+		'''
 		a = 0
 		b = 0
 		for i in range(self.n):
@@ -453,6 +454,23 @@ class Nfurcation:
 				b += 1/(self._spl[i].radius(self._key_pts[i][j]))
 
 		self._B = a / b
+		'''
+	
+		pts = self._AP.copy()
+		for ind in [0, -1]:
+
+			t = self._key_pts[ind][0]
+
+			ptAP = self._spl[ind].point(self._tAP[ind][0])
+			nAP = self._AP[ind] - ptAP
+
+			nS = self._spl[ind].transport_vector(-nAP, self._tAP[ind][0], t) 
+		 
+			pt = self._spl[ind].project_time_to_surface(nS / norm(nS), t)
+			pts += [pt]
+		
+		self._B = sum(pts) / len(pts)
+	
 
 
 
@@ -466,13 +484,13 @@ class Nfurcation:
 
 		for ind in [0, -1]:
 			# Project X to the spline to get t
+			t = self._key_pts[ind][0]
 			t = self._spl[ind].project_point_to_centerline(self._B)
 
 			ptAP = self._spl[ind].point(self._tAP[ind][0])
 			nAP = self._AP[ind] - ptAP
 
-			nAP0 = self._spl[ind].transport_vector(nAP, self._tAP[ind][0], 1.0) 
-			nS = self._spl[ind].transport_vector(-nAP0, 1.0, t) 
+			nS = self._spl[ind].transport_vector(-nAP, self._tAP[ind][0], t) 
 		
 			ptS = self._spl[ind].point(t)  
 			SP.append(self.send_to_surface(ptS, nS / norm(nS), spl_ind[ind]))	
@@ -494,7 +512,7 @@ class Nfurcation:
 		n = sum(normals) / len(normals)
 
 		self._CP = [self.send_to_surface(self._B, n, 0), self.send_to_surface(self._B, -n, 0)]
-
+		self._B = sum(self._CP) / 2
 
 
 	def __set_tspl(self):
@@ -564,7 +582,7 @@ class Nfurcation:
 				j += N
 			nds.append(np.array(n))
 	
-		self._crsec[0] = end_crsec
+		#self._crsec[0] = end_crsec
 		self._crsec[2] = nds
 
 
@@ -627,7 +645,23 @@ class Nfurcation:
 				for i in range(len(nds)):
 					ax.scatter(nds[i][:,0], nds[i][:,1], nds[i][:,2],  c='black')
 
+				# Apex sections
+				for i in range(len(self._apexsec)):
 
+					nds = np.zeros((N, 3))
+					tg = self._apexsec[i][1][:-1]
+					ref = cross(tg, np.array([0,0,1]))
+					ref = ref / norm(ref)
+
+					angle_list = (2 * pi / N) * np.arange(N)
+
+					for j in range(N):
+						n = np.array(rotate_vector(ref, tg, angle_list [j]))
+						nds[j] = self._apexsec[i][0][:-1] + n * self._apexsec[i][0][-1] / norm(n)
+
+					ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='black')
+
+					
 
 		# Set the initial view
 		ax.view_init(90, -90) # 0 is the initial angle
@@ -775,12 +809,12 @@ class Nfurcation:
 		self._N = N
 		self._d = d
 
-		#self.relaxation(5)
-		#self.smooth_apex(0.5)
-		#self.smooth(20)
+		self.relaxation(5)
+
+		if self.R> 0:
+			self.smooth_apex(self.R)
+
 		return self._crsec
-
-
 
 
 
@@ -815,14 +849,14 @@ class Nfurcation:
 
 		# Fit spline
 		spl = Spline()
-		spl.approximation(np.vstack((P0, pint0, pint1, P1)), [1,1,1,1], np.vstack((P0, tg0, tg1, P1)), False, n = 3, radius_model=False, criterion= "None")
+		spl.approximation(np.vstack((P0, pint0, pint1, P1)), [1,1,1,1], np.vstack((P0, tg0, tg1, P1)), False, n = 4, radius_model=False, criterion= "None")
 
 		P = spl.get_control_points()
 		P = np.hstack((P, np.zeros((4,1))))
 		
 		trajectory = Spline(P)
-		#times = np.linspace(0, 1, n+2)[1:-1]
-		times = trajectory.resample_time(n)
+		times = np.linspace(0, 1, n+2)[1:-1]
+		#times = trajectory.resample_time(n)
 		
 		for i in range(n):
 			pts[i, :] = trajectory.point(times[i])
@@ -987,8 +1021,6 @@ class Nfurcation:
 
 		if self._crsec == None:
 			raise ValueError('Please first perform cross section computation.')
-		else:
-			pts = self._crsec
 
 		curve_set, referential_set = self.get_curves()
 
@@ -1050,10 +1082,10 @@ class Nfurcation:
 		nds = self._crsec[2] 
 
 		# Project end cross sections
-		for i in range(len(end_crsec)):
-			center = (np.array(end_crsec[i][0]) + end_crsec[i][int(len(end_crsec[i])/2)])/2.0 # Compute the center of the section
-			for j in range(len(end_crsec[i])):
-				end_crsec[i][j] = self.__intersection(mesh, center, end_crsec[i][j])
+		#for i in range(len(end_crsec)):
+		#	center = (np.array(end_crsec[i][0]) + end_crsec[i][int(len(end_crsec[i])/2)])/2.0 # Compute the center of the section
+		#	for j in range(len(end_crsec[i])):
+		#		end_crsec[i][j] = self.__intersection(mesh, center, end_crsec[i][j])
 
 		# Project connecting nodes
 		for i in range(len(nds)):
@@ -1099,7 +1131,7 @@ class Nfurcation:
 		""" Sends a point to the surface defined by all shape splines according to direction n """
 
 		# Project to main ind
-		pt = self.__projection(O, n, 0, 2.5, ind)
+		pt = self.__projection(O, n, 0.0, 2.5, ind)
 
 		ind_list = np.arange(0, len(self._spl)).tolist()
 		ind_list.remove(ind)

@@ -18,8 +18,6 @@ from mpl_toolkits.mplot3d import Axes3D # 3D display
 import networkx as nx
 
 from utils import *
-from Bifurcation import Bifurcation
-from Multifurcation import Multifurcation
 from Nfurcation import Nfurcation
 from Spline import Spline
 
@@ -599,6 +597,8 @@ class ArterialTree:
 
 			print('Modeling the network with splines...')
 			self.spline_approximation(0.05)
+
+		print('Computing cross sections...')
 		
 		self._N = N
 		self._d = d	
@@ -665,7 +665,7 @@ class ArterialTree:
 					bif = Nfurcation("spline", [spl_out, AP, 0.5])
 					# Five crsec model
 					#bif = Nfurcation("crsec", [C, AC, AP, 0.5])
-					#bif.show(True)
+					bif.show(True)
 			
 					ref = bif.get_reference_vectors()
 
@@ -683,7 +683,6 @@ class ArterialTree:
 					nmax += 1
 
 			self._geom_graph = G
-			self.show_geom_graph()
 
 			# Add rotation information on bifs and edges
 			for e in G.edges():
@@ -720,6 +719,7 @@ class ArterialTree:
 
 
 					else: # Simple tube case
+						path.append(e[1])
 						spl = G.edges[(path[0], path[1])]['spline']
 						ref1 =  cross(spl.tangent(0), np.array([0,0,1])) 
 						G.nodes[path[0]]['ref'] = ref1
@@ -819,7 +819,7 @@ class ArterialTree:
 
 
 			self._geom_graph = G
-			self.show_geom_graph()
+			#self.show_geom_graph()
 
 		# Compute cross section graph
 		self._crsec_graph = nx.DiGraph()
@@ -2138,12 +2138,6 @@ class ArterialTree:
 							print("collision!", branches[i], branches[j]) # TMP
 
 
-	def correct_collisions(self, intersection):
-
-		""" Deforms intersecting vessels """
-
-		pass
-		
 
 	def compare_image(self, imgfile, data_type = "spline"):
 
@@ -2350,14 +2344,73 @@ class ArterialTree:
 		return count
 
 
+	def add_noise_centerline(self, std):
 
-	def deteriorate_centerline(self, p, noise):
-
-		""" Add noise and resample the nodes of the initial centerlines.
+		""" Add noise to the radius of the initial centerlines.
 
 		Keyword arguments:
-		p -- percentage of nodes to keep [0, 1]
-		noise -- list of std deviations of the gaussian noise (mm) = 1 value for each dimension
+		std -- std deviations of the gaussian noise (mm) for radius
+		"""
+
+		for e in self._topo_graph.edges():
+
+			pts = self._topo_graph.edges[e]['coords']
+
+			for i in range(pts.shape[0]):
+				rand_dir = np.random.normal(0, 1, (1, 3))[0]
+				# Remove tangent component
+				if i == 0:
+					tg = pts[i+1] - pts[i]
+				elif i == pts.shape[0] - 1:
+					tg = pts[i] - pts[i-1]
+				else: 
+					tg1 = pts[i] - pts[i-1]
+					tg2 = pts[i+1] - pts[i]
+					tg = (tg1 + tg2) / 2.
+				tg = tg[:-1]
+
+				rand_dir = rand_dir - dot(rand_dir, tg)*tg
+				rand_norm = np.random.normal(0, std, (1, 1))[0]
+
+				pts[i, :-1] = pts[i,:-1] + rand_dir / norm(rand_dir) * pts[i,-1] * rand_norm
+
+			# Modify topo graph 
+			self._topo_graph.add_edge(e[0], e[1], coords = pts)
+
+			# Change full graph
+			self._full_graph = self.topo_to_full()
+	
+
+
+	def add_noise_radius(self, std):
+
+		""" Add noise to the radius of the initial centerlines.
+
+		Keyword arguments:
+		std -- std deviations of the gaussian noise (mm) for radius
+		"""
+
+		for e in self._topo_graph.edges():
+
+			pts = self._topo_graph.edges[e]['coords']
+
+			rand = np.hstack((np.zeros((pts.shape[0], 3)), np.random.normal(0, std, (pts.shape[0], 1))))
+			pts += pts * rand
+
+			# Modify topo graph 
+			self._topo_graph.add_edge(e[0], e[1], coords = pts)
+
+			# Change full graph
+			self._full_graph = self.topo_to_full()
+		
+
+
+	def low_sample(self, p):
+
+		""" Resample the nodes of the initial centerlines.
+
+		Keyword arguments:
+		p -- ratio of nodes to keep [0, 1]
 		"""
 
 		for e in self._topo_graph.edges():
@@ -2374,15 +2427,33 @@ class ArterialTree:
 					pts = pts[int(pts.shape[0]/2)]
 
 
-			rand = np.hstack((np.random.normal(0, noise[0], (pts.shape[0], 1)), np.random.normal(0, noise[1], (pts.shape[0], 1)), np.random.normal(0, noise[2], (pts.shape[0], 1)), np.random.normal(0, noise[3], (pts.shape[0], 1))))
-			pts += pts * rand
-
 			# Modify topo graph 
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
 
 			# Change full graph
 			self._full_graph = self.topo_to_full()
 
+
+	def resample(self, p):
+
+		""" Add noise and resample the nodes of the initial centerlines.
+
+		Keyword arguments:
+		p -- ratio of nodes to add (>1)
+		"""
+
+		for e in self._topo_graph.edges():
+
+			pts = self._topo_graph.edges[e]['coords']
+
+			n = int(pts.shape[0]*p)
+			pts =  resample(pts, num = n)
+
+			# Modify topo graph 
+			self._topo_graph.add_edge(e[0], e[1], coords = pts)
+
+			# Change full graph
+			self._full_graph = self.topo_to_full()
 
 
 	def distance(self, ref_mesh, display=True):

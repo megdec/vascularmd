@@ -1,7 +1,7 @@
 # Python 3
 
 import numpy as np # Tools for matrices
-from geomdl import BSpline, operations, helpers # Spline storage and evaluation
+from geomdl import BSpline, operations, helpers, fitting # Spline storage and evaluation
 
 from numpy.linalg import norm 
 from numpy import dot, cross
@@ -23,7 +23,8 @@ class Spline:
 	def __init__(self, control_points = None, knot = None, order = None):
 
 		self._spl = BSpline.Curve()
-		self._spl.order = 3		
+		self._spl.order = 3	
+		self._length_tab = None	
 
 		if control_points is not None: 
 
@@ -40,7 +41,8 @@ class Spline:
 			else: 
 				self._spl.knotvector = knot
 
-			self.__set_length_tab()
+			#self.__set_length_tab()
+
 
 
 
@@ -58,7 +60,14 @@ class Spline:
 	def get_points(self):
 		return np.array(self._spl.evalpts)
 
+	def get_times(self):
+		return np.linspace(0, 1, len(self.get_points())) #np.arange(0, 1, self._spl.delta) 
+
 	def get_length(self):
+
+		if self._length_tab is None:
+			self.__set_length_tab()
+
 		return self._length_tab
 
 
@@ -88,18 +97,22 @@ class Spline:
 	def __set_length_tab(self):
 
 		""" Set arc length estimation of spline."""
+		length = operations.length_curve(self._spl)
+		self._spl.delta = 1 / int(length * 20)
 
 		if self._spl.dimension == 3:
 			pts = np.array(self._spl.evalpts)
 		else:
 			pts = np.array(self._spl.evalpts)[:, :-1]
 
+		self._kdtree = KDTree(pts)
 
 		length = [0.0]
 		for i in range(1, len(pts)):
 			length.append(length[i-1] + norm(pts[i] - pts[i-1]))
 
-		self._length_tab = length
+		self._length_tab = np.array(length)
+
 
 
 
@@ -111,16 +124,26 @@ class Spline:
 	def first_derivative(self, t, radius = False):
 
 		""" Returns the unit first derivative of spline at time t as a numpy array."""
+		if type(t) == list or type(t) == np.ndarray:
+			der = np.zeros((len(t), self._spl.dimension))
 
-		der = self._spl.derivatives(t, order=1)[1]
+			for i in range(len(t)):
+				der[i, :] = self._spl.derivatives(t[i], order=1)[1]
 
-		if self._spl.dimension <= 3:
-			der = np.array(der)
+			if self._spl.dimension > 3 and not radius:	
+				der = der[:-1]
+
 		else:
-			if radius:
+
+			der = self._spl.derivatives(t, order=1)[1]
+
+			if self._spl.dimension <= 3:
 				der = np.array(der)
 			else:
-				der = np.array(der)[:-1]
+				if radius:
+					der = np.array(der)
+				else:
+					der = np.array(der)[:-1]
 
 		return der
 		
@@ -129,15 +152,26 @@ class Spline:
 
 		""" Returns the unit second derivative of spline at time t as a numpy array."""
 
-		der = self._spl.derivatives(t, order=2)[2]
+		if type(t) == list or type(t) == np.ndarray:
 
-		if self._spl.dimension <= 3:
-			der = np.array(der)
+			der = np.zeros((len(t), self._spl.dimension))
+
+			for i in range(len(t)):
+				der[i, :] = self._spl.derivatives(t[i], order=2)[2]
+
+			if self._spl.dimension > 3 and not radius:	
+				der = der[:-1]
 		else:
-			if radius:
+
+			der = self._spl.derivatives(t, order=2)[2]
+
+			if self._spl.dimension <= 3:
 				der = np.array(der)
 			else:
-				der = np.array(der)[:-1]
+				if radius:
+					der = np.array(der)
+				else:
+					der = np.array(der)[:-1]
 
 		return der 
 		
@@ -146,18 +180,35 @@ class Spline:
 
 		""" Returns the unit tangent of spline at time t as a numpy array."""
 
-		# tg = self._spl.tangent(t)[1]
-		tg = operations.tangent(self._spl, t)[1]
+		if type(t) == list or type(t) == np.ndarray:
 
-		if self._spl.dimension <= 3:
-			tg = np.array(tg)
+			tg = np.zeros((len(t), self._spl.dimension))
+
+			for i in range(len(t)):
+				tg[i, :] = operations.tangent(self._spl, t[i])[1]
+
+			if self._spl.dimension > 3 and not radius:	
+				tg = tg[:-1]
+
+			# Normalize
+			for i in range(len(t)):
+				tg[i, :] = tg[i, :] / norm(tg[i, :])
+
 		else:
-			if radius:
+
+			# tg = self._spl.tangent(t)[1]
+			tg = operations.tangent(self._spl, t)[1]
+
+			if self._spl.dimension <= 3:
 				tg = np.array(tg)
 			else:
-				tg = np.array(tg)[:-1]
+				if radius:
+					tg = np.array(tg)
+				else:
+					tg = np.array(tg)[:-1]
+			tg = tg / norm(tg)
 
-		return tg / norm(tg)
+		return tg 
 		
 
 
@@ -169,7 +220,7 @@ class Spline:
 
 			pt = np.array(self._spl.evaluate_list(t))
 
-			if self._spl.dimension > 3 and radius:
+			if self._spl.dimension > 3 and not radius:
 				pt = pt[:,:-1]
 
 
@@ -222,7 +273,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = False, n = None, lbd = 0.0, criterion= "CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = False, n = None, knot = None, lbd = 0.0, criterion= "None"): #"CV"):
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -233,21 +284,19 @@ class Spline:
 		derivatives -- True for fixed derivatives at the end, False for fixed tangent
 		criterion -- smoothing criterion
 		"""
-
+	
 		from Model import Model
-
 		
 		if n == None:
-			n = len(D)
-	
-		if n < 4: # Minimum of 4 control points
-			n = 4
+			#n = len(D)
+			n = self.__nb_control_points(D, 10**(-4))
 
+	
 		if radius_model: 
 
 			# Spatial model
-			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd)
-			spatial_model = self.__optimize_model(spatial_model, criterion = "CV")
+			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd, knot= knot)
+			spatial_model = self.__optimize_model(spatial_model, criterion)
 
 			# Radius model
 			t = spatial_model.get_t()
@@ -262,7 +311,7 @@ class Spline:
 				thres = 5
 
 				if (alpha < thres or beta < thres) and not derivatives:
-					thres = 5
+					thres = 10
 
 					#print(alpha, beta)
 					#print(end_constraint[1], end_constraint[-2])
@@ -291,11 +340,11 @@ class Spline:
 			P =  np.hstack((spatial_model.P, np.reshape(radius_model.P[:,-1], (radius_model.P.shape[0],1))))
 			self._spl.ctrlpts = P.tolist()
 			self._spl.knotvector = spatial_model.get_knot()
-			self.__set_length_tab()
+			
 
 
 		else:
-			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd)
+			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd, knot=knot)
 			global_model = self.__optimize_model(global_model, criterion)
 
 
@@ -324,8 +373,32 @@ class Spline:
 
 			self._spl.ctrlpts = global_model.P.tolist()
 			self._spl.knotvector = global_model.get_knot()
-			self.__set_length_tab()
+			
+			
+		
 			#self.show(data = D)
+		
+	def __nb_control_points(self, data, thres):
+
+		""" Find the optimal number of control points for a given threshold """
+		from Model import Model
+
+		
+		n = 4
+		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+		ASE_act = model.quality("ASE")
+		ASE_prec = (ASE_act[0] + thres + 1, ASE_act[1] + thres + 1)
+
+		while n <= len(data) and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
+			n += 1
+			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+			ASE_prec = ASE_act[:]
+			ASE_act = model.quality("ASE")
+
+		return n
+
 
 
 
@@ -363,7 +436,7 @@ class Spline:
 
 			opt_lbd = (b + a) / 2
 			model.set_lambda(opt_lbd)
-			#print("optimized lambda : ", opt_lbd)
+			print("optimized lambda : ", opt_lbd)
 
 		return model
 
@@ -437,6 +510,10 @@ class Spline:
 	def split_time(self, t):
 
 		""" Splits the spline into two splines at time t."""
+		if t >= 1.0:
+			t = 0.9 # WORKAROUND !!!
+		elif t<= 0.0:
+			t = 0.1
 
 		spla, splb = operations.split_curve(self._spl, t)
 
@@ -488,7 +565,7 @@ class Spline:
 	def length(self):
 
 		""" Returns the estimated length of the spline."""
-		return self._length_tab[-1]
+		return self.get_length()[-1]
 
 
 	def mean_radius(self):
@@ -543,7 +620,7 @@ class Spline:
 		L -- curve length (list or scalar)
 		"""
 
-		length = np.array(self._length_tab)
+		length = self.get_length() #np.array(self._length_tab)
 
 		if type(L) == list or type(L) == np.ndarray:
 
@@ -592,7 +669,7 @@ class Spline:
 		T -- curve times (list or single float value)
 		"""
 
-		length = np.array(self._length_tab)
+		length = self.get_length() #np.array(self._length_tab)
 
 		if type(T) == list or type(T) == np.ndarray:
 
@@ -735,25 +812,28 @@ class Spline:
 		"""
 
 		# Point table uniform t
+		length = self.get_length()
 		pts = self.get_points()
-
+		
 		if self._spl.dimension != 3:
 			pts = pts[:, :-1]
 	
-
+		"""
 		# Distance table
 		dist = np.array([norm(pt - pt2) for pt2 in pts]) 
 	
 		# Minimum distance point
 		i1 = np.argmin(dist) 
+		"""
+		d, i1 = self._kdtree.query(pt)
 
 		# Find the closest segment
 		if i1 == 0:
 			i2 = 1
-		elif i1 == len(dist) - 1:
-			i2 = len(dist) - 2
+		elif i1 == len(pts) - 1:
+			i2 = len(pts) - 2
 		else:
-			if dist[i1 - 1] > dist[i1 + 1]:
+			if norm(pt - pts[i1 - 1]) > norm(pt - pts[i1 + 1]): #dist[i1 - 1] > dist[i1 + 1]:
 				i2 = i1 + 1
 			else: 
 				i2 = i1 - 1
@@ -790,35 +870,129 @@ class Spline:
 		"""
 
 		dist = np.zeros((D.shape[0],))
+		times = np.zeros((D.shape[0],))
 
 		for i in range(D.shape[0]):
-			proj = self.point(self.project_point_to_centerline(D[i, :-1]))
-			dist[i] = norm(D[i, :-1] - proj)
+			t = self.project_point_to_centerline(D[i, :-1])
+			times[i] = t
+			dist[i] = norm(D[i, :-1] - self.point(t))
 
-		return dist
+		return times, dist
 
 
-	def estimated_distance(self, D):
-
-		""" Compute the minimum distance between the spline and a list of points.
+	def estimated_point(self, D):
+		"""  Point data estimated by the spline.
 
 		Keyword arguments: 
-			D -- numpy array of data points
-		"""
+			D -- numpy array of data points """
 
-		if len(D.shape) == 1:
-			proj = self.point(self.project_point_to_centerline(D))
-			dist =  norm(D[:-1] - proj)
+		P = np.zeros((D.shape))
 
-		else: 
+		for i in range(D.shape[0]):
+			t = self.project_point_to_centerline(D[i, :-1])
+			P[i, :] = self.point(t, True)
+		
 
-			dist = np.zeros((D.shape[0],))
+		return P
 
-			for i in range(D.shape[0]):
-				proj = self.point(self.project_point_to_centerline(D[i,:-1]))
-				dist[i] = norm(D[i, :-1] - proj)
 
-		return dist
+	def estimated_first_derivative(self, D):
+
+		""" First derivative of data estimated by the spline.
+
+		Keyword arguments: 
+			D -- numpy array of data points """
+
+		P = np.zeros((D.shape))
+
+		for i in range(D.shape[0]):
+			t = self.project_point_to_centerline(D[i, :-1])
+			P[i, :] = self.first_derivative(t, True)
+		
+
+		return P
+
+	def estimated_tangent(self, D):
+
+		""" Tangent of data estimated by the spline.
+
+		Keyword arguments: 
+			D -- numpy array of data points """
+
+		P = np.zeros((D.shape))
+
+		for i in range(D.shape[0]):
+			t = self.project_point_to_centerline(D[i, :-1])
+			P[i, :] = self.tangent(t, True)
+
+		return P
+
+
+	def estimated_curvature(self, D):
+
+		""" Tangent of data estimated by the spline.
+
+		Keyword arguments: 
+			D -- numpy array of data points """
+
+		t = []
+		for i in range(D.shape[0]):
+			t.append(self.project_point_to_centerline(D[i, :-1]))
+
+		return self.curvature(t)
+
+
+
+	def ASE(self, data):
+		""" Returns the average squared error between the spline estimation and a set of data points.
+		Spatial and radius ASE are returned separatly."""
+
+		estim = self.estimated_point(data)
+
+		SE = np.sum((data - estim)**2, axis = 1)
+		ASE_spatial = np.sum(SE[:-1]) / len(data)
+		ASE_radius = SE[-1] / len(data)
+
+		return ASE_spatial, ASE_radius
+
+
+	def ASEder(self, data, data_der=None):
+		""" Returns the average squared error between the spline derivative estimation and a set of data points.
+		Spatial and radius ASE are returned separatly."""
+
+		# Estimation of the first derivative
+
+		if data_der is None:
+			length = length_polyline(data)
+			data_der = np.zeros((data.shape[0]-2, data.shape[1]))
+
+			for i in range(1, len(data)-1):
+				data_der[i-1] = (data[i+1] - data[i-1]) / (length[i+1] - length[i-1])
+
+
+		# ASEder computation
+		estim = self.estimated_tangent(data[1:-1])
+
+		SE = np.sum((data_der - estim)**2, axis = 1)
+		ASEder_spatial = np.sum(SE[:-1]) / len(data_der)
+		ASEder_radius = SE[-1] / len(data_der)
+
+		return ASEder_spatial, ASEder_radius
+
+
+	def ASEcurv(self, data, data_curv):
+
+		""" Returns the average squared error between the spline curvature estimation and a set of data points.
+		Spatial and radius ASE are returned separatly."""
+
+		# Estimation of the curvature
+
+		# ASEcurv computation
+		estim = self.estimated_curvature(data)
+		ASEcurv = np.sum((data_curv - estim)**2)
+	
+
+		return ASEcurv
 
 
 
@@ -831,10 +1005,10 @@ class Spline:
 		t0, t1 -- Times in between the search occurs
 		"""
 
-		t1 = self.length_to_time(self.radius(0) * 10)
-		tg1 = self.tangent(t1)
+		#t1 = self.length_to_time(self.radius(0) * 10)
+		tg0 = self.tangent(t0)
 
-		v = cross(tg1, np.array([1,0,0]))
+		v = cross(tg0, np.array([1,0,0]))
 		v = v / norm(v)
 		
 		# Search angles
@@ -845,7 +1019,7 @@ class Spline:
 		
 		for i in range(n_angles):
 
-			vrot = rotate_vector(v, tg1, angles[i])
+			vrot = rotate_vector(v, tg0, angles[i])
 			ap, times = self.intersection(spl, vrot, t0, t1)
 
 			res[i, :2] = times
@@ -868,22 +1042,53 @@ class Spline:
 		t0, t1 -- Times in between the search occurs
 		"""
 
-		tinit = t1
-		while abs(t1 - t0) > 10**(-6):
+		def is_inside(t, v, spl):
 
-			t = (t1 + t0) / 2.
-			
-			v = self.transport_vector(v0, tinit, t)
 			pt = self.project_time_to_surface(v, t) 
 			
 			t2 = spl.project_point_to_centerline(pt)
 			pt2 = spl.point(t2, True)
 
 			if norm(pt - pt2[:-1]) <= pt2[-1]:
+				return True
+			else: 
+				return False
+
+
+		tinit = t0
+		'''
+		# Check search interval
+		if is_inside(t1, v0, spl):
+			print("t1 is not set correctly.")
+
+		v = self.transport_vector(v0, tinit, t0)
+		if not is_inside(t0, v, spl):
+			pass
+			#print("t0 is not set correctly.")
+			'''
+
+		while abs(t1 - t0) > 10**(-6):
+
+			t = (t1 + t0) / 2.
+			v = self.transport_vector(v0, tinit, t)
+			pt = self.project_time_to_surface(v, t) 
+			
+			t2 = spl.project_point_to_centerline(pt)
+			pt2 = spl.point(t2, True)
+
+			if norm(pt - pt2[:-1]) <= pt2[-1]: #norm(pt - pt2[:-1]) <= pt2[-1]:
 				t0 = t
 			else: 
 				t1 = t
-				
+
+		'''
+
+		t = (t0 + t1) / 2.
+
+		v = self.transport_vector(v0, tinit, t)
+		pt = self.project_time_to_surface(v, t) 
+		t2 = spl.project_point_to_centerline(pt)	
+		'''
 
 		return pt, [t, t2]
 
@@ -952,7 +1157,7 @@ class Spline:
 				data = np.array(data)
 				plt.scatter(data[:,0], data[:,1],  c='red', s = 40)
 
-			plt.show()
+			#plt.show()
 
 		else:
 			# 3D plot
