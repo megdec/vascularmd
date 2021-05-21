@@ -33,7 +33,6 @@ class ArterialTree:
 
 	def __init__(self, patient_name, database_name, filename = None):
 
-		# Check user parameters
 
 		# Initiate attributes
 		self.patient_name = patient_name
@@ -61,6 +60,7 @@ class ArterialTree:
 	#####################################
 
 	def get_full_graph(self):
+		""" Return the full graph """
 
 		if self._full_graph is None:
 			warnings.warn("No full graph found.")
@@ -69,6 +69,7 @@ class ArterialTree:
 
 
 	def get_topo_graph(self):
+		""" Return the topo graph """
 
 		if self._topo_graph is None:
 			warnings.warn("No topo graph found.")
@@ -76,6 +77,7 @@ class ArterialTree:
 		return self._topo_graph
 
 	def get_model_graph(self):
+		""" Return the model graph """
 
 		if self._model_graph is None:
 			warnings.warn("No full graph found.")
@@ -84,6 +86,7 @@ class ArterialTree:
 
 
 	def get_crsec_graph(self):
+		""" Return the crsec graph """
 
 		if self._crsec_graph is None:
 			warnings.warn("No crsec graph found.")
@@ -91,6 +94,7 @@ class ArterialTree:
 		return self._crsec_graph
 
 	def get_surface_mesh(self):
+		""" Return the surface mesh """
 
 		if self._surface_mesh is None:
 			warnings.warn("No surface mesh found.")
@@ -99,6 +103,7 @@ class ArterialTree:
 
 
 	def get_volume_mesh(self):
+		""" Return the volume mesh """
 
 		if self._volume_mesh is None:
 			warnings.warn("No volume mesh found.")
@@ -107,7 +112,6 @@ class ArterialTree:
 
 
 	def get_bifurcations(self):
-
 		""" Returns a list of all bifurcation objects in the network """
 
 		if self._crsec_graph is None:
@@ -147,7 +151,7 @@ class ArterialTree:
 
 	def set_model_graph(self, G):
 
-		""" Set the spline graph of the arterial tree."""
+		""" Set the model graph of the arterial tree."""
 
 		self._model_graph = G
 		self._full_graph = self.spline_to_full()
@@ -157,7 +161,7 @@ class ArterialTree:
 
 	def set_crsec_graph(self, G):
 
-		""" Set the spline graph of the arterial tree."""
+		""" Set the crsec graph of the arterial tree."""
 
 		self._crsec_graph = G
 
@@ -185,8 +189,8 @@ class ArterialTree:
 	def __set_topo_graph(self):
 
 		""" Set the topo graph of the arterial tree. 
-		All edges of non end and non bifurcation nodes are collapsed to one.
-		The coordinates of the collapsed regular points are stored as an edge attribute. """
+		All edges of but the terminal and bifurcation edges are collapsed.
+		The coordinates of the collapsed regular points are stored as an edge attribute. The nodes are labelled (end, bif, reg) """
 
 
 		self._topo_graph = self._full_graph.copy()
@@ -218,7 +222,8 @@ class ArterialTree:
 		self._topo_graph = nx.convert_node_labels_to_integers(self._topo_graph, first_label=1, ordering='default', label_attribute=None)
 
 
-	def correct_topology(self):
+
+	def correct_topology(self): # NOT FINISHED
 
 		""" Merge branches if the bifurcation point is too close """
 
@@ -296,9 +301,10 @@ class ArterialTree:
 
 
 
-	def __reorder_multifurcations(self, nodes = []):
+	def __reorder_nfurcations(self, nodes = []): # NOT FINISHED
 
 		""" Relabel the nodes of the graphs to have multifurcations in ascending order """
+
 		if len(nodes) == 0:
 			for n in self._model_graph.nodes():
 				if self._model_graph.nodes[n]['type'] == "bif":
@@ -376,7 +382,7 @@ class ArterialTree:
 
 	def model_network(self, radius_model = True, criterion="CV", akaike=False, parallel = True):
 
-		""" Approximate centerlines using splines and sets the attribute spline-graph """
+		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
 		print('Modeling the network...')
 
@@ -578,7 +584,7 @@ class ArterialTree:
 
 	def __bifurcation_parameters(self, n):
 
-		""" Re-estimate the bifurcation point and tangent from the topo graph.
+		""" Extract bifurcation parameters from the data and modify the model graph to add the bifurcation object and edges.
 
 		Keyword arguments:
 		n -- bifurcation node
@@ -782,13 +788,13 @@ class ArterialTree:
 			self._model_graph.edges[e_in[0]]['coords'] = crop_data
 			self._model_graph.edges[e_in[0]]['spline'] = spline_in
 			self._model_graph.nodes[e_in[0][0]]['coords'] = spline_in.point(0.0, True)
-			self._model_graph.add_node(nmax, coords = bif.get_B(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
+			self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
 			self._model_graph.add_edge(n, nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
 			nbif = nmax
 			nmax += 1
 		else:
 			self._model_graph.remove_node(n)
-			self._model_graph.add_node(nmax, coords = bif.get_B(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
+			self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
 			self._model_graph.add_edge(e_in[0][0], nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
 			nbif = nmax
 			nmax += 1
@@ -822,7 +828,7 @@ class ArterialTree:
 
 	def __combine_nfurcation(self, bifs, ind):
 
-		""" Returns two merged bifurcations 
+		""" Returns merged nfurcation from two close bifurcations
 
 		Keyword arguments: 
 		args -- list of arguments of the bifurcations 
@@ -920,8 +926,8 @@ class ArterialTree:
 			tspl2 = tspl2[0]
 			tg2 = -tspl2.tangent(1.0)
 
-			X1 = bif1.get_B()
-			X2 = bif2.get_B()
+			X1 = bif1.get_X()
+			X2 = bif2.get_X()
 
 			D = norm(X1 - X2)
 
@@ -1124,7 +1130,7 @@ class ArterialTree:
 					for e in ids:
 						end_ref.append(self._model_graph.nodes[e]['ref'])
 
-					end_crsec, bif_crsec, nds, ind = bif.cross_sections(N, d, end_ref=end_ref)
+					end_crsec, bif_crsec, nds, ind = bif.compute_cross_sections(N, d, end_ref=end_ref)
 
 					self._crsec_graph.nodes[n]['crsec'] = bif_crsec
 
@@ -1204,7 +1210,7 @@ class ArterialTree:
 
 	def __add_node_id_surface(self):
 
-		""" Add id attribute to the nodes for volume meshing"""
+		""" Add id attribute to the nodes for surface meshing"""
 
 		count = 0
 
@@ -1579,6 +1585,10 @@ class ArterialTree:
 		Keyword arguments: 
 		center -- center point of the cross section as numpy array
 		crsec -- list of cross section nodes as numpy array 
+		N -- number of nodes of the cross section (multiple of 4)
+		nbif -- id of bifurcation node
+		layer_ratio -- radius ratio of the three O-grid parts [a, b, c] such as a+b+c = 1
+		num_a, num_b -- number of layers in the parts a and b
 		"""
 		vertices = self.bif_ogrid_pattern_vertices(center, crsec, N, nbif, layer_ratio, num_a, num_b) 
 		faces = self.bif_ogrid_pattern_faces(N, nbif, num_a, num_b)
@@ -1596,6 +1606,9 @@ class ArterialTree:
 		Keyword arguments: 
 		center -- center point of the cross section as numpy array
 		crsec -- list of cross section nodes as numpy array 
+		N -- number of nodes of the cross section (multiple of 4)
+		nbif -- id of bifurcation node
+		num_a, num_b -- number of layers in the parts a and b
 		"""
 
 		# Get the suface nodes of each individual half section
@@ -1675,6 +1688,10 @@ class ArterialTree:
 		Keyword arguments: 
 		center -- center point of the cross section as numpy array
 		crsec -- list of cross section nodes as numpy array 
+		N -- number of nodes of the cross section (multiple of 4)
+		nbif -- id of bifurcation node
+		layer_ratio -- radius ratio of the three O-grid parts [a, b, c] such as a+b+c = 1
+		num_a, num_b -- number of layers in the parts a and b
 		"""
 
 
@@ -1762,6 +1779,8 @@ class ArterialTree:
 
 
 	def __reorder_faces(self, h, f, N, num_a, num_b):
+
+		""" Reorder the faces of the separation mesh to connect with different branches """
 				
 		f_ord = np.zeros((2, f.shape[1], f.shape[2], f.shape[3]), dtype = int) 
 
@@ -2103,6 +2122,7 @@ class ArterialTree:
 			self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
 
 
+
 	def __intersection(self, mesh, center, coord):
 
 		""" Returns the first intersection point between the mesh and a ray passing through the points center and coord.
@@ -2149,7 +2169,7 @@ class ArterialTree:
 
 
 	
-	def cut_branch(self, e, preserve_shape = False):
+	def remove_branch(self, e, preserve_shape = False):
 
 		""" Cuts the branch at edge e and all the downstream branches. 
 		If a cross section graph is already computed, recomputes the cross sections at the cut part.
@@ -2333,214 +2353,6 @@ class ArterialTree:
 	#############  ANALYSIS  ############
 	#####################################
 
-	def detect_collisions(self):
-
-		""" Detects the intersecting branches in the spline graph """
-
-		branches = [e for e in self._model_graph.edges()]
-		time = np.arange(0, 1, 0.01)
-
-		for i in range(len(branches)):
-			points_ref = self._model_graph.edges[branches[i]].get_points()
-
-			for j in range(i, len(branches)):
-				points = self._model_graph.edges[branches[j]].get_points()
-
-				for k in range(len(points_ref)):
-					for h in range(len(points)):
-						collision = False
-						dist = norm(points_ref[k, :-1] - points_ref[h, :-1])
-
-						if dist >= points_ref[k, -1] + points_ref[h, -1]:
-							collision = True
-						if branches[i][0] == branches[j][0] or branches[i][1] == branches[j][0] or branches[i][0] == branches[j][1]:
-							tAP = 1 # TMP
-							if time[k] < tAP[0] or time[h] < tAP[0]:
-								collision = False
-						if collision:
-							print("collision!", branches[i], branches[j]) # TMP
-
-
-
-	def compare_image(self, imgfile, data_type = "spline"):
-
-		""" Compare the arterial tree surface with a angiography medical image 
-
-		Keyword arguments:
-		imgfile -- name of the angiography image in nifti format
-		data_type -- type of data used for the comparison (spline or mesh)
-		"""
-
-		import nibabel as nib
-
-		# Load MRA 
-		data = nib.load(imgfile)
-		img = np.array(data.dataobj)
-		pix_dim = data.header['pixdim'][1:4] # Dimensions
-		
-		# Iterate through the centerlines
-		for e in self._model_graph.edges():
-
-			spl = self._model_graph.edges[e]['spline']
-			times = np.linspace(0,1,5)
-
-			for t in times:
-
-				pt = spl.point(t, True)
-				tg = spl.tangent(t)
-
-				patch, patch_pix = self.extract_patch(img, pix_dim, pt[:-1], tg, dist = 4)
-				nb_rays = 500
-
-				if data_type == "spline":
-					outline = self.extract_outline_spline(patch_pix, pt, tg, nb_rays = nb_rays)
-
-				elif data_type == "mesh":
-					outline = self.extract_outline_mesh(patch_pix, pt, tg, nb_rays = nb_rays)
-					outline2 = self.extract_outline_spline(patch_pix, pt, tg, nb_rays = nb_rays)
-					
-
-				else: 
-					raise ValueError("Wrong data type.")
-
-				# Display result
-				plt.axis('off')
-				plt.imshow(patch, origin='lower', cmap = 'gray')
-				plt.scatter(outline[:, 0], outline[:, 1], s = 5)
-				#plt.scatter(outline2[:, 0], outline2[:, 1], s = 2, color='red', alpha=0.5)
-				plt.show()
-
-
-
-	def extract_outline_spline(self, patch_pix, pt, tg, dim = 16, dist = 4, nb_rays = 60):
-
-		center = np.array([dim + 0.5, dim + 0.5]) # Center in patch referential
-		phi = np.linspace(0, 2 * pi, nb_rays + 1)[1:]
-		outline = np.zeros((len(phi), 2))
-
-		for i in range(nb_rays):
-			ray_dir = pol2cart(1, phi[i])
-			outline[i, :] = center + ray_dir * pt[-1] / patch_pix[0]
-
-		return outline
-
-
-	def extract_outline_mesh(self, patch_pix, pt, tg, dim = 16, dist = 4, nb_rays = 60):
-
-		""" Return a list of coordinates of intersection points between a plan and the surface mesh.
-
-		Keyword arguments:
-		pix_dim -- dimension of img (mm)
-		pt -- center of the patch coordinates (mm)
-		tg -- unit tangent vector
-		dim -- patch radius (vx)
-		dist -- patch radius dimension (mm)
-		"""
-
-		if self._surface_mesh is not None: 
-			mesh = self._surface_mesh
-		elif self._crsec_graph is not None: 
-			mesh = self.mesh_surface()
-		else: 
-			raise ValueError('Please compute cross sections first.')
-
-		center = np.array([dim + 0.5, dim + 0.5])
-		theta = np.linspace(0, 2 * pi, nb_rays + 1)[1:]
-		pt = pt[:-1]
-
-
-		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
-		bnr = cross(tg, nr) # Binormal vector
-		nr = nr / norm(nr) # Normalize
-		bnr = bnr / norm(bnr)
-
-		inter = []
-		for i in range(nb_rays):
-			ray_dir = rotate_vector(nr, tg, theta[i])
-			p2 = pt + ray_dir * dist
-
-			pts, ind = mesh.ray_trace(pt, p2)
-
-			for p in pts:
-				a = center[0] + dot(p - pt, nr) / patch_pix[0]
-				b = center[1] + dot(p - pt, bnr) / patch_pix[0]
-				inter.append([a, b])
-
-		return np.array(inter)
-
-
-
-	def extract_patch(self, img, pix_dim, pt, tg, dim=16, dist=4):
-
-		""" Return a MRA image patch oriented normally to the artery tangent.
-
-		Keyword arguments:
-		img -- image volume as np array
-		pix_dim -- dimension of img (mm)
-		pt -- origin coordinates (mm)
-		tg -- unit tangent vector
-		dim -- patch dimension (vx)
-		dist -- patch dimension (mm)
-		"""
-
-		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
-		bnr = cross(tg, nr) # Binormal vector
-
-		nr = nr / norm(nr) # Normalize
-		bnr = bnr / norm(bnr)
-
-		# Coord conversion 
-		patch_pix = np.array([float(dist) / float(dim)]*2)
-		step = np.linspace(0, dist, dim + 1)[1:]
-
-		patch = np.zeros((dim * 2 + 1, dim * 2 + 1))
-
-		ct = (pt / pix_dim).astype(int)
-		patch[dim, dim] = img[ct[0], ct[1], ct[2]]
-
-		# Fill patch
-		for j in range(dim):
-			# Fill cross
-			c1 = ((pt - nr * step[::-1][j]) / pix_dim).astype(int)
-			c2 = ((pt + nr * step[j]) / pix_dim).astype(int)
-
-			c3 = ((pt - bnr * step[::-1][j]) / pix_dim).astype(int)
-			c4 = ((pt + bnr * step[j]) / pix_dim).astype(int)
-
-			patch[dim, j] = img[c1[0], c1[1], c1[2]]
-			patch[dim, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
-			patch[j, dim] = img[c3[0], c3[1], c3[2]]
-			patch[dim + 1 + j, dim] = img[c4[0], c4[1], c4[2]]
-
-
-		for j in range(dim):
-
-			c1mm = (pt - nr * step[::-1][j])
-			c2mm = (pt + nr * step[j])
-				
-			c1 = (c1mm / pix_dim).astype(int)
-			c2 = (c2mm / pix_dim).astype(int)
-				
-
-			patch[dim + 1, j] = img[c1[0], c1[1], c1[2]]
-			patch[dim + 1, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
-
-			for k in range(dim):
-
-				c3 = ((c1mm - bnr * step[::-1][k]) / pix_dim).astype(int)
-				c4 = ((c1mm + bnr * step[k]) / pix_dim).astype(int)
-
-				c5 = ((c2mm - bnr * step[::-1][k]) / pix_dim).astype(int)
-				c6 = ((c2mm + bnr * step[k]) / pix_dim).astype(int)
-
-				patch[k, j] = img[c3[0], c3[1], c3[2]]
-				patch[dim + 1 + k, j] = img[c4[0], c4[1], c4[2]]
-
-				patch[k, dim + 1 + j] = img[c5[0], c5[1], c5[2]]
-				patch[dim + 1 + k, dim + 1 + j] = img[c6[0], c6[1], c6[2]]
-
-		return patch, patch_pix
-
 
 
 	def count_nodes(self):
@@ -2581,20 +2393,7 @@ class ArterialTree:
 
 			for i in range(pts.shape[0]):
 				rand_dir = np.random.normal(0, 1, (1, 3))[0]
-				# Remove tangent component
-				"""
-				if i == 0:
-					tg = pts[i+1] - pts[i]
-				elif i == pts.shape[0] - 1:
-					tg = pts[i] - pts[i-1]
-				else: 
-					tg1 = pts[i] - pts[i-1]
-					tg2 = pts[i+1] - pts[i]
-					tg = (tg1 + tg2) / 2.
-				tg = tg[:-1]
 
-				rand_dir = rand_dir - dot(rand_dir, tg)*tg
-				"""
 				rand_norm = np.random.normal(0, std, (1, 1))[0]
 
 				pts[i, :-1] = pts[i,:-1] + rand_dir / norm(rand_dir) * pts[i,-1] * rand_norm

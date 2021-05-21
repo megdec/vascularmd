@@ -69,9 +69,9 @@ class Nfurcation:
 
 
 		self.__set_key_pts() # Set key points times
-		self.__set_B() # Geometric center (np array)
+		self.__set_X() # Geometric center (np array)
 		self.__set_SP() # Separation points (np array)
-		self.__set_CP() # Common points (np array)
+		self.__set_CT() # Common points (np array)
 
 		self.__set_tspl() # Trajectory splines
 		self._crsec = None
@@ -96,8 +96,8 @@ class Nfurcation:
 	def get_apexsec(self):
 		return self._apexsec
 
-	def get_B(self):
-		return self._B
+	def get_X(self):
+		return self._X
 
 	def get_crsec(self):
 		if self._crsec != None:
@@ -304,9 +304,9 @@ class Nfurcation:
 		self.__set_tAP() # Times at apex
 
 		self.__set_key_pts() # Set key points times
-		self.__set_B() # Geometric center (np array)
+		self.__set_X() # Geometric center (np array)
 		self.__set_SP() # Separation points (np array)
-		self.__set_CP() # Common points (np array)
+		self.__set_CT() # Common points (np array)
 
 		self.__set_tspl() # Trajectory splines
 	
@@ -454,7 +454,7 @@ class Nfurcation:
 
 
 
-	def __set_B(self): 
+	def __set_X(self): 
 
 		""" Set the coordinates of the geometric center of the nfurcation. """
 
@@ -467,7 +467,7 @@ class Nfurcation:
 				a += self._spl[i].point(self._key_pts[i][j]) * 1/(self._spl[i].radius(self._key_pts[i][j]))
 				b += 1/(self._spl[i].radius(self._key_pts[i][j]))
 
-		self._B = a / b
+		self._X = a / b
 		'''
 	
 		pts = self._AP.copy()
@@ -483,7 +483,7 @@ class Nfurcation:
 			pt = self._spl[ind].project_time_to_surface(nS / norm(nS), t)
 			pts += [pt]
 		
-		self._B = sum(pts) / len(pts)
+		self._X = sum(pts) / len(pts)
 	
 
 
@@ -499,7 +499,7 @@ class Nfurcation:
 		for ind in [0, -1]:
 			# Project X to the spline to get t
 			t = self._key_pts[ind][0]
-			t = self._spl[ind].project_point_to_centerline(self._B)
+			t = self._spl[ind].project_point_to_centerline(self._X)
 
 			ptAP = self._spl[ind].point(self._tAP[ind][0])
 			nAP = self._AP[ind] - ptAP
@@ -514,9 +514,9 @@ class Nfurcation:
 
 
 
-	def __set_CP(self): 
+	def __set_CT(self): 
 
-		""" Set the coordinates of the common points CP of the bifurcation. """
+		""" Set the coordinates of the common points CT of the bifurcation. """
 		normals = []
 
 		for i in range(len(self._AP)):
@@ -525,8 +525,8 @@ class Nfurcation:
 
 		n = sum(normals) / len(normals)
 
-		self._CP = [self.send_to_surface(self._B, n, 0), self.send_to_surface(self._B, -n, 0)]
-		self._B = sum(self._CP) / 2
+		self._CT = [self.send_to_surface(self._X, n, 0), self.send_to_surface(self._X, -n, 0)]
+		self._X = sum(self._CT) / 2
 
 
 	def __set_tspl(self):
@@ -549,13 +549,13 @@ class Nfurcation:
 			if i == 0:
 				tg0 = -tg0
 
-			tg1 = ((key_pts[i] - self._B) + (key_pts[i2] - self._B)) / 2.0
+			tg1 = ((key_pts[i] - self._X) + (key_pts[i2] - self._X)) / 2.0
 
 			tg0 = tg0 / norm(tg0)
 			tg1 = tg1 / norm(tg1)
 
 			p0 = self._endsec[i][0][:-1]
-			p1 = self._B
+			p1 = self._X
 
 			pint0 = p0 + tg0 * norm(p0 - p1) * relax
 			pint1 = p1 +  tg1 * norm(p0 - p1) * relax
@@ -629,10 +629,10 @@ class Nfurcation:
 				ax.plot(points[:,0], points[:,1], points[:,2],  c='black')
 
 			# Plot control points
-			ax.scatter(self._B[0], self._B[1], self._B[2], c='black', s = 40)
+			ax.scatter(self._X[0], self._X[1], self._X[2], c='black', s = 40)
 			for pt in self._SP:
 				ax.scatter(pt[0], pt[1], pt[2], c='green', s = 40)
-			for pt in self._CP:
+			for pt in self._CT:
 				ax.scatter(pt[0], pt[1], pt[2], c='blue', s = 40)
 			for pt in self._AP:
 				ax.scatter(pt[0], pt[1], pt[2], c='red', s = 40)
@@ -702,7 +702,7 @@ class Nfurcation:
 		"""
 
 		if self._crsec == None:
-			end_crsec, bif_crsec, nds, ind = self.cross_sections(self._N, self._d)
+			end_crsec, bif_crsec, nds, ind = self.compute_cross_sections(self._N, self._d)
 		else: 
 			end_crsec, bif_crsec, nds, ind = self._crsec
 
@@ -762,7 +762,7 @@ class Nfurcation:
 
 
 
-	def cross_sections(self, N, d, end_ref = None):
+	def compute_cross_sections(self, N, d, end_ref = None):
 
 
 		""" Returns the nodes of the surface mesh ordered by transverse sections
@@ -908,16 +908,16 @@ class Nfurcation:
 		key_pts = [self._SP[0]]  + self._AP + [self._SP[1]]
 
 		nds = np.zeros((2 + (N//2 - 1) * len(key_pts),3))
-		nds[:2] = self._CP
+		nds[:2] = self._CT
 	
 		n = N//4 - 1
 
 		j = 2
 		for i in range(len(key_pts)):
 
-			nds[j: j + n] = self.__separation_segment(self._CP[0], key_pts[i], n)
+			nds[j: j + n] = self.__separation_segment(self._CT[0], key_pts[i], n)
 			nds[j + n] = key_pts[i]
-			nds[j+n+1: j + 2*n +1] = self.__separation_segment(key_pts[i], self._CP[1], n) 
+			nds[j+n+1: j + 2*n +1] = self.__separation_segment(key_pts[i], self._CT[1], n) 
 			j += 2*n + 1
 
 		return nds
@@ -935,8 +935,8 @@ class Nfurcation:
 
 		"""
 
-		v1 = P1 - self._B
-		v2 = P2 - self._B
+		v1 = P1 - self._X
+		v2 = P2 - self._X
 
 		theta = (directed_angle(v1, v2, cross(v1,v2)) / (n + 1)) * np.arange(1, n + 1) 
 
@@ -945,7 +945,7 @@ class Nfurcation:
 		for i in range(n):
 
 			n = rotate_vector(v1, cross(v1, v2), theta[i])
-			nds[i, :] = self.send_to_surface(self._B, n, 0)
+			nds[i, :] = self.send_to_surface(self._X, n, 0)
 
 		return nds
 
@@ -1003,10 +1003,10 @@ class Nfurcation:
 	########## POST PROCESSING  #########
 	#####################################
 
-	def relaxation(self, it = 5):
+	def relaxation(self, n_iter = 5):
 		""" Resamples the cells of the bifurcation """
 
-		for i in range(it):
+		for i in range(n_iter):
 
 			init_mesh = self.mesh_surface()
 			self.smooth(1)
@@ -1110,7 +1110,7 @@ class Nfurcation:
 
 		# Project bifurcation plan
 		for i in range(len(bif_crsec)):
-			bif_crsec[i] = self.__intersection(mesh, self._B, bif_crsec[i])
+			bif_crsec[i] = self.__intersection(mesh, self._X, bif_crsec[i])
 
 
 
