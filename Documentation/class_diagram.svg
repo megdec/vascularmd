@@ -1,0 +1,578 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="344.37302mm"
+   height="296.73965mm"
+   viewBox="0 0 344.37302 296.73965"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07)"
+   sodipodi:docname="class_diagram.svg">
+  <defs
+     id="defs2">
+    <marker
+       style="overflow:visible;"
+       id="marker1703"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lend"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8) rotate(180) translate(12.5,0)"
+         style="fill-rule:evenodd;stroke:#000000;stroke-width:1pt;stroke-opacity:1;fill:#000000;fill-opacity:1"
+         d="M 0.0,0.0 L 5.0,-5.0 L -12.5,0.0 L 5.0,5.0 L 0.0,0.0 z "
+         id="path1701" />
+    </marker>
+    <marker
+       style="overflow:visible;"
+       id="Arrow1Lend"
+       refX="0.0"
+       refY="0.0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lend"
+       inkscape:isstock="true">
+      <path
+         transform="scale(0.8) rotate(180) translate(12.5,0)"
+         style="fill-rule:evenodd;stroke:#000000;stroke-width:1pt;stroke-opacity:1;fill:#000000;fill-opacity:1"
+         d="M 0.0,0.0 L 5.0,-5.0 L -12.5,0.0 L 5.0,5.0 L 0.0,0.0 z "
+         id="path1412" />
+    </marker>
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect1407"
+       is_visible="true"
+       lpeversion="1" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.76"
+     inkscape:cx="415.02953"
+     inkscape:cy="572.36365"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="false"
+     inkscape:window-width="2560"
+     inkscape:window-height="1378"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-10.067866,-35.820901)">
+    <rect
+       style="opacity:0.99823;fill:none;stroke:#000000;stroke-width:0.529283"
+       id="rect833"
+       width="134.03511"
+       height="137.69614"
+       x="10.332507"
+       y="37.175426" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="57.86982"
+       y="43.492607"
+       id="text837"><tspan
+         sodipodi:role="line"
+         id="tspan835"
+         x="57.86982"
+         y="43.492607"
+         style="stroke-width:0.264583">ArterialTree</tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.477277;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 10.381123,45.925155 133.913607,0.05072"
+       id="path839"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:0;font-family:sans-serif;stroke-width:0.264583"
+       x="12.677042"
+       y="50.664112"
+       id="text843"><tspan
+         sodipodi:role="line"
+         id="tspan841"
+         x="12.677042"
+         y="50.664112"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583">+ patient_name : String</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="55.073837"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan847">+ database_name : String</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="59.483562"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan849">- _full_graph : networkx Digraph object</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="63.893288"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan851">- _topo_graph : networkx Digraph object</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="68.303009"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan853">- _model_graph : networkx Digraph object</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="72.712738"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan855">- _crsec_graph : networkx Digraph object</tspan><tspan
+         sodipodi:role="line"
+         x="12.677042"
+         y="77.122459"
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         id="tspan859">- _surface_mesh : vtk mesh object</tspan><tspan
+         style="font-size:3.52778px;line-height:1.25;stroke-width:0.264583"
+         sodipodi:role="line"
+         id="tspan894"
+         x="12.677042"
+         y="81.532188">- _volume_mesh : vtk mesh object</tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.477241;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 10.375819,86.344786 133.893871,0.0508"
+       id="path839-0"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:3.52778px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="10.956739"
+       y="95.542633"
+       id="text882"><tspan
+         sodipodi:role="line"
+         id="tspan880"
+         x="10.956739"
+         y="95.542633"
+         style="font-size:3.52778px;stroke-width:0.264583"> + model_network : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="99.952354"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan884"> + compute_cross_sections(int N, float d) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="104.36208"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan890"> + mesh_surface : vtk mesh object</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="108.7718"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan892"> + mesh_volume(list layer_ratio, int num_a, int num_b) : vtk mesh object</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="113.18153"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan896"> + ogrid_pattern(np array center, np array crsec) : np array</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="117.59126"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan948" /><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="122.00098"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan950" /><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="126.41071"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan898"> + deform_surface_to_mesh(vtk mesh mesh) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="130.82043"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan900"> + remove_branch(tuple e, bool preserve_shape) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="135.23016"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan902"> + transpose(float val) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="139.63988"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan904"> + scale(list val) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="144.04961"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan906"> + count_nodes() : dict</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="148.45934"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan908"> + resample(float ratio) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="152.86906"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan988" /><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="157.27878"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan990" /><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="161.68851"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan910"> + show(bool points, bool centerlines, bool control_points) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="166.09824"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan912"> + write_vtk(String type, String filename) : void</tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="170.50797"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan914"> + write_swc(String filename) : void </tspan><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="174.91768"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan888" /><tspan
+         sodipodi:role="line"
+         x="10.956739"
+         y="179.32741"
+         style="font-size:3.52778px;stroke-width:0.264583"
+         id="tspan886" /></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52778px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="39.159798"
+       y="90.299576"
+       id="text936"><tspan
+         sodipodi:role="line"
+         id="tspan934"
+         x="39.159798"
+         y="90.299576"
+         style="font-size:3.52778px;fill:#d40000;stroke-width:0.264583">==== Modeling and meshing ====</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="38.181953"
+       y="119.09891"
+       id="text936-7"><tspan
+         sodipodi:role="line"
+         id="tspan934-7"
+         x="38.181953"
+         y="119.09891"
+         style="font-size:3.52777px;fill:#d40000;stroke-width:0.264583">======  Post treatment  ======</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="37.296349"
+       y="155.11058"
+       id="text936-7-1"><tspan
+         sodipodi:role="line"
+         id="tspan934-7-1"
+         x="37.296349"
+         y="155.11058"
+         style="font-size:3.52777px;fill:#d40000;stroke-width:0.264583">======= Visualization =======</tspan></text>
+    <rect
+       style="opacity:0.99823;fill:none;stroke:#000000;stroke-width:0.52651;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect1000"
+       width="133.74333"
+       height="125.90243"
+       x="220.4343"
+       y="36.084156" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="270.3822"
+       y="42.931999"
+       id="text837-5"><tspan
+         sodipodi:role="line"
+         id="tspan835-9"
+         x="270.3822"
+         y="42.931999"
+         style="stroke-width:0.264583">Nfurcation</tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.369336;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 220.5916,45.966036 353.8008,45.749238"
+       id="path1020"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:0;font-family:sans-serif;stroke-width:0.264583"
+       x="223.58418"
+       y="51.100723"
+       id="text843-7"><tspan
+         sodipodi:role="line"
+         id="tspan841-7"
+         x="223.58418"
+         y="51.100723"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583">+ model : String</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="55.510437"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan847-6">+ R : float</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="59.920147"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan849-7">- _endsec : list of np arrays</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="64.329865"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan851-3">- _apexsec : list of np arrays</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="68.739571"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan853-6">- _spl : list of geomdl Splines</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="73.149284"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan855-5">- _X : np array </tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="77.558998"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan859-6">- _SP : list of np arrays</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="81.968712"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan1063">- _CT : list of np arrays</tspan><tspan
+         sodipodi:role="line"
+         x="223.58418"
+         y="86.378426"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         id="tspan1061"> _tspl : list of geomdl Splines</tspan><tspan
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         sodipodi:role="line"
+         id="tspan894-3"
+         x="223.58418"
+         y="90.788139">- _crsec : list of np arrays</tspan></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.369705;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 220.76128,96.447435 133.4779,-0.216792"
+       id="path1020-9"
+       sodipodi:nodetypes="cc" />
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="252.10271"
+       y="101.2414"
+       id="text936-4"><tspan
+         sodipodi:role="line"
+         id="tspan934-8"
+         x="252.10271"
+         y="101.2414"
+         style="font-size:3.52777px;fill:#d40000;stroke-width:0.264583">==== Modeling and meshing ====</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="250.78667"
+       y="123.0566"
+       id="text936-7-12"><tspan
+         sodipodi:role="line"
+         id="tspan934-7-9"
+         x="250.78667"
+         y="123.0566"
+         style="font-size:3.52777px;fill:#d40000;stroke-width:0.264583">======  Post treatment  ======</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="249.47089"
+       y="149.2719"
+       id="text936-7-1-3"><tspan
+         sodipodi:role="line"
+         id="tspan934-7-1-9"
+         x="249.47089"
+         y="149.2719"
+         style="font-size:3.52777px;fill:#d40000;stroke-width:0.264583">======= Visualization =======</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:3.52777px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="223.9016"
+       y="107.86378"
+       id="text882-0"><tspan
+         sodipodi:role="line"
+         id="tspan880-8"
+         x="223.9016"
+         y="107.86378"
+         style="font-size:3.52777px;stroke-width:0.264583"> + __init__(String model, list args)</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="112.27349"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan884-8"> + compute_cross_sections(int N, float d, bool parallel) : list of np arrays</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="116.6832"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1269"> + mesh_surface : vtk mesh object</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="121.09292"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1271" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="125.50262"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1273" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="129.91234"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1275"> + relaxation(int it) : void</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="134.32205"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1277"> + smooth(int it) : void</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="138.73177"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1279"> + smooth_apex(float radius) : void</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="143.14148"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1281"> + deform(vtk mesh mesh) : void</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="147.55119"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1285" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="151.96091"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1287" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="156.37062"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan1283"> + show(bool nodes) : void</tspan><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="160.78033"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan896-9" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="165.19003"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan948-6" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="169.59975"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan914-1" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="174.00946"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan888-0" /><tspan
+         sodipodi:role="line"
+         x="223.9016"
+         y="178.41917"
+         style="font-size:3.52777px;stroke-width:0.264583"
+         id="tspan886-3" /></text>
+    <rect
+       style="opacity:0.99823;fill:none;stroke:#000000;stroke-width:0.565;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect1289"
+       width="159.34811"
+       height="98.336899"
+       x="10.483372"
+       y="210.03947" />
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:1.25;font-family:sans-serif;stroke-width:0.265;stroke-miterlimit:4;stroke-dasharray:none"
+       x="76.055672"
+       y="217.71367"
+       id="text1293"><tspan
+         sodipodi:role="line"
+         id="tspan1291"
+         x="76.055672"
+         y="217.71367"
+         style="stroke-width:0.265;stroke-miterlimit:4;stroke-dasharray:none">Spline</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:5.64444px;line-height:0;font-family:sans-serif;stroke-width:0.264583"
+       x="14.502796"
+       y="227.08577"
+       id="text843-7-0"><tspan
+         sodipodi:role="line"
+         id="tspan841-7-4"
+         x="14.502796"
+         y="227.08577"
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583">- _spl : geomdl spline object</tspan><tspan
+         style="font-size:3.52777px;line-height:1.25;stroke-width:0.264583"
+         sodipodi:role="line"
+         id="tspan894-3-5"
+         x="14.502796"
+         y="229.84047" /></text>
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.365;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 10.747382,220.73136 159.020468,-0.0539"
+       id="path1386"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.365001;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="M 10.279032,231.83825 169.9035,231.78695"
+       id="path1386-9"
+       sodipodi:nodetypes="cc" />
+    <rect
+       style="opacity:0.99823;fill:none;stroke:#000000;stroke-width:0.465;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect1403"
+       width="114.18948"
+       height="121.50995"
+       x="224.44423"
+       y="199.22803" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.365;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow1Lend)"
+       d="m 83.373519,174.80971 -0.192365,32.37234"
+       id="path1405"
+       inkscape:path-effect="#path-effect1407"
+       inkscape:original-d="m 83.373519,174.80971 c 0.203499,9.89902 -0.440691,22.47386 -0.192365,32.37234"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.365;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;stroke-miterlimit:4;stroke-dasharray:none"
+       d="m 170.36875,252.43242 c 1.47231,-0.14609 53.97412,0.0523 53.97412,0.0523"
+       id="path1691" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-end:url(#marker1703)"
+       d="m 145.22783,96.295352 75.53345,0.152083"
+       id="path1699"
+       sodipodi:nodetypes="cc" />
+  </g>
+</svg>
