@@ -58,9 +58,13 @@ class Spline:
 		return np.array(self._spl.ctrlpts)
 
 	def get_points(self):
+		if self._length_tab is None:
+			self.__set_length_tab()
 		return np.array(self._spl.evalpts)
 
 	def get_times(self):
+		if self._length_tab is None:
+			self.__set_length_tab()
 		return np.linspace(0, 1, len(self.get_points())) #np.arange(0, 1, self._spl.delta) 
 
 	def get_length(self):
@@ -69,6 +73,9 @@ class Spline:
 			self.__set_length_tab()
 
 		return self._length_tab
+
+	def get_nb_control_points(self):
+		return len(self._spl.ctrlpts)
 
 
 
@@ -131,7 +138,7 @@ class Spline:
 				der[i, :] = self._spl.derivatives(t[i], order=1)[1]
 
 			if self._spl.dimension > 3 and not radius:	
-				der = der[:-1]
+				der = der[:, :-1]
 
 		else:
 
@@ -160,7 +167,7 @@ class Spline:
 				der[i, :] = self._spl.derivatives(t[i], order=2)[2]
 
 			if self._spl.dimension > 3 and not radius:	
-				der = der[:-1]
+				der = der[:, :-1]
 		else:
 
 			der = self._spl.derivatives(t, order=2)[2]
@@ -188,7 +195,7 @@ class Spline:
 				tg[i, :] = operations.tangent(self._spl, t[i])[1]
 
 			if self._spl.dimension > 3 and not radius:	
-				tg = tg[:-1]
+				tg = tg[:, :-1]
 
 			# Normalize
 			for i in range(len(t)):
@@ -273,7 +280,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, min_tangent = False, n = None, knot = None, lbd = 0.0, criterion= "None"): #"CV"):
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, akaike=False, min_tangent=False, n=None, knot=None, lbd=0.0, criterion="None"): 
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -288,10 +295,11 @@ class Spline:
 		from Model import Model
 		
 		if n == None:
-			#n = len(D)
-			n = self.__nb_control_points(D, 10**(-4))
+			if akaike:
+				n = self.__nb_control_points_akaike(D)
+			else:
+				n = self.__nb_control_points_stability(D, 10**(-4))
 
-	
 		if radius_model: 
 
 			# Spatial model
@@ -378,9 +386,10 @@ class Spline:
 		
 			#self.show(data = D)
 		
-	def __nb_control_points(self, data, thres):
+	def __nb_control_points_stability(self, data, thres):
 
-		""" Find the optimal number of control points for a given threshold """
+		""" Find the optimal number of control points for a given ASE threshold """
+
 		from Model import Model
 
 		
@@ -390,7 +399,7 @@ class Spline:
 		ASE_act = model.quality("ASE")
 		ASE_prec = (ASE_act[0] + thres + 1, ASE_act[1] + thres + 1)
 
-		while n <= len(data) and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
+		while n < len(data) and n < 100 and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -398,6 +407,59 @@ class Spline:
 			ASE_act = model.quality("ASE")
 
 		return n
+
+
+	def __nb_control_points_ASE_thres(self, data, thres):
+
+		""" Find the optimal number of control points for a given ASE threshold """
+
+		from Model import Model
+
+		
+		n = 4
+		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+		ASE = model.quality("ASE")
+
+		while n < len(data) and n < 100 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
+			n += 1
+			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+			ASE = model.quality("ASE")
+
+		return n
+
+
+	def __nb_control_points_akaike(self, data):
+
+		""" Find the optimal number of control points using Akaike criterion """
+
+		from Model import Model
+
+		n = 4
+		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+		#AIC_list = [AIC_act]
+		#n_list = [n]
+
+		AIC_min = model.quality("AICC")
+
+		while n < len(data) and n < 100:# and (AIC_prec > AIC_act): 
+			n += 1
+			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+			AIC = model.quality("AICC")
+			#AIC_list.append(AIC_act)
+			#n_list.append(n)
+			if AIC < AIC_min:
+				n_min = n
+				AIC_min = AIC
+
+		#plt.plot(n_list, AIC_list)
+		#plt.show()
+	
+
+		return n_min
 
 
 
@@ -436,7 +498,7 @@ class Spline:
 
 			opt_lbd = (b + a) / 2
 			model.set_lambda(opt_lbd)
-			print("optimized lambda : ", opt_lbd)
+			#print("optimized lambda : ", opt_lbd)
 
 		return model
 
@@ -953,7 +1015,7 @@ class Spline:
 		ASE_spatial = np.sum(SE[:-1]) / len(data)
 		ASE_radius = SE[-1] / len(data)
 
-		return ASE_spatial, ASE_radius
+		return [ASE_spatial, ASE_radius]
 
 
 	def ASEder(self, data, data_der=None):
@@ -969,15 +1031,17 @@ class Spline:
 			for i in range(1, len(data)-1):
 				data_der[i-1] = (data[i+1] - data[i-1]) / (length[i+1] - length[i-1])
 
+			estim = self.estimated_tangent(data[1:-1])
+
 
 		# ASEder computation
-		estim = self.estimated_tangent(data[1:-1])
+		estim = self.estimated_tangent(data)
 
 		SE = np.sum((data_der - estim)**2, axis = 1)
 		ASEder_spatial = np.sum(SE[:-1]) / len(data_der)
 		ASEder_radius = SE[-1] / len(data_der)
 
-		return ASEder_spatial, ASEder_radius
+		return [ASEder_spatial, ASEder_radius]
 
 
 	def ASEcurv(self, data, data_curv):

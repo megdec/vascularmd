@@ -28,7 +28,7 @@ class Nfurcation:
 		""" Keyword arguments:
 		method -- furcation model used (spline or crsec)
 		if "spline" : args = [[spl1, spl2, ...], [[AP1], [AP2],...], R]
-		if "crsec" : args = [[crsec1, crsec2, ...], [AP_crsec1, AP_crsec2...], AP, R]
+		if "crsec" : args = [[crsec1, crsec2, ...], [[AP_crsec1], [AP_crsec2]...], AP, R]
 		if "angle" : args = [[crsec1, crsec2, ...], [a1, a2...], R]
 		"""
 
@@ -323,44 +323,57 @@ class Nfurcation:
 		self._spl = []
 
 		# Correct the radius 
+		"""
 		if len(self._apexsec) < 0:
 			print('correct radius')
 			D0, D1, D2 = self._endsec[0][0][-1]*2, self._endsec[1][0][-1]*2, self._endsec[2][0][-1]*2
 			self._apexsec[0][0][-1] = ((sqrt(2) * D0*D1)/(sqrt(D1**2 + D2**2))) / 2.
 			self._apexsec[1][0][-1] = ((sqrt(2) * D0*D2)/(sqrt(D1**2 + D2**2))) / 2.
+		"""
 	
+		# Check distance between apexsec coordinates
+		for i in range(len(self._apexsec)):
+			for j in range(len(self._apexsec[i]) - 1):
+				if norm(self._apexsec[i][j + 1][:-1] - self._apexsec[i][j][:-1]) < 10*(-1):
+					self._apexsec.pop(j)
 
 		for i in range(1, len(self._endsec)):
+			sec_list = [self._endsec[0]] + self._apexsec[i-1] + [self._endsec[i]] 
 
-			C0, C1, C2 = self._endsec[0][0], self._apexsec[i-1][0], self._endsec[i][0] 
-			T0, T1, T2 = self._endsec[0][1], self._apexsec[i-1][1], self._endsec[i][1] 
+			l = []
+			for j in range(len(sec_list) - 1):
 
-			p0 = C0 + relax * norm(C1 - C0) * T0
-			p0[-1] = C0[-1] + relax * abs((C1[-1] - C0[-1]))
-			p1 = C1 - relax * norm(C1 - C0) * T1
-			p1[-1] = C1[-1] - relax * abs((C1[-1] - C0[-1]))
+				p0 = sec_list[j][0] + relax * norm(sec_list[j+1][0] - sec_list[j][0]) * sec_list[j][1] 
+				p0[-1] =  sec_list[j][0][-1] + relax * abs(( sec_list[j+1][0][-1] -  sec_list[j][0][-1]))
+				
+				p1 = sec_list[j+1][0] - relax * norm(sec_list[j+1][0] - sec_list[j][0]) * sec_list[j + 1][1]
+				p1[-1] = sec_list[j+1][0][-1] - relax * abs(( sec_list[j+1][0][-1] -  sec_list[j][0][-1]))
 
-			p2 = C1 + relax * norm(C2 - C1) * T1
-			p2[-1] = C1[-1] + relax * abs((C2[-1] - C1[-1]))
-			p3 = C2 - relax * norm(C2 - C1) * T2
-			p3[-1] = C2[-1] - relax * abs((C2[-1] - C1[-1]))
+				cp_list = np.vstack((sec_list[j][0],p0,p1,sec_list[j+1][0]))
 
-			# Fit splines
-			spl1 = Spline()
-			spl1.approximation(np.vstack((C0,p0,p1,C1)), [1,1,1,1], np.vstack((C0, T0, T1, C1)), False, n = 4, radius_model=False, criterion= "None")
-			P1 = spl1.get_control_points()
+				spl = Spline()
+				spl.approximation(cp_list, [1,1,1,1], np.vstack((sec_list[j][0],sec_list[j][1], sec_list[j+1][1], sec_list[j+1][0])), False, n = 4, radius_model=False, criterion= "None")
 
-			spl2 = Spline()
-			spl2.approximation(np.vstack((C1,p2,p3,C2)), [1,1,1,1], np.vstack((C1, T1, T2, C2)), False, n = 4, radius_model=False, criterion= "None")
-			P2 = spl2.get_control_points()
+				if j == 0:
+					P = spl.get_control_points()
+					l.append(spl.length())
+				else:
+					P = np.vstack((P[:-1], spl.get_control_points()))
+					l.append(spl.length() + l[-1])
 
-			P = np.vstack((P1[:-1], P2))
 
-			knot = [0.0, 0.0, 0.0, relax, 0.5, 0.5, (1 - relax), 1.0, 1.0, 1.0]
+			l = l/max(l)
+			#l = np.linspace(0.0, 1.0, 3)[1:].tolist()
+			knot = [0.0, 0.0, 0.0]
+			for k in range(len(l) - 1):
+				knot += [(l[k] + knot[-1])/2, l[k], l[k]]
+			knot += [(1.0 + knot[-1])/2, 1.0, 1.0, 1.0]
+		
 
 			self._spl.append(Spline(control_points = P, knot = knot))
 
 		# Check angles of the apex cross sections and apply rotation correction if necessary
+		"""
 		for i in range(self.n):
 			vec = (self._apexsec[i-1][0][:-1] - self._AP[0])
 			OP = self._apexsec[i-1][0][:-1] + self._apexsec[i-1][0][-1] * vec / norm(vec)
@@ -378,6 +391,7 @@ class Nfurcation:
 					print("Error crsec")
 
 					# If not, rotation(?)
+		"""
 
 
 	def __set_tAP(self): 
@@ -649,7 +663,7 @@ class Nfurcation:
 				for i in range(len(self._apexsec)):
 
 					nds = np.zeros((N, 3))
-					tg = self._apexsec[i][1][:-1]
+					tg = self._apexsec[i][0][1][:-1]
 					ref = cross(tg, np.array([0,0,1]))
 					ref = ref / norm(ref)
 
@@ -657,7 +671,7 @@ class Nfurcation:
 
 					for j in range(N):
 						n = np.array(rotate_vector(ref, tg, angle_list [j]))
-						nds[j] = self._apexsec[i][0][:-1] + n * self._apexsec[i][0][-1] / norm(n)
+						nds[j] = self._apexsec[i][0][0][:-1] + n * self._apexsec[i][0][0][-1] / norm(n)
 
 					ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='black')
 

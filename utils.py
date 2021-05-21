@@ -332,8 +332,6 @@ def order_points(points):
 
 	path = dict(nx.all_pairs_dijkstra_path(G, weight = 'distance'))
 
-	print(list(path.keys()))
-
 	points = points[list(path.keys()), :]
 
 	return points

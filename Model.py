@@ -5,6 +5,7 @@ from numpy.linalg import norm
 from geomdl import BSpline, operations, helpers # Spline storage and evaluation
 
 from Spline import Spline
+from utils import *
 import math
 
 class Model:
@@ -57,6 +58,8 @@ class Model:
 		self.P = self.__solve_system()
 	
 		self.spl = Spline(self.P, self._knot, self._p)
+		#self.spl.show(True, True, data=self._D)
+		
 
 	def get_t(self):
 		return self._t
@@ -136,13 +139,23 @@ class Model:
 			sse = 0
 			for i in range(m):
 				sse += norm(self._D[i] - De[i])**2
-			res = m * math.log(sse/m) + 2 * t
+			if self._lbd != 0.0:
+				res = m * math.log(sse/m) + 2 * t
+			else:
+				res = m * math.log(sse) + 2*(4*self._n + self._p)
 
 		elif criteria == "AICC":
 			sse = 0
 			for i in range(m):
 				sse += norm(self._D[i] - De[i])**2
-			res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
+			if self._lbd != 0.0:
+				res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
+			else:
+				K = 4*self._n + self._p
+				if m == K + 1:
+					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / 1)
+				else:
+					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / (m-K-1))
 
 		elif criteria == "SBC":
 
@@ -451,15 +464,52 @@ class Model:
 		return (np.array(knot) / knot[-1]).tolist()
 
 
+	def uniform_averaging_knot(self):
 
-	def averaging_knot(self):
+		""" Returns a uniform knot vector based on the position of the data """
+
+		# Choose n points equally spread along the data
+		indices = np.arange(len(self._t)).tolist()
+
+		# Compute point distances
+		L = length_polyline(self._D)
+		dist = np.vstack((abs(L[1:-1] - L[:-2]), abs(L[2:] - L[1:-1])))
+
+		for i in range(len(self._t) - self._n):
+			# Remove the point with minimum distance to others
+			ind_min = np.argmin(np.sum(dist, axis=0))
+
+			j = indices.index(ind_min+1)
+			ind_bef = indices[j - 1]
+			ind_aft = indices[j + 1]
+
+			indices.remove(ind_min + 1)
+
+			if ind_bef > 0:
+				dist[1, ind_bef] += dist[1, ind_min]
+			if ind_aft + 1 < dist.shape[1]:
+				dist[0, ind_aft] += dist[0, ind_min]
+
+			dist[0, ind_min] = np.inf
+			dist[1, ind_min] = np.inf
+
+			
+		# Find averaging_knot
+		knot = self.averaging_knot(self._t[indices])
+		return knot
+
+
+
+	def averaging_knot(self, t=None):
 
 		""" Returns a B-spline averaging knot vector."""
+		if t is None:
+			t = self._t
 
 		knot = [0.0] * self._p # First knot of multiplicity p
 
 		for i in range(self._p, self._n):
-			knot.append((1.0 / (self._p - 1.0)) * sum(self._t[i-self._p+1:i]))
+			knot.append((1.0 / (self._p - 1.0)) * sum(t[i-self._p+1:i]))
 
 		knot = knot + [1.0] * self._p
 
@@ -480,7 +530,7 @@ class Model:
 			t.append(t[i-1] + np.linalg.norm(self._D[i] - self._D[i-1]))
 		t = [time / max(t) for time in t]
 
-		return t
+		return np.array(t)
 
 
 	def __basis_functions(self, t):

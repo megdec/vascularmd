@@ -6,7 +6,7 @@ import pyvista as pv
 from geomdl import BSpline, operations
 
 from Nfurcation import Nfurcation
-from ArterialTreev2 import ArterialTree
+from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
 from Simulation import Simulation
@@ -18,7 +18,24 @@ import time
 import vtk
 import copy
 
-from combine_nfurcation import *
+import os
+
+def uniform_average():
+	patient = "C0078"
+	split_tubes("/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/", patient + ".vtp", "Results/Centerlines/")
+
+	for n_tube in [0]:
+
+		tree = ArterialTree("C0078", "Aneurisk", "Results/Centerlines/" + patient+ "_tube_" + str(n_tube)+ ".swc")
+		tree.low_sample(0.02)
+		#tree.add_noise_centerline(1)
+		#tree.resample(3)
+		tree.model_network()
+		tree.show()
+
+
+
+
 
 
 def dom_points():
@@ -160,15 +177,13 @@ def number_of_control_points():
 		plt.show()
 			
 
-
-
 def ground_truth(file):
 	""" Build ground truth spline for the reference tubes and return them """
 
 	tree = ArterialTree("C0083", "Aneurisk", file)
 	#tree.low_sample(0.05)
 	#tree.add_noise_centerline(1)
-	#tree.resample(3)
+	tree.resample(1)
 
 	# Reference spline and data
 	topo_graph = tree.get_topo_graph()
@@ -191,78 +206,164 @@ def ground_truth(file):
 	return spl
 
 
+def visu_projection(spl1, spl2):
+	""" Visu of both spline projections """
+
+	pts1 = spl1.get_points()
+	pts2 = spl2.get_points()
+
+	tproj21, d = spl1.distance(pts2)
+	tproj12, d = spl2.distance(pts1)
+
+	ptsproj2 = spl1.point(tproj21)
+	ptsproj1 = spl2.point(tproj12)
+	
+	h = 5
+
+	# 3D plot
+	with plt.style.context(('ggplot')):
+			
+		fig = plt.figure(figsize=(10,7))
+		ax = Axes3D(fig)
+		ax.set_facecolor('white')
+
+		ax.plot(pts1[:,0], pts1[:,1], pts1[:,2],  c='black')
+		ax.plot(pts2[:,0], pts2[:,1], pts2[:,2],  c='red')
+
+		
+		for i in np.arange(0, len(pts1), h):
+			ax.plot([pts1[i,0], ptsproj1[i, 0]], [pts1[i,1], ptsproj1[i, 1]] , [pts1[i,2], ptsproj1[i, 2]], c='black', linewidth=1)
+
+		for i in np.arange(0, len(pts2), h):
+			ax.plot([pts2[i,0], ptsproj2[i, 0]], [pts2[i,1], ptsproj2[i, 1]] , [pts2[i,2], ptsproj2[i, 2]], c='red', linewidth=1)
+		
+
+		# Hide the axes
+		ax.set_axis_off()
+		plt.show()
+
+
+
 	
 def validation_vessel_model():
 
-	sampling = [1, 0.5, 0.2, 0.02]
-	noise_spatial_list = [0, 0.01, 0.05, 0.1]
-	noise_radius_list = [0, 0.01, 0.05, 0.1]
+
+	sampling = [0.02, 0.02, 0.2, 0.05, 1, 1, 1, 1, 1, 1, 1, 1]
+	noise_spatial = [0.0, 0.0, 0.0, 0.0, 0.01, 0.1, 0.3, 0.5, 0, 0, 0, 0]
+	noise_radius = [0, 0, 0, 0, 0, 0, 0, 0, 0.01, 0.1, 0.3, 0.5]
+
+	root="/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/Split/"
+	validation_files = [f for f in sorted(os.listdir(root))]
+
+	
+	f = open("resultats.txt", "w")
+	f.write("Patient" + "\t" + "Vessel_number" + "\t" + "Model" + "\t" +  "Criterion" + "\t" + "Sampling" + "\t" + "Noise_spatial" + "\t" + "Noise_radius" + "\t" + "ASE_spatial" + "\t" + "ASE_radius" + "\t" + "ASEder_spatial" + "\t" + "ASEder_radius" + "\t" + "ASEcurv" +  "\t" + "Ldiff" + "\n")
+
+	#validation_files = [validation_files[0]]
+	for file in validation_files:
+
+		spl_ref = ground_truth(root + file)
+
+		patient = file[:5] 
+		n_tube = int(file[-5])
+
+		
+		for i in range(len(sampling)):
+			for j in range(3):
+
+				print(sampling[i], noise_radius[i], noise_spatial[i])
+
+				tree = ArterialTree("Test", "Aneurisk", root + file)
+
+				# Resample / Deteriorate
+		
+				tree.resample(1)
+				tree.low_sample(sampling[i])
+				tree.add_noise_centerline(noise_spatial[i])
+				tree.add_noise_radius(noise_radius[i])
+
+				#tree.resample(1/sampling[i])
+				#tree.resample(2)
+						
+				#tree.show(centerline=False)
+
+				for model in [[False, "None", False], [False, "None", True], [False, "AIC", False], [True, "AICC", False], [True, "SBC", False], [True, "CV", False], [True, "GCV", False]]:
+
+					#try:
+					if True:
+						tree.model_network(radius_model = model[0], criterion=model[1], akaike=model[2])
+						model_graph = tree.get_model_graph()
+
+						# Model spline
+						for e in model_graph.edges():
+							spl_model = model_graph.edges[e]['spline']
+						spl_model.show(data=spl_ref.get_points())
+						
+
+						# Cell quality
+						#mesh = tree.mesh_surface()
+						#mesh = mesh.compute_cell_quality()
+						#mesh.plot(show_edges = True)
+
+						# Project reference on estimation
+
+						# ASE, ASEder, curv, length
+						l_diff = abs(spl_ref.length() - spl_model.length())						
+
+						data = spl_ref.get_points()
+						ASE = spl_model.ASE(data)
+
+						data_der = spl_ref.tangent(spl_ref.get_times(), radius=True)
+						ASEder = spl_model.ASEder(data, data_der = data_der)
+							
+
+						data_curv = spl_ref.curvature(spl_ref.get_times())
+						ASEcurv = spl_model.ASEcurv(data, data_curv)
+
+						# Project estimation on reference
+						# ASE, ASEder, curv, length			
+
+						data = spl_model.get_points()
+						ASE2 = spl_ref.ASE(data)
+
+						data_der = spl_model.tangent(spl_model.get_times(), radius=True)
+						ASEder2 = spl_ref.ASEder(data, data_der = data_der)
+							
+
+						data_curv = spl_model.curvature(spl_model.get_times())
+						ASEcurv2 = spl_ref.ASEcurv(data, data_curv)
+
+						ASE[0] = (ASE[0] + ASE2[0]) / 2.
+						ASE[1] = (ASE[1] + ASE2[1]) / 2.
+
+						ASEder[0] = (ASEder[0] + ASEder2[0]) / 2.
+						ASEder[1] = (ASEder[1] + ASEder2[1]) / 2.
+
+						ASEcurv = (ASEcurv + ASEcurv2) / 2.
 
 
-	patient = "C0078"
-	split_tubes("/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/", patient + ".vtp", "Results/Centerlines/")
-	f = open("resultat.txt", "w")
-	f.write("Patient" + "\t" + "Tube" + "\t" + "Knot" + "\t" + "Criterion" + "\t" + "Sampling" + "\t" + "Noise_spatial" + "\t" + "Noise_radius" + "\t" + "ASE_spatial" + "\t" + "ASE_radius" + "\t" + "ASEder_spatial" + "\t" + "ASEder_radius" + "\t" + "ASEcurv" +  "\t" + "Ldiff" + "\n")
+						if model[0]:
+							model_name = "SpatialRadius"
+						else:
+							model_name = "Global"
 
-	for n_tube in [0,1,2]:
+						if model[1] == "None":
+							model_name += "NonPenalized"
+						else:
+							model_name += "Penalized" + model[1]
 
-		for sample in sampling:
-			for noise_spatial in noise_spatial_list:
-				for noise_radius in noise_radius_list:
+						if model[2]:
+							model_name += "Akaike"
 
-					tree = ArterialTree("Test", "Aneurisk", "Results/Centerlines/" + patient+ "_tube_" + str(n_tube)+ ".swc")
-					spl_ref = ground_truth("Results/Centerlines/" + patient + "_tube_" + str(n_tube)+ ".swc")
-
-					# Resample / Deteriorate
-					#tree.show(centerline=False)
-					tree.low_sample(sample)
-					tree.add_noise_centerline(noise_spatial)
-					tree.add_noise_radius(noise_radius)
-
-					tree.resample(4)
+							
+						f.write(str(patient) + "\t" + str(n_tube) +  "\t" + model_name + "\t" + str(model[1]) + "\t" + str(sampling[i]) + "\t" + str(noise_spatial[i]) + "\t" + str(noise_radius[i])+ "\t" + str(ASE[0]) + "\t" + str(ASE[1]) + "\t" + str(ASEder[0]) + "\t" + str(ASEder[1]) + "\t" + str(ASEcurv) +  "\t" + str(l_diff) + "\n")
 					
-					#tree.show(centerline=False)
-
-
-					# Reference spline and data
-					topo_graph = tree.get_topo_graph()
-
-					for e in topo_graph.edges():
-						data_ref = np.vstack((topo_graph.nodes[e[0]]['coords'], topo_graph.edges[e]['coords'], topo_graph.nodes[e[1]]['coords']))
-					
-					tree.model_network(None, criterion="None")
-					model_graph = tree.get_model_graph()
-
-					# Model spline
-					for e in model_graph.edges():
-						spl_model = model_graph.edges[e]['spline']
-					#spl_model.show(data=data_ref)
-
-					# Cell quality
-					#mesh = tree.mesh_surface()
-					#mesh = mesh.compute_cell_quality()
-					#mesh.plot(show_edges = True)
-
-					# ASE, ASEder, curv, length
-					l_diff = abs(spl_ref.length() - spl_model.length())
-					data = spl_ref.get_points()
-					ASE = spl_model.ASE(data)
-					ASEder = spl_model.ASEder(data)
-					
-
-					data_curv = spl_ref.curvature(spl_ref.get_times())
-					print(data.shape, spl_ref.get_times().shape, data_curv.shape)
-					ASEcurv = spl_model.ASEcurv(data, data_curv)
-
-					print(str(patient) + "\t" + str(n_tube) + "\t" + "Uniform" "\t" + "None" + "\t" + str(sample) + "\t" + str(noise_spatial) + "\t" + str(noise_radius)+ "\t" + str(ASE[0]) + "\t" + str(ASE[1]) + "\t" + str(ASEder[0]) + "\t" + str(ASEder[1]) + "\t" + str(ASEcurv) +  "\t" + str(l_diff) + "\n")
-					f.write(str(patient) + "\t" + str(n_tube) + "\t" + "Uniform" "\t" + "None" + "\t" + str(sample) + "\t" + str(noise_spatial) + "\t" + str(noise_radius)+ "\t" + str(ASE[0]) + "\t" + str(ASE[1]) + "\t" + str(ASEder[0]) + "\t" + str(ASEder[1]) + "\t" + str(ASEcurv) +  "\t" + str(l_diff) + "\n")
-					
-
+					#except:		
+					#	print("Convergence Failed", sampling[i], noise_radius[i], noise_spatial[i])
+							
 	f.close()
 
-
-		
-		
+	
 
 
 def test_aneurisk(patient):
@@ -323,9 +424,16 @@ def test_brava(patient):
 
 	tree = ArterialTree(patient, "BraVa", filename)
 	tree.show(True, False, False)
-	tree.spline_approximation()
-	#tree.model_network()
-	tree.show(False, True, True)
+	#tree.spline_approximation()
+	tree.model_network()
+	tree.show(False, True, False)
+
+	# Save object
+	file = open(patient + "_ArterialTree.obj", 'wb') 
+	pickle.dump(tree, file)
+
+
+	"""
 
 	t1 = time.time()
 	tree.compute_cross_sections(24, 0.2, True)
@@ -341,18 +449,36 @@ def test_brava(patient):
 	mesh = mesh.compute_cell_quality()
 	mesh.plot(show_edges=True)
 	mesh.save("Results/BraVa/registered/crsec/" + patient + ".vtk")
+	"""
 
 
-def test_furcation_erwan():
-	file = open("C0097_bif_0.obj", 'rb') 	
+def TAMU():
+	file =  open("P9_ArterialTree.obj", 'rb') 
+	tree = pickle.load(file)
+	tree.show(False, True, False)
 
-	bif = pickle.load(file)
-	bif.show(True)
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2, False)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+	mesh.plot(show_edges=True)
+	mesh.save("P9_mesh.vtk")
+
 
 
 #test_brava("P9")
-#test_aneurisk("C0097")
+TAMU()
+#test_aneurisk("C0099")
 #validation_vessel_model()
 #number_of_control_points()
 #dom_points()
-test_furcation_erwan()
+#test_furcation_erwan()
+
+#patient = "C0082"
+#split_tubes("/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/", patient + ".vtp", "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/Split/")
+#uniform_average()
