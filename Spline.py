@@ -51,6 +51,9 @@ class Spline:
 	#############  GETTERS  #############
 	#####################################
 
+	def get_spl(self):
+		return self._spl
+
 	def get_knot(self):
 		return self._spl.knotvector
 

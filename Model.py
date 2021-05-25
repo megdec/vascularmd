@@ -104,12 +104,12 @@ class Model:
 		return sign0 * norm(tg0), sign1 * norm(tg1)
 		
 
-	def quality(self, criteria="CV"):
+	def quality(self, criterion="CV"):
 
-		""" Returns the smoothing criteria value (AIC, AICC, SBC, CV, GCV) for the given data.
+		""" Returns the smoothing criterion value (AIC, AICC, SBC, CV, GCV) for the given data.
 
 		Keyword arguments:
-		criteria -- string of the chosen criteria ("AIC", "AICC", "SBC", "CV", "GCV", "SSE")
+		criterion -- string of the chosen criterion ("AIC", "AICC", "SBC", "CV", "GCV", "SSE")
 		"""
 
 		m, x = self._D.shape
@@ -125,17 +125,17 @@ class Model:
 		t = np.trace(H)
 
 
-		if criteria == "CV":
+		if criterion == "CV":
 			res = 0
 			for i in range(m):
 				res += (norm((self._D[i] - De[i])) / (1 - H[i, i]))**2
 
-		elif criteria == "GCV":
+		elif criterion == "GCV":
 			res = 0
 			for i in range(m):
 				res += (norm(self._D[i] - De[i]) / (m - t))**2
 
-		elif criteria == "AIC":
+		elif criterion == "AIC":
 			sse = 0
 			for i in range(m):
 				sse += norm(self._D[i] - De[i])**2
@@ -144,7 +144,7 @@ class Model:
 			else:
 				res = m * math.log(sse) + 2*(4*self._n + self._p)
 
-		elif criteria == "AICC":
+		elif criterion == "AICC":
 			sse = 0
 			for i in range(m):
 				sse += norm(self._D[i] - De[i])**2
@@ -157,19 +157,19 @@ class Model:
 				else:
 					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / (m-K-1))
 
-		elif criteria == "SBC":
+		elif criterion == "SBC":
 
 			sse = 0
 			for i in range(m):
 				sse += norm(self._D[i] - De[i])**2
 			res = m * math.log(sse/m) + math.log(m)*t
 
-		elif criteria == "SSE":
+		elif criterion == "SSE":
 			res = 0
 			for i in range(m):
 				res += norm(self._D[i] - De[i])**2
 
-		elif criteria == "ASE":
+		elif criterion == "ASE":
 			
 			SE = np.sum((self._D - De)**2, axis = 1)
 			ASE_spatial = np.sum(SE[:-1]) / len(self._D)
@@ -178,7 +178,7 @@ class Model:
 			res = [ASE_spatial, ASE_radius]
 			
 
-		elif criteria == "ASEder":
+		elif criterion == "ASEder":
 			# Estimation of the first derivative
 			length = length_polyline(self._D)
 			data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
@@ -197,7 +197,7 @@ class Model:
 
 
 		else: 
-			raise ValueError('Invalid criteria name')
+			raise ValueError('Invalid criterion name')
 
 		return res
 
