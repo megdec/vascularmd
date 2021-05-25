@@ -472,8 +472,8 @@ def TAMU():
 
 
 #test_brava("P9")
-TAMU()
-#test_aneurisk("C0099")
+#TAMU()
+test_aneurisk("C0099")
 #validation_vessel_model()
 #number_of_control_points()
 #dom_points()

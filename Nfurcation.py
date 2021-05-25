@@ -31,7 +31,7 @@ class Nfurcation:
 		if "crsec" : args = [[crsec1, crsec2, ...], [[AP_crsec1], [AP_crsec2]...], AP, R]
 		if "angle" : args = [[crsec1, crsec2, ...], [a1, a2...], R]
 		"""
-
+	
 		self.model = model
 		
 		# Set user paramaters
