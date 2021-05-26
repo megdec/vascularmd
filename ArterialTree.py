@@ -392,7 +392,7 @@ class ArterialTree:
 
 
 		self._model_graph = self._topo_graph.copy()
-		nx.set_node_attributes(self._model_graph, None, name='bif')
+		nx.set_node_attributes(self._model_graph, None, name='bifurcation')
 		nx.set_node_attributes(self._model_graph, False, name='combine')
 		nx.set_node_attributes(self._model_graph, None, name='tangent')
 		nx.set_node_attributes(self._model_graph, None, name='ref')
@@ -448,137 +448,147 @@ class ArterialTree:
 
 		# Add rotation information on bifs and edges
 		for e in self._model_graph.edges():
-			if self._model_graph.nodes[e[0]]['type'] == "end":
-					
-				sep_end = False
-				# self._model_graphet path to the next sep node
-				path = []
-				for n in nx.dfs_successors(self._model_graph, source=e[0]):
-					path.append(n)
-					if self._model_graph.nodes[n]['type'] == "sep":
-						sep_end = True
-						break
+			self.__compute_rotations(e)
 
-				if sep_end: # Inlet vessel case
-					ref1 = self._model_graph.nodes[path[-1]]['ref']
-					ref_org = self._model_graph.nodes[path[-1]]['ref']
+
+
+
+
+	def __compute_rotations(self, e):
+
+		""" Compute the rotation angle alpha and the connecting vessel for edge e"""
+
+		if self._model_graph.nodes[e[0]]['type'] == "end":
 						
-					for i in reversed(range(1, len(path))):
-						spl = self._model_graph.edges[(path[i-1], path[i])]['spline']
+			sep_end = False
+			# self._model_graphet path to the next sep node
+			path = []
+			for n in nx.dfs_successors(self._model_graph, source=e[0]):
+				path.append(n)
+				if self._model_graph.nodes[n]['type'] == "sep":
+					sep_end = True
+					break
+
+			if sep_end: # Inlet vessel case
+				ref1 = self._model_graph.nodes[path[-1]]['ref']
+				ref_org = self._model_graph.nodes[path[-1]]['ref']
 							
-						# Transport ref vector back to the inlet
-						ref1 = spl.transport_vector(ref1, 1.0, 0.0)
+				for i in reversed(range(1, len(path))):
+					spl = self._model_graph.edges[(path[i-1], path[i])]['spline']
+								
+					# Transport ref vector back to the inlet
+					ref1 = spl.transport_vector(ref1, 1.0, 0.0)
 
-						# Transport vector back up to estimate the rounding error
-						ref_back = spl.transport_vector(ref1, 0.0, 1.0)
-						a = angle(ref_org, ref_back, axis = spl.tangent(1.0), signed = True)
+					# Transport vector back up to estimate the rounding error
+					ref_back = spl.transport_vector(ref1, 0.0, 1.0)
+					a = angle(ref_org, ref_back, axis = spl.tangent(1.0), signed = True)
 
-						self._model_graph.nodes[path[i-1]]['ref'] = ref1
-						ref_org = ref1
+					self._model_graph.nodes[path[i-1]]['ref'] = ref1
+					ref_org = ref1
 
-						# Set angle to correct rounding error
-						self._model_graph.edges[(path[i-1], path[i])]['alpha'] = -a
+					# Set angle to correct rounding error
+					self._model_graph.edges[(path[i-1], path[i])]['alpha'] = -a
 
 
-				else: # Simple tube case
-					path.append(e[1])
-					spl = self._model_graph.edges[(path[0], path[1])]['spline']
-					ref1 =  cross(spl.tangent(0), np.array([0,0,1])) 
-					self._model_graph.nodes[path[0]]['ref'] = ref1
+			else: # Simple tube case
+				path.append(e[1])
+				spl = self._model_graph.edges[(path[0], path[1])]['spline']
+				ref1 =  cross(spl.tangent(0), np.array([0,0,1])) 
+				self._model_graph.nodes[path[0]]['ref'] = ref1
 
-					# Transport reference along the path
-					for i in range(len(path)-1):
+				# Transport reference along the path
+				for i in range(len(path)-1):
+					spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
+					# Transport ref vector 
+					ref1 = spl.transport_vector(ref1, 0.0, 1.0)
+					self._model_graph.nodes[path[i+1]]['ref'] = ref1
+
+
+		if self._model_graph.nodes[e[0]]['type'] == "sep":
+
+			# self._model_graph et path to the next sep node
+			path = []
+			end_bif = False
+			for n in nx.dfs_successors(self._model_graph, source=e[0]):
+				if self._model_graph.nodes[n]['type'] == "bif":
+					end_bif = True
+					break
+				else: 
+					path.append(n)
+
+			if len(path) > 1:
+
+				if end_bif:
+
+					ref0 = self._model_graph.nodes[e[0]]['ref']
+					in_edge = [edg for edg in self._model_graph.in_edges(path[0])][0]
+					out_edge = [edg for edg in self._model_graph.out_edges(path[-1])][0]
+
+					length = [self._model_graph.edges[in_edge]['spline'].length()]
+
+					# Transport original reference to the target reference
+					for i in range(len(path) - 1):
+						# Transport ref vector downstream
 						spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
-						# Transport ref vector 
-						ref1 = spl.transport_vector(ref1, 0.0, 1.0)
-						self._model_graph.nodes[path[i+1]]['ref'] = ref1
+						ref0 = spl.transport_vector(ref0, 0.0, 1.0)
+						length.append(spl.length())
 
+					length.append(self._model_graph.edges[out_edge]['spline'].length())
 
-			if self._model_graph.nodes[e[0]]['type'] == "sep":
+					# Compute target symmetric vectors
+					sym_angles = [pi / 2, pi, 3 * pi / 2]
+					sym = [self._model_graph.nodes[path[-1]]['ref']]
 
-				# self._model_graph et path to the next sep node
-				path = []
-				end_bif = False
-				for n in nx.dfs_successors(self._model_graph, source=e[0]):
-					if self._model_graph.nodes[n]['type'] == "bif":
-						end_bif = True
-						break
-					else: 
-						path.append(n)
+					tg = self._model_graph.edges[out_edge]['spline'].tangent(0.0)
+					for a in sym_angles:
+						rot_vect = rotate_vector(sym[0], tg, a)
+						sym.append(rot_vect)
 
-				if len(path) > 1:
+					# Find the minimum angle
+					min_a = 5.0
+					for i in range(len(sym)):
+						a = angle(ref0, sym[i], axis = tg, signed =True)
 
-					if end_bif:
+						if abs(a) < abs(min_a):
+							min_a = a
+							min_ind = i
 
-						ref0 = self._model_graph.nodes[e[0]]['ref']
-						in_edge = [edg for edg in self._model_graph.in_edges(path[0])][0]
-						out_edge = [edg for edg in self._model_graph.out_edges(path[-1])][0]
+					# Smoothly distribute the rotations along the path
+					coef = np.array(length) / sum(length) * min_a
 
-						length = [self._model_graph.edges[in_edge]['spline'].length()]
+					# Rotate ref0
+					tg = -self._model_graph.edges[in_edge]['spline'].tangent(1.0)
+					self._model_graph.nodes[path[0]]['ref'] = rotate_vector(self._model_graph.nodes[path[0]]['ref'], tg, coef[0])
 
-						# Transport original reference to the target reference
-						for i in range(len(path) - 1):
-							# Transport ref vector downstream
+					# Rotate path
+					for i in range(len(path) - 1):
+						if i == len(path) - 2:
+							self._model_graph.edges[(path[i], path[i+1])]['connect'] = min_ind
+							self._model_graph.edges[(path[i], path[i+1])]['alpha'] = coef[i + 1]
+						else:
+							self._model_graph.edges[(path[i], path[i+1])]['alpha'] = coef[i + 1]
+
 							spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
+							ref0 = self._model_graph.nodes[path[i]]['ref'] 
 							ref0 = spl.transport_vector(ref0, 0.0, 1.0)
-							length.append(spl.length())
+							self._model_graph.nodes[path[i+1]]['ref'] = rotate_vector(ref0, spl.tangent(1.0), coef[i + 1])
 
-						length.append(self._model_graph.edges[out_edge]['spline'].length())
+					# Rotate ref1
+					tg = -self._model_graph.edges[out_edge]['spline'].tangent(0.0)
+					self._model_graph.nodes[path[-1]]['ref'] = rotate_vector(self._model_graph.nodes[path[-1]]['ref'], tg, coef[-1])
 
-						# Compute target symmetric vectors
-						sym_angles = [pi / 2, pi, 3 * pi / 2]
-						sym = [self._model_graph.nodes[path[-1]]['ref']]
+				else: 
+						
+					ref0 = self._model_graph.nodes[e[0]]['ref']
 
-						tg = self._model_graph.edges[out_edge]['spline'].tangent(0.0)
-						for a in sym_angles:
-							rot_vect = rotate_vector(sym[0], tg, a)
-							sym.append(rot_vect)
+					# Transport original reference to the target reference
+					for i in range(len(path) - 1):
+						# Transport ref vector downstream
+						spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
+						ref0 = spl.transport_vector(ref0, 0.0, 1.0)
 
-						# Find the minimum angle
-						min_a = 5.0
-						for i in range(len(sym)):
-							a = angle(ref0, sym[i], axis = tg, signed =True)
-
-							if abs(a) < abs(min_a):
-								min_a = a
-								min_ind = i
-
-						# Smoothly distribute the rotations along the path
-						coef = np.array(length) / sum(length) * min_a
-
-						# Rotate ref0
-						tg = -self._model_graph.edges[in_edge]['spline'].tangent(1.0)
-						self._model_graph.nodes[path[0]]['ref'] = rotate_vector(self._model_graph.nodes[path[0]]['ref'], tg, coef[0])
-
-						# Rotate path
-						for i in range(len(path) - 1):
-							if i == len(path) - 2:
-								self._model_graph.edges[(path[i], path[i+1])]['connect'] = min_ind
-								self._model_graph.edges[(path[i], path[i+1])]['alpha'] = coef[i + 1]
-							else:
-								self._model_graph.edges[(path[i], path[i+1])]['alpha'] = coef[i + 1]
-
-								spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
-								ref0 = self._model_graph.nodes[path[i]]['ref'] 
-								ref0 = spl.transport_vector(ref0, 0.0, 1.0)
-								self._model_graph.nodes[path[i+1]]['ref'] = rotate_vector(ref0, spl.tangent(1.0), coef[i + 1])
-
-						# Rotate ref1
-						tg = -self._model_graph.edges[out_edge]['spline'].tangent(0.0)
-						self._model_graph.nodes[path[-1]]['ref'] = rotate_vector(self._model_graph.nodes[path[-1]]['ref'], tg, coef[-1])
-
-					else: 
-					
-						ref0 = self._model_graph.nodes[e[0]]['ref']
-
-						# Transport original reference to the target reference
-						for i in range(len(path) - 1):
-							# Transport ref vector downstream
-							spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
-							ref0 = spl.transport_vector(ref0, 0.0, 1.0)
-
-							if self._model_graph.nodes[path[i+1]]['ref'] is None: # Reg node case
-								self._model_graph.nodes[path[i+1]]['ref'] = ref0
+						if self._model_graph.nodes[path[i+1]]['ref'] is None: # Reg node case
+							self._model_graph.nodes[path[i+1]]['ref'] = ref0
 
 
 
@@ -2213,22 +2223,75 @@ class ArterialTree:
 		
 		if self._model_graph is not None:
 
-			# Get path between e[0] and e[1]
-			path = list(nx.all_simple_paths(self._model_graph, source=e[0], target=e[1]))[0]
-
-			# Get all downstream nodes
-			downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
-
-			# Remove them from model graph
-			for node in downstream_nodes:
-				self._model_graph.remove_node(node)
-
 			if preserve_shape:
-			
-				if self._model_graph.out_degree(e[0]) == 1 and self._model_graph.in_degree(e[0]) == 1:
-					self._model_graph.nodes[e[0]]['type'] = "reg"	
+				
+				# Get path between e[0] and e[1]
+				path = list(nx.all_simple_paths(self._model_graph, source=e[0], target=e[1]))[0]
+
+				if self._model_graph.nodes[path[1]]['type']=="bif": # Furcation branch
+					if self._model_graph.nodes[path[1]]['bifurcation'].get_n() == 2: # Furcation is a bifucartion
+
+						# Get all downstream nodes
+						downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
+
+						# Remove them from model graph
+						for node in downstream_nodes:
+							self._model_graph.remove_node(node)
+
+						# Get in and out bifurcation edges
+						n_in = e[0]
+						n_out = list(self._model_graph.successors(path[1]))[0]
+
+						spl = self._model_graph.nodes[path[1]]['bifurcation'].get_spl()
+
+						self._model_graph.remove_node(path[1])
+						self._model_graph.nodes[n_in]['type'] = "reg"
+						self._model_graph.nodes[n_out]['type'] = "reg"
+
+						self._model_graph.nodes[n_in]['ref'] = None
+						self._model_graph.nodes[n_out]['ref'] = None
+
+						# Connect them with bifurcation spline
+						self._model_graph.add_edge(n_in, n_out, coords = 0, spline = spl[0], alpha = None, connect = 0)
+
+						n_first = n_in
+						n_last = n_out
+						# Reset previous rotation values
+						pred = self._model_graph.predecessors(n_in)
+						for n in pred:
+							if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
+								n_first = n
+								break
+							else: pred = self._model_graph.predecessors(n)
+
+						for n in nx.dfs_successors(self._model_graph, source=n_out):
+							if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
+								n_last = n
+								break
+
+						reset_edges = list(nx.all_simple_edge_paths(self._model_graph, n_first, n_last))[0]
+
+						for re in reset_edges:
+							self._model_graph.edges[re]['connect'] = 0
+							self._model_graph.edges[re]['alpha'] = None
+
+						# Recompute alpha and connect values
+						self.__compute_rotations(reset_edges[0])
+
+					else: # Furcation is a trifurcation or more
+						pass
+
+				else:
+					# Get all downstream nodes
+					downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[1]))
+
+					# Remove them from model graph
+					for node in downstream_nodes:
+						self._model_graph.remove_node(node)
+
+				
 			else:
-				if self._model_graph.out_degree(e[0]) == 1 and self._model_graph.in_degree(e[0]) == 1 :
+				if self._model_graph.out_degree(e[0]) == 1 and self._model_graph.in_degree(e[0]) == 1:
 
 					# Create tables of regular nodes data
 					coords = np.vstack((self._model_graph.edges[eprec]['coords'], self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[esucc]['coords']))

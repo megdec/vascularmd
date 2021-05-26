@@ -462,9 +462,12 @@ def test_remove_branch():
 	file =  open("TAMU/simple_network.obj", 'rb') 
 	tree = pickle.load(file)
 	tree.show(False, True, False)
-	tree.remove_branch((4,8))
+	tree.remove_branch((5,7))
 	tree.show(False, False, False)
 	tree.show(False, True, False)
+	tree.compute_cross_sections(24, 0.2, False)
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
 
 
 
