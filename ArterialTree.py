@@ -496,7 +496,7 @@ class ArterialTree:
 
 			if self._model_graph.nodes[e[0]]['type'] == "sep":
 
-				# self._model_graphet path to the next sep node
+				# self._model_graph et path to the next sep node
 				path = []
 				end_bif = False
 				for n in nx.dfs_successors(self._model_graph, source=e[0]):
@@ -763,7 +763,7 @@ class ArterialTree:
 		# bif = Nfurcation("spline", [spl_out, AP, 0.5])
 
 		# Five crsec model
-		bif = Nfurcation("crsec", [C, AC, AP, 0.5])
+		bif = Nfurcation("crsec", [C, AC, AP, 0.2])
 		#bif.show(True)
 
 			
@@ -2169,7 +2169,7 @@ class ArterialTree:
 
 
 	
-	def remove_branch(self, e, preserve_shape = False):
+	def remove_branch(self, e, preserve_shape = True):
 
 		""" Cuts the branch at edge e and all the downstream branches. 
 		If a cross section graph is already computed, recomputes the cross sections at the cut part.
@@ -2186,13 +2186,12 @@ class ArterialTree:
 
 
 		# Get all downstream nodes
-		downstream_nodes = np.array(list(nx.dfs_successors(self._topo_graph, source=e[1]).values())).reshape((-1,))
+		downstream_nodes =  list(nx.dfs_preorder_nodes(self._topo_graph, source=e[1]))
 
 		# Remove them from topo graph
 		for node in downstream_nodes:
 			self._topo_graph.remove_node(node)
 
-		self._topo_graph.remove_node(e[1])	
 
 		# Merge data and remove bifurcation point
 		if self._topo_graph.out_degree(e[0]) == 1 and self._topo_graph.in_degree(e[0]) == 1:
@@ -2214,31 +2213,30 @@ class ArterialTree:
 		
 		if self._model_graph is not None:
 
-			# Remove them from spline graph
-			for node in downstream_nodes:
-				self._data_graph.remove_node(node)
-				self._model_graph.remove_node(node)
+			# Get path between e[0] and e[1]
+			path = list(nx.all_simple_paths(self._model_graph, source=e[0], target=e[1]))[0]
 
-			self._model_graph.remove_node(e[1])
-			self._data_graph.remove_node(e[1])
+			# Get all downstream nodes
+			downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
+
+			# Remove them from model graph
+			for node in downstream_nodes:
+				self._model_graph.remove_node(node)
 
 			if preserve_shape:
 			
 				if self._model_graph.out_degree(e[0]) == 1 and self._model_graph.in_degree(e[0]) == 1:
 					self._model_graph.nodes[e[0]]['type'] = "reg"	
-					self._data_graph.nodes[e[0]]['type'] = "reg"
 			else:
 				if self._model_graph.out_degree(e[0]) == 1 and self._model_graph.in_degree(e[0]) == 1 :
 
 					# Create tables of regular nodes data
-					coords = np.vstack((self._data_graph.edges[eprec]['coords'], self._data_graph.nodes[e[0]]['coords'], self._data_graph.edges[esucc]['coords']))
+					coords = np.vstack((self._model_graph.edges[eprec]['coords'], self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[esucc]['coords']))
 					# Create new edge by merging the 2 edges of regular point
-					self._data_graph.add_edge(eprec[0], esucc[1], coords = coords)
+					self._model_graph.add_edge(eprec[0], esucc[1], coords = coords)
 					# Remove regular point
-					self._data_graph.remove_node(e[0])
-
-					# Remove bifurcation point, reapproximate the new edge
 					self._model_graph.remove_node(e[0])
+
 					spl = self.__spline_approximation_edge((eprec[0], esucc[1]))
 
 					# Create new edge by merging the 2 edges of regular point

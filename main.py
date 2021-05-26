@@ -373,16 +373,20 @@ def test_aneurisk(patient):
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
 	
-	tree.low_sample(0.04)
+	tree.low_sample(0.05)
 	#tree.add_noise_radius(0.1)
 	tree.show(True, False, False)
-	tree.resample(1.5)
+	#tree.write_swc("centerline.swc")
+	#tree.resample(1.5)
 	#tree.show(True, False, False)
 	tree.model_network()
 	#tree.spline_approximation()
 	#tree.show(False, True, False)
 	#tree.correct_topology()
-	tree.show(False, True, True)
+	tree.show(False, True, False)
+
+	file = open(patient + "_ArterialTree.obj", 'wb') 
+	pickle.dump(tree, file)
 
 
 	t1 = time.time()
@@ -396,6 +400,7 @@ def test_aneurisk(patient):
 	print("The process took ", t2 - t1, "seconds." )
 
 	print("plot mesh")
+	pv.set_plot_theme("document")
 	mesh.plot(show_edges=True)
 	mesh.save("Results/Aneurisk/" + patient + "_mesh_surface.vtk")
 
@@ -452,28 +457,21 @@ def test_brava(patient):
 	"""
 
 
-def TAMU():
-	file =  open("P9_ArterialTree.obj", 'rb') 
+def test_remove_branch():
+
+	file =  open("TAMU/simple_network.obj", 'rb') 
 	tree = pickle.load(file)
 	tree.show(False, True, False)
+	tree.remove_branch((4,8))
+	tree.show(False, False, False)
+	tree.show(False, True, False)
 
-	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, False)
-	t2 = time.time()
-	print("The process took ", t2 - t1, "seconds." )
-
-	t1 = time.time()
-	mesh = tree.mesh_surface()
-	t2 = time.time()
-	print("The process took ", t2 - t1, "seconds." )
-	mesh.plot(show_edges=True)
-	mesh.save("P9_mesh.vtk")
 
 
 
 #test_brava("P9")
-#TAMU()
-test_aneurisk("C0099")
+test_remove_branch()
+#test_aneurisk("C0099")
 #validation_vessel_model()
 #number_of_control_points()
 #dom_points()
