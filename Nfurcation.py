@@ -27,8 +27,9 @@ class Nfurcation:
 
 		""" Keyword arguments:
 		method -- furcation model used (spline or crsec)
+		if "spline" : args = [[spl1, spl2, ...], R]
 		if "spline" : args = [[spl1, spl2, ...], [[AP1], [AP2],...], R]
-		if "crsec" : args = [[crsec1, crsec2, ...], [[AP_crsec1], [AP_crsec2]...], AP, R]
+		if "crsec" : args = [[crsec1, crsec2, ...], [[AP_crsec1], [AP_crsec2]...], [AP], R]
 		if "angle" : args = [[crsec1, crsec2, ...], [a1, a2...], R]
 		"""
 	
@@ -41,7 +42,10 @@ class Nfurcation:
 
 			# Set end sections
 			self._spl = args[0]
-			self._AP = args[1]
+			if len(args) < 3:
+				self.__set_AP()
+			else:
+				self._AP = args[1]
 
 			self._endsec = []
 
@@ -392,6 +396,36 @@ class Nfurcation:
 
 					# If not, rotation(?)
 		"""
+
+	def __set_AP(self):
+		""" Set AP point """
+
+		for i in range(len(self._spl)-1):
+
+			t_merge = [0.0, 0.0]
+			intersec = [None, None]
+
+			for ind in [0, 1]:
+
+				#Plot distance as a function of time
+				times, dist = splines[i+1-ind].distance(splines[i+ind].get_points())
+				radius = splines[i+1-ind].radius(times)
+				idx = np.argwhere(np.diff(np.sign(radius - dist))).flatten()
+
+				if len(idx)> 0:
+					intersec[ind] = splines[i+ind].get_points()[idx[-1], :-1] 
+					t_merge[ind] = splines[i+ind].project_point_to_centerline(intersec[ind])
+
+			
+			if t_merge[0] > 0.0 and t_merge[1] > 0.0:
+
+				# Apex direction 
+				v = intersec[1] - intersec[0]
+				v = v / norm(v)
+				ap, t = splines[i].intersection(splines[i+1], v, t_merge[0], 1.0)
+				AP.append(ap)
+
+		self._AP = AP
 
 
 	def __set_tAP(self): 
