@@ -920,7 +920,7 @@ def chord_length_parametrization(D):
 
 def parallel_bif(bif, N, d, end_ref):
 
-	bif.cross_sections(N, d, end_ref)
+	bif.compute_cross_sections(N, d, end_ref)
 	return bif
 
 

@@ -402,7 +402,7 @@ class Spline:
 		ASE_act = model.quality("ASE")
 		ASE_prec = (ASE_act[0] + thres + 1, ASE_act[1] + thres + 1)
 
-		while n < len(data) and n < 100 and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
+		while n < len(data) and n < 150 and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -424,7 +424,7 @@ class Spline:
 
 		ASE = model.quality("ASE")
 
-		while n < len(data) and n < 100 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
+		while n < len(data) and n < 150 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 

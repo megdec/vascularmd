@@ -289,15 +289,15 @@ def validation_vessel_model():
 
 				for model in [[False, "None", False], [False, "None", True], [False, "AIC", False], [True, "AICC", False], [True, "SBC", False], [True, "CV", False], [True, "GCV", False]]:
 
-					#try:
-					if True:
+					try:
+					
 						tree.model_network(radius_model = model[0], criterion=model[1], akaike=model[2])
 						model_graph = tree.get_model_graph()
 
 						# Model spline
 						for e in model_graph.edges():
 							spl_model = model_graph.edges[e]['spline']
-						spl_model.show(data=spl_ref.get_points())
+						#spl_model.show(data=spl_ref.get_points())
 						
 
 						# Cell quality
@@ -358,8 +358,8 @@ def validation_vessel_model():
 							
 						f.write(str(patient) + "\t" + str(n_tube) +  "\t" + model_name + "\t" + str(model[1]) + "\t" + str(sampling[i]) + "\t" + str(noise_spatial[i]) + "\t" + str(noise_radius[i])+ "\t" + str(ASE[0]) + "\t" + str(ASE[1]) + "\t" + str(ASEder[0]) + "\t" + str(ASEder[1]) + "\t" + str(ASEcurv) +  "\t" + str(l_diff) + "\n")
 					
-					#except:		
-					#	print("Convergence Failed", sampling[i], noise_radius[i], noise_spatial[i])
+					except:		
+						print("Convergence Failed", sampling[i], noise_radius[i], noise_spatial[i])
 							
 	f.close()
 
@@ -373,11 +373,11 @@ def test_aneurisk(patient):
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
 	
-	tree.low_sample(0.05)
+	tree.low_sample(0.1)
 	#tree.add_noise_radius(0.1)
 	tree.show(True, False, False)
 	#tree.write_swc("centerline.swc")
-	#tree.resample(1.5)
+	tree.resample(1.5)
 	#tree.show(True, False, False)
 	tree.model_network()
 	#tree.spline_approximation()
@@ -385,12 +385,12 @@ def test_aneurisk(patient):
 	#tree.correct_topology()
 	tree.show(False, True, False)
 
-	file = open(patient + "_ArterialTree.obj", 'wb') 
-	pickle.dump(tree, file)
+	#file = open(patient + "_ArterialTree.obj", 'wb') 
+	#pickle.dump(tree, file)
 
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, False)
+	tree.compute_cross_sections(24, 0.2, True)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
@@ -412,8 +412,8 @@ def test_aneurisk(patient):
 		mesh = bifurcations[i].mesh_surface()
 		#bifurcations[i].show(True)
 		mesh.plot(show_edges = True)
-		file = open(patient + "_bif_" + str(i) + ".obj", 'wb') 
-		pickle.dump(bifurcations[i], file)
+		#file = open(patient + "_bif_" + str(i) + ".obj", 'wb') 
+		#pickle.dump(bifurcations[i], file)
 
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
@@ -433,12 +433,6 @@ def test_brava(patient):
 	tree.model_network()
 	tree.show(False, True, False)
 
-	# Save object
-	file = open(patient + "_ArterialTree.obj", 'wb') 
-	pickle.dump(tree, file)
-
-
-	"""
 
 	t1 = time.time()
 	tree.compute_cross_sections(24, 0.2, True)
@@ -454,28 +448,40 @@ def test_brava(patient):
 	mesh = mesh.compute_cell_quality()
 	mesh.plot(show_edges=True)
 	mesh.save("Results/BraVa/registered/crsec/" + patient + ".vtk")
-	"""
+
 
 
 def test_remove_branch():
 
-	file =  open("TAMU/simple_network.obj", 'rb') 
+	file = open("TAMU/simple_network.obj", 'rb') 
 	tree = pickle.load(file)
-	tree.show(False, True, False)
-	tree.remove_branch((5,7))
-	tree.show(False, False, False)
-	tree.show(False, True, False)
-	tree.compute_cross_sections(24, 0.2, False)
+
 	mesh = tree.mesh_surface()
 	mesh.plot(show_edges=True)
 
+	tree.show(False, True, False)
+	tree.remove_branch((4,8), False)
+
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	tree.show(False, False, False)
+	tree.show(False, True, False)
+	#tree.remove_branch((8,9))
+	#tree.show(False, False, False)
+	#tree.show(False, True, False)
+	
+	#tree.compute_cross_sections(24, 0.2, False)
+	#mesh = tree.mesh_surface()
+	#mesh.plot(show_edges=True)
 
 
 
-#test_brava("P9")
-test_remove_branch()
-#test_aneurisk("C0099")
-#validation_vessel_model()
+
+#test_brava("P3")
+#test_remove_branch()
+#test_aneurisk("C0097")
+validation_vessel_model()
 #number_of_control_points()
 #dom_points()
 #test_furcation_erwan()
