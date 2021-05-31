@@ -703,15 +703,22 @@ class ArterialTree:
 	
 
 
-	def __combine_nfurcation(self, bifs, ind):
+	def __combine_nfurcation(self, n):
 
 		""" Returns merged nfurcation from two close bifurcations
 
 		Keyword arguments: 
-		args -- list of arguments of the bifurcations 
-		ind -- index of the branch to connect 
+		n -- node of the bifurcation to combine in model graph
 		"""
 
+		bif2 =  self._model_graph.nodes[n]['bifurcation']
+
+		e_in = [e for e in self._model_graph.in_edges(n)]
+		nbifprec = list(self._model_graph.predecessors(e_in[0][0]))[0]
+		branch = list(self._model_graph.successors(nbifprec))
+		branch = branch.index(e_in[0][0])
+
+		bif1 = self._model_graph.nodes[nbifprec]['bifurcation']
 
 		def connect_nodes(bif1, bif2, tspl, P0, P1, n):
 
@@ -734,7 +741,6 @@ class ArterialTree:
 			d = norm(P0 - P1)
 
 			tg = P0 - P1
-
 			tg = tg / norm(tg)
 
 			pint0 = P0 -  tg * norm(P0 - P1) * relax
@@ -763,8 +769,7 @@ class ArterialTree:
 					
 				pt = bif2.send_to_surface(P, n, 1)
 				pt = bif1.send_to_surface(pt, n, 0)
-				#if norm(pt - P) == 0.0:
-					
+		
 
 				nds[i] = pt
 				
@@ -772,117 +777,129 @@ class ArterialTree:
 
 
 
-		# Compute connecting segments
-		for i in range(len(bifs) - 1):
+		# Get separation nodes
+		end1, bifsec1, nds1, connect1 = bif1.get_crsec()
+		end2, bifsec2, nds2, connect2 = bif2.get_crsec()
 
-			bif1 = bifs[i]
-			bif2 = bifs[i+1]
+		sep1 = []
+		c1 = connect1[branch + 1]
+		for j in range(len(c1)):
+			sep1.append(bifsec1[c1[j]])
 
-			# Get separation nodes
-			end1, bifsec1, nds1, connect1 = bif1.get_crsec()
-			end2, bifsec2, nds2, connect2 = bif2.get_crsec()
+		sep2 = []
+		c2 = connect2[0]
+		for j in range(len(c2)):
+			sep2.append(bifsec2[c2[j]])
 
-			sep1 = []
-			c1 = connect1[ind[i] + 1]
-			for j in range(len(c1)):
-				sep1.append(bifsec1[c1[j]])
+		# Get trajectory spline
+		relax = 0.15
 
-			sep2 = []
-			c2 = connect2[0]
-			for j in range(len(c2)):
-				sep2.append(bifsec2[c2[j]])
+		tspl1 = bif1.get_tspl()
+		tspl1 = tspl1[branch + 1]
+		tg1 = -tspl1.tangent(1.0)
 
-			# Get trajectory spline
-			relax = 0.15
+		tspl2 = bif2.get_tspl()
+		tspl2 = tspl2[0]
+		tg2 = -tspl2.tangent(1.0)
 
-			tspl1 = bif1.get_tspl()
-			tspl1 = tspl1[ind[i] + 1]
-			tg1 = -tspl1.tangent(1.0)
+		X1 = bif1.get_X()
+		X2 = bif2.get_X()
 
-			tspl2 = bif2.get_tspl()
-			tspl2 = tspl2[0]
-			tg2 = -tspl2.tangent(1.0)
+		D = norm(X1 - X2)
 
-			X1 = bif1.get_X()
-			X2 = bif2.get_X()
+		tg1 = tg1 / norm(tg1)
+		tg2 = tg2 / norm(tg2)
 
-			D = norm(X1 - X2)
+		P1 = X1 + tg1 * D * relax
+		P2 = X2 + tg2 * D * relax
 
-			tg1 = tg1 / norm(tg1)
-			tg2 = tg2 / norm(tg2)
+		spl = Spline()
+		spl.approximation(np.vstack((X1, P1, P2, X2)), [1,1,1,1], np.vstack((X1, tg1, tg2, X2)), False, n = 4, radius_model=False, criterion= "None")
+		P = spl.get_control_points()
+		P = np.hstack((P, np.zeros((4,1))))
+		tspl = Spline(P)
 
-			P1 = X1 + tg1 * D * relax
-			P2 = X2 + tg2 * D * relax
+		# Match nodes
+		#reorder = np.hstack((np.arange(12, len(sep1)), np.arange(0, 12)))
+		#new_sep1 = []
+		#for j in range(len(sep1)):
+		#	new_sep1.append(sep1[reorder[j]])
+
+		# sep1 = new_sep1
+
+		# Find closest symetric node
+		sym_nodes = [0, self._N//4, self._N//2, self._N//4 * 3] 
+		tvec = tspl.project_point_to_centerline(sep1[0])
+		vec = sep1[0] - tspl.point(tvec)
+		vec = vec / norm(vec)
+
+		min_a = 5.0
+		for j in range(len(sym_nodes)):
+			# Project to tspl to find vector
+			tsym = tspl.project_point_to_centerline(sep2[sym_nodes[j]])
+			sym = sep1[0] - tspl.point(tsym)
+				
+			# Transport  
+			vec_trans = tspl.transport_vector(vec, tvec, tsym)
+			a = angle(vec_trans, sym, axis = tspl.tangent(tsym), signed =True)
+			if abs(a) < abs(min_a):
+				min_a = a
+				min_ind = sym_nodes[j]
+
+		connect_sep = np.hstack((np.arange(min_ind, self._N), np.arange(0, min_ind)))
+			
+		# Number of cross sections
+		n = int(tspl.length() / (bif1.get_spl()[branch].radius(1.0) * self._d))
+			
+		if n <= 1:
+			n = 2
+		if n//2 != 0:
+			n = n + 1
+		
+
+		# Connect nodes
+		nds = np.zeros((n, len(sep1), 3))
+		for j in range(len(sep1)):
+			nds[:,j,:] = connect_nodes(bif1, bif2, tspl, sep1[j], sep2[connect_sep[j]], n)
+
+
+		new_nds1 = nds[:n//2 + 1][::-1].copy()
+		new_nds2 = nds[n//2:].copy()
 
 		
-			spl = Spline()
-			spl.approximation(np.vstack((X1, P1, P2, X2)), [1,1,1,1], np.vstack((X1, tg1, tg2, X2)), False, n = 4, radius_model=False, criterion= "None")
+		nds1[branch + 1] = new_nds1[1:]
+		nds2[0] = new_nds2[1:]
 
-			P = spl.get_control_points()
-			P = np.hstack((P, np.zeros((4,1))))
+		end1[branch + 1] = new_nds1[0]
+		end2[0] = new_nds2[0]
 
-			tspl = Spline(P)
+		# Change bifurcation connection 
+		new_connect2 = connect2.copy()
+		for j in range(len(sep2)):
+			new_connect2[0][j] = connect2[0][connect_sep[j]]
 
-			# Match nodes
-			reorder = np.hstack((np.arange(12, len(sep1)), np.arange(0, 12)))
-			new_sep2 = []
-			for j in range(len(sep2)):
-				new_sep2.append(sep2[reorder[j]])
-
-			sep2 = new_sep2
-
-			# Find closest symmetric node
-
-			n = 10 # Number of cross sections
-
-			# Connect nodes
-			nds = np.zeros((n, len(sep1) , 3))
-			for j in range(len(sep1)):
-				nds[:,j,:] = connect_nodes(bif1, bif2, tspl, sep1[j], sep2[j], n)
-
-			# Display 
-			with plt.style.context(('ggplot')):
-					
-				fig = plt.figure(figsize=(10,7))
-				ax = Axes3D(fig)
-				ax.set_facecolor('white')
-				for j in range(len(sep1)):
-					ax.scatter(sep1[j][0], sep1[j][1], sep1[j][2])
-					ax.scatter(sep2[j][0], sep2[j][1], sep2[j][2])
-					ax.text(sep2[j][0], sep2[j][1], sep2[j][2], str(j))
-					ax.text(sep1[j][0], sep1[j][1], sep1[j][2], str(j))
-
-				for j in range(len(sep1)):
-					ax.plot(nds[:,j,0], nds[:,j,1], nds[:,j,2])
-					ax.scatter(nds[:,j,0], nds[:,j,1], nds[:,j,2])
-			plt.show()
+		# Modify furcations
+		bif1.set_crsec([end1, bifsec1, nds1, connect1])
+		bif2.set_crsec([end2, bifsec2, nds2, new_connect2])
 
 
-			new_nds1 = nds[:n//2 + 1][::-1]
-			new_nds2 = nds[n//2:]
-
-			# Reorder nds 
-			new_nds2 = new_nds2[:, reorder, :]
-
-			#new_nds1 = new_nds1[:, ::-1, :]
-
-			nds1[ind[i] + 1] = new_nds1[1:]
-			nds2[0] = new_nds2[1:]
-
-			end1[ind[i] + 1] = new_nds1[0]
-			end2[0] = new_nds2[0]
-
-			# Modify furcations
-			bifs[i].set_crsec([end1, bifsec1, nds1, connect1])
-			bifs[i+1].set_crsec([end2, bifsec2, nds2, connect2])
-
-			# Cut tspl
-			#bifs[i].set_tspl()
-			#bifs[i+1].set_tspl()
-
-		return bifs
-
+		self._model_graph.nodes[n]['bifurcation'] = bif2
+		self._model_graph.nodes[nbifprec]['bifurcation'] = bif1
 		
+
+		self._crsec_graph.edges[e_in[0]]['connect'] = new_connect2[0]
+		self._crsec_graph.edges[e_in[0]]['crsec'] = nds2[0]
+		self._crsec_graph.edges[(e_in[0][0], nbifprec)]['crsec'] = nds1[branch + 1]
+		self._crsec_graph.nodes[e_in[0][0]]['crsec'] = end2[0]
+		self._crsec_graph.nodes[e_in[0][0]]['coords'] = tspl.point(0.5, True)
+
+		# Cut tspl
+		tspl1, tspl2 = tspl.split_time(0.5)
+		tspl1.reverse()
+		
+		self._model_graph.edges[(nbifprec, e_in[0][0])]['spline'] = tspl1
+		self._model_graph.edges[e_in[0]]['spline'] = tspl2
+
 
 
 
@@ -1016,32 +1033,7 @@ class ArterialTree:
 		for n in self._model_graph.nodes():
 			if self._model_graph.nodes[n]['combine']:
 				print("Combine!")
-				bif =  self._model_graph.nodes[n]['bifurcation']
-
-				e_in = [e for e in self._model_graph.in_edges(n)]
-				nbifprec = list(self._model_graph.predecessors(e_in[0][0]))[0]
-				branch = list(self._model_graph.successors(nbifprec))
-				branch = branch.index(e_in[0][0])
-				bifprec = self._model_graph.nodes[nbifprec]['bifurcation']
-
-				print([bifprec, bif])
-
-				bifs = self.__combine_nfurcation([bifprec, bif], [branch])
-				self._model_graph.nodes[n]['bifurcation'] = bifs[1]
-				self._model_graph.nodes[nbifprec]['bifurcation'] = bifs[0]
-
-				end1, bifsec1, nds1, connect1 = bifs[1].get_crsec()
-				end2, bifsec2, nds2, connect2 = bifs[0].get_crsec()
-				m = bifs[0].mesh_surface()
-				m.plot(show_edges=True)
-
-				m = bifs[1].mesh_surface()
-				m.plot(show_edges=True)
-
-
-				self._crsec_graph.edges[e_in[0]]['crsec'] = nds1[0]
-				self._crsec_graph.edges[(e_in[0][0], nbifprec)]['crsec'] = nds2[branch + 1]
-				self._crsec_graph.nodes[e_in[0][0]]['crsec'] = end1[0]
+				self.__combine_nfurcation(n)
 
 		nx.set_node_attributes(self._crsec_graph, None, name='id') # Add id attribute for meshing
 
@@ -1422,7 +1414,8 @@ class ArterialTree:
 
 				ind = []
 				for k in range(nbif):
-					ind.append((nodes_num[k*l], nodes_num[(k+1)*l - 1]))
+					ind.append((nodes_num[k*l:(k+1)*l]))
+
 
 				h = []
 				for s in [1, int(self._N/2) + 1]:
@@ -1430,13 +1423,29 @@ class ArterialTree:
 						if connect[s] in ind[k]:
 							h1 = [k]
 
-							if connect[s] == ind[k][0]:
+							if s == 1:
+								if connect[s] != ind[k][0] and connect[s]!= ind[k][-1]:
+									quarter = 1
+								else:
+									quarter = 0
+
+							#if connect[s] == ind[k][0]:
+							if ind[k].index(connect[s]) < ind[k].index(connect[s + 1]):
 								h1+=[0,1]
 							else:
 								h1+=[1,0]
 					h.append(h1)
 
 				f_ogrid_reorder = self.__reorder_faces(h, f_bif_ogrid, self._N, num_a, num_b)
+
+				
+				# Reorder faces for rotation
+				start_face = int(quarter * f_ogrid_reorder.shape[0] / 4)
+		
+				if start_face != 0:
+					print("Rotation")
+					f_ogrid_reorder = np.vstack((f_ogrid_reorder[start_face:, :], f_ogrid_reorder[:start_face, :]))
+		
 				cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_reorder)[:,1:]))
 
 				if flip_norm:
