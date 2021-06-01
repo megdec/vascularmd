@@ -399,7 +399,7 @@ class Nfurcation:
 
 	def __set_AP(self):
 		""" Set AP point """
-
+		AP = []
 		for i in range(len(self._spl)-1):
 
 			t_merge = [0.0, 0.0]
@@ -408,13 +408,13 @@ class Nfurcation:
 			for ind in [0, 1]:
 
 				#Plot distance as a function of time
-				times, dist = splines[i+1-ind].distance(splines[i+ind].get_points())
-				radius = splines[i+1-ind].radius(times)
+				times, dist = self._spl[i+1-ind].distance(self._spl[i+ind].get_points())
+				radius = self._spl[i+1-ind].radius(times)
 				idx = np.argwhere(np.diff(np.sign(radius - dist))).flatten()
 
 				if len(idx)> 0:
-					intersec[ind] = splines[i+ind].get_points()[idx[-1], :-1] 
-					t_merge[ind] = splines[i+ind].project_point_to_centerline(intersec[ind])
+					intersec[ind] = self._spl[i+ind].get_points()[idx[-1], :-1] 
+					t_merge[ind] = self._spl[i+ind].project_point_to_centerline(intersec[ind])
 
 			
 			if t_merge[0] > 0.0 and t_merge[1] > 0.0:
@@ -422,7 +422,7 @@ class Nfurcation:
 				# Apex direction 
 				v = intersec[1] - intersec[0]
 				v = v / norm(v)
-				ap, t = splines[i].intersection(splines[i+1], v, t_merge[0], 1.0)
+				ap, t = self._spl[i].intersection(self._spl[i+1], v, t_merge[0], 1.0)
 				AP.append(ap)
 
 		self._AP = AP

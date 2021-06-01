@@ -390,7 +390,7 @@ def test_aneurisk(patient):
 
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, True)
+	tree.compute_cross_sections(24, 0.2, False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
@@ -435,7 +435,7 @@ def test_brava(patient):
 
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, True)
+	tree.compute_cross_sections(24, 0.2, False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
@@ -476,11 +476,40 @@ def test_remove_branch():
 	#mesh.plot(show_edges=True)
 
 
+def test_remove_trifurcation():
+
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0032.vtp"
+	#file="/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
+
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	
+	tree.low_sample(0.1)
+	tree.show(True, False, False)
+	tree.resample(1.5)
+	tree.model_network()
+
+	tree.show(False, True, False)
+
+
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2, False)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
+
+	tree.remove_branch((2,6), False)
+	tree.show(False, True, False)
+
+	print("The process took ", t2 - t1, "seconds." )
+	mesh = tree.mesh_surface()
+	mesh.plot(show_edges=True)
+
 
 
 #test_brava("P9")
 #test_remove_branch()
-test_aneurisk("C0099-2")
+#test_aneurisk("C0099")
 #validation_vessel_model()
 #number_of_control_points()
 #dom_points()
@@ -489,3 +518,4 @@ test_aneurisk("C0099-2")
 #patient = "C0082"
 #split_tubes("/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/", patient + ".vtp", "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/Split/")
 #uniform_average()
+test_remove_trifurcation()

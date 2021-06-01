@@ -301,7 +301,7 @@ class Spline:
 			if akaike:
 				n = self.__nb_control_points_akaike(D)
 			else:
-				n = self.__nb_control_points_stability(D, 10**(-4))
+				n = self.__nb_control_points_stability(D, 10**(-3))
 
 		if radius_model: 
 

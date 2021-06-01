@@ -366,9 +366,6 @@ def intersection_segment_segment(coefs, data, normals, radius,i, j):
 		if (norm(data[j, :] - inter1) <= norm(data[j, :] - data[j + 1, :]) and norm(data[j+1, :] - inter1) < norm(data[j, :] - data[j + 1, :])):
 			if (norm(data[i, :] - inter2) <= norm(data[i, :] - data[i + 1, :]) and norm(data[i+1, :] - inter2) < norm(data[i, :] - data[i + 1, :])):
 				found = True
-				
-					
-
 				project = [inter2]
 
 				for k in range(i+1, j+1):
@@ -382,15 +379,16 @@ def intersection_segment_segment(coefs, data, normals, radius,i, j):
 
 				# Compute angle between both intersections
 				angles = angles / max(angles)
-				v0 = project[0]- center
-				v1 = project[-1] - center
-				r, phi0 =cart2pol(v0[0], v0[1])
-				r, phi1 =cart2pol(v1[0], v1[1])
-				angles = angles * (phi1 - phi0)
+
+				v0 = np.array((project[0] - center).tolist()  + [0.0])
+				v1 = np.array((project[-1] - center).tolist()  + [0.0])
+
+				ref = cross(v0, v1)
+				angles = angles * (angle(v0, v1, axis = ref, signed = True))
 
 				count = i + 1
 				for k in range(1, len(angles) - 1):
-					data[count] = pol2cart(radius, phi0 + angles[k]) + center
+					data[count] = center + rotate_vector(v0, ref, angles[k])[:-1]
 					count+=1
 
 	return data, found, inter1, inter2, center
@@ -456,16 +454,18 @@ def intersection_cercle_cercle(data, normals, radius,i, j):
 
 		# Compute angle between both intersections
 		angles = angles / max(angles)
-		v0 = project[0]- center
-		v1 = project[-1] - center
-		r, phi0 =cart2pol(v0[0], v0[1])
-		r, phi1 =cart2pol(v1[0], v1[1])
-		angles = angles * (phi1 - phi0)
+
+		v0 = np.array((project[0] - center).tolist()  + [0.0])
+		v1 = np.array((project[-1] - center).tolist()  + [0.0])
+
+		ref = cross(v0, v1)
+		angles = angles * (angle(v0, v1, axis = ref, signed = True))
 
 		count = i + 1
 		for k in range(1, len(angles) - 1):
-			data[count] = pol2cart(radius, phi0 + angles[k]) + center
+			data[count] = center + rotate_vector(v0, ref, angles[k])[:-1]
 			count+=1
+
 	
 	return data, found, inter1, inter2, center
 
@@ -541,20 +541,22 @@ def intersection_segment_cercle(coefs, data, normals, radius,i, j):
 
 			# Compute angle between both intersections
 			angles = angles / max(angles)
-			v0 = project[0]- center
-			v1 = project[-1] - center
-			r, phi0 =cart2pol(v0[0], v0[1])
-			r, phi1 =cart2pol(v1[0], v1[1])
-			angles = angles * (phi1 - phi0)
+
+			v0 = np.array((project[0] - center).tolist()  + [0.0])
+			v1 = np.array((project[-1] - center).tolist()  + [0.0])
+
+			ref = cross(v0, v1)
+			angles = angles * (angle(v0, v1, axis = ref, signed = True))
 
 			if i>j:
 				count = j + 1
 			else:
 				count = i + 1
-
-			for k in range(1, len(angles)-1):
-				data[count] = pol2cart(radius, phi0 + angles[k]) + center
+			
+			for k in range(1, len(angles) - 1):
+				data[count] = center + rotate_vector(v0, ref, angles[k])[:-1]
 				count+=1
+
 
 	return data, found, inter1, inter2, center
 

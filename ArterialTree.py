@@ -525,7 +525,7 @@ class ArterialTree:
 			# bif = Nfurcation("spline", [spl_out, AP, 0.5])
 
 			# Five crsec model
-			bif = Nfurcation("crsec", [C, AC, AP, 0.2])
+			bif = Nfurcation("crsec", [C, AC, AP, 0.3])
 
 			ref = bif.get_reference_vectors()
 			endsec = bif.get_endsec()
@@ -555,7 +555,6 @@ class ArterialTree:
 			else:
 				self._model_graph.remove_node(n)
 				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
-				print("bif", nmax)
 				self._model_graph.add_edge(e_in[0][0], nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
 				nbif = nmax
 				nmax += 1
@@ -2350,31 +2349,42 @@ class ArterialTree:
 
 				else: # Furcation is a trifurcation or more # NOT TESTED YET
 
+					# Create (n-1)-furcation
+					all_ids = list(self._model_graph.successors(path[1]))
+					all_ids.sort()
+					cut_id = all_ids.index(path[2])
+				
 					# Remove downstream nodes
 					downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
 					for node in downstream_nodes:
 						self._model_graph.remove_node(node)
 						if apply_crsec:
 							self._crsec_graph.remove_node(node)
+				
 
-					# Create (n-1)-furcation
-					all_ids = list(self._model_graph.successors(path[1]))
-					cut_id = all_ids.index(path[2])
+					old_furcation = self._model_graph.nodes[path[1]]['bifurcation']
+					spl_list = old_furcation.get_spl()
+					del spl_list[cut_id]
+					new_furcation = Nfurcation("spline", [spl_list, old_furcation.get_R()])
 
-					if cut_id == 0 or cut_id == len(all_ids) - 1:
+					# Update center node
+					self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
+					self._model_graph.nodes[path[1]]['coords'] = new_furcation.get_X()
 
-						old_furcation = self._model_graph.nodes[path[1]]['bifurcation']
-						new_furcation = Nfurcation("spline", old_furcation.get_spl().pop(cut_id), old_furcation.get_R())
+					# Update splines
+					self._model_graph.edges[(path[0], path[1])]['spline'] = new_furcation.get_tspl()[0]
+					k = 1
+					for j in range(len(all_ids)):
+						if j != cut_id:
+							self._model_graph.edges[(path[1], all_ids[j])]['spline'] = new_furcation.get_tspl()[k]
+							k+=1
 
-						# Update center node
+
+					if apply_crsec:
+						# Update cross sections 
+						new_furcation.compute_cross_sections(self._N, self._d)
 						self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
-						self._model_graph.nodes[path[1]]['coords'] = new_furcation.get_X()
-
-						if apply_crsec:
-							# Update cross sections 
-							new_furcation.compute_cross_sections(self._N, self._d)
-							self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
-							self.__furcation_cross_sections(path[1])
+						self.__furcation_cross_sections(path[1])
 
 
 
