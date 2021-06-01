@@ -338,7 +338,7 @@ class Nfurcation:
 		# Check distance between apexsec coordinates
 		for i in range(len(self._apexsec)):
 			for j in range(len(self._apexsec[i]) - 1):
-				if norm(self._apexsec[i][j + 1][:-1] - self._apexsec[i][j][:-1]) < 10*(-1):
+				if norm(self._apexsec[i][j + 1][:-1][0] - self._apexsec[i][j][:-1][0]) < 10*(-1):
 					self._apexsec.pop(j)
 
 		for i in range(1, len(self._endsec)):

@@ -248,9 +248,9 @@ def visu_projection(spl1, spl2):
 def validation_vessel_model():
 
 
-	sampling = [0.02, 0.02, 0.2, 0.05, 1, 1, 1, 1, 1, 1, 1, 1]
-	noise_spatial = [0.0, 0.0, 0.0, 0.0, 0.01, 0.1, 0.3, 0.5, 0, 0, 0, 0]
-	noise_radius = [0, 0, 0, 0, 0, 0, 0, 0, 0.01, 0.1, 0.3, 0.5]
+	sampling = [0.02, 0.05, 0.2, 0.5, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+	noise_spatial = [0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.1, 0.3, 0.5, 0, 0, 0, 0]
+	noise_radius = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.01, 0.1, 0.3, 0.5]
 
 	root="/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/Split/"
 	validation_files = [f for f in sorted(os.listdir(root))]
@@ -287,7 +287,7 @@ def validation_vessel_model():
 						
 				#tree.show(centerline=False)
 
-				for model in [[False, "None", False], [False, "None", True], [False, "AIC", False], [True, "AICC", False], [True, "SBC", False], [True, "CV", False], [True, "GCV", False]]:
+				for model in [[False, "None", False], [False, "None", True], [False, "AIC", False], [True, "AIC", False], [True, "AICC", False], [True, "SBC", False], [True, "CV", False], [True, "GCV", False]]:
 
 					try:
 					
@@ -478,10 +478,10 @@ def test_remove_branch():
 
 
 
-#test_brava("P3")
+#test_brava("P9")
 #test_remove_branch()
-#test_aneurisk("C0097")
-validation_vessel_model()
+test_aneurisk("C0099-2")
+#validation_vessel_model()
 #number_of_control_points()
 #dom_points()
 #test_furcation_erwan()

@@ -424,7 +424,7 @@ class Spline:
 
 		ASE = model.quality("ASE")
 
-		while n < len(data) and n < 150 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
+		while n < len(data) and n < 60 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -447,7 +447,7 @@ class Spline:
 
 		AIC_min = model.quality("AICC")
 
-		while n < len(data) and n < 100:# and (AIC_prec > AIC_act): 
+		while n < len(data) and n < 60:# and (AIC_prec > AIC_act): 
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
