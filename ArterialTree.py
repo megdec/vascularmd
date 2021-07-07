@@ -289,8 +289,9 @@ class ArterialTree:
 		n -- bifurcation node (model graph)
 		"""
 
-		all_id = [n for n in self._topo_graph.nodes()]
+		all_id = [nds for nds in self._topo_graph.nodes()]
 		label_dict_topo = dict(zip(all_id, all_id))
+
 
 		nmax = max(list(self._model_graph.nodes())) + 1
 		combine = False
@@ -300,12 +301,10 @@ class ArterialTree:
 		e_out.sort()
 
 		splines = []
-		dt = []
 
 		# Approximate vessels
 		for i in range(len(e_out)):
-
-			data = np.vstack((self._model_graph.nodes[e_in[0][0]]['coords'], self._model_graph.edges[e_in[0]]['coords'], self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords']))
+			data = np.vstack((self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords']))
 			nb_data_out = self._model_graph.edges[e_out[i]]['coords'].shape[0]
 			nb_min = 10
 
@@ -317,16 +316,24 @@ class ArterialTree:
 					e_act = e_next
 				else: break
 
-			dt.append(data)
-
 			values = np.zeros((4,4))
 			constraint = [False] * 4
 
-			if self._model_graph.nodes[e_in[0][0]]['type'] == "sep":
-				values[0,:] = self._model_graph.nodes[e_in[0][0]]['coords']
+			if self._model_graph.nodes[e_in[0][0]]['type'] != "bif":
+				data = np.vstack((self._model_graph.nodes[e_in[0][0]]['coords'], self._model_graph.edges[e_in[0]]['coords'], data))
+
+				if self._model_graph.nodes[e_in[0][0]]['type'] == "sep":
+					values[0,:] = self._model_graph.nodes[e_in[0][0]]['coords']
+					constraint[0] = True
+					values[1,:] = self._model_graph.nodes[e_in[0][0]]['tangent']
+					constraint[1] = True
+			else: 
+				values[0,:] = self._model_graph.nodes[n]['coords']
 				constraint[0] = True
-				values[1,:] = self._model_graph.nodes[e_in[0][0]]['tangent']
+				values[1,:] = self._model_graph.nodes[n]['tangent']
 				constraint[1] = True
+
+
 
 			spl = Spline()
 			spl.approximation(data, constraint, values, False, criterion = "AIC") 
@@ -340,15 +347,29 @@ class ArterialTree:
 			all_id = [n for n in self._model_graph.nodes()]
 			label_dict = dict(zip(all_id, all_id))
 			
-
-			pt = []
 			edges = [edg for edg in self._model_graph.out_edges(n)]
 			edges.sort()
 			node_id = [edg[1] for edg in edges]
-				
-			for s in range(len(splines)):
-				t = splines[s].length_to_time(15)
-				pt.append(splines[s].point(t))
+			
+			dist_min = False
+			tmax = False
+			l = 1
+			while not dist_min and not tmax:
+				pt = []
+				for s in range(len(splines)):
+					t = splines[s].length_to_time(l)
+					if t == 1.0:
+						tmax = True
+					pt.append(splines[s].point(t))
+
+				d = 1
+				for j in range(len(pt)-1):
+					if norm(pt[j] - pt[j+1]) < d:
+						d = norm(pt[j] - pt[j+1])
+
+				if d > 0.5:
+					dist_min = True
+				l += 1
 
 					
 			angles = np.zeros((len(pt), len(pt)))
@@ -373,14 +394,15 @@ class ArterialTree:
 				ind = np.argmin(angles[order[j-1]])
 				order.append(ind)
 				angles[:, ind] = [2*pi] * len(pt)
-						
+					
 			# Relabel nodes
 			for j in range(len(node_id)):
 				label_dict[node_id[order[j]]] = node_id[j]
 				label_dict_topo[node_id[order[j]]] = node_id[j]
-
+			
 			self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict_topo)
 			self._model_graph = nx.relabel_nodes(self._model_graph, label_dict)
+
 			# Reorder splines 
 			splines_reorder = []
 			for j in range(len(splines)):
@@ -458,26 +480,14 @@ class ArterialTree:
 			ax.set_axis_off()
 			plt.show()
 		"""
-	
-
 
 		# C0 cross sections
-		# Get index of the in spline with max diameter for C0
-		r = 0
-		ind = 0
-		for i in range(len(splines)):
-			rad = splines[i].radius(max(tAP[i]))
-			if rad > r:
-				r = rad
-				ind = i
-
-		t_ap = max(tAP[ind])
-
 
 		combine = False
 		merge = False
 
-		if splines[ind].time_to_length(t_ap) < splines[ind].radius(t_ap)*3:  # Check for combination of nfurcations
+		for i in range(len(splines)):
+			t_ap = max(tAP[i])
 
 			if self._model_graph.nodes[e_in[0][0]]['type'] == "sep":
 				nbifprec = list(self._model_graph.predecessors(e_in[0][0]))[0]
@@ -485,21 +495,41 @@ class ArterialTree:
 				branch = branch.index(e_in[0][0])
 				bifprec = self._model_graph.nodes[nbifprec]['bifurcation']
 
-				if bifprec.get_tspl()[branch + 1].length() + splines[ind].time_to_length(t_ap) < splines[ind].radius(t_ap)*3:
-					print("Trifurcation")
-					merge = True
-				else: 
-					print("Combination")
-					combine = True
-					C0 = bifprec.get_apexsec()[branch][0] # If merged bifurcations, C0 is the apex section of the previous bifurcation
-					t_cut = 0.0
+				if False: #bifprec.get_tspl()[branch + 1].project_point_to_centerline(self._model_graph.nodes[n]['coords'][:-1]) < 1.0:
 
-		else:
-			t_cut = splines[ind].length_to_time(splines[ind].time_to_length(t_ap) - splines[ind].radius(t_ap)*3)
-			spline_in, tmp_spl = splines[ind].split_time(t_cut)
-			C0 = [splines[ind].point(t_cut, True), splines[ind].tangent(t_cut, True)]
+					merge = True
+					combine = False
+				else:
+					if splines[i].time_to_length(t_ap) < splines[i].radius(t_ap)*4:  # Check for combination of nfurcations
+						if bifprec.get_tspl()[branch + 1].length() + splines[i].time_to_length(t_ap) < splines[i].radius(t_ap)*3:
+							merge = True
+							combine = False
+						else: 
+							if not merge:
+								combine = True
+								C0 = bifprec.get_apexsec()[branch][0] # If merged bifurcations, C0 is the apex section of the previous bifurcation
+								t_cut = 0.0
+
+		if combine: print("Combination")
+		if merge: print("Multifurcation")
 
 		if not merge: 
+			if not combine: 
+
+				# Get index of the in spline with max diameter for C0
+				r = 0
+				ind = 0
+				for i in range(len(splines)):
+					rad = splines[i].radius(max(tAP[i]))
+					if rad > r:
+						r = rad
+						ind = i
+
+				t_ap = max(tAP[ind])
+
+				t_cut = splines[ind].length_to_time(splines[ind].time_to_length(t_ap) - splines[ind].radius(t_ap)*3)
+				spline_in, tmp_spl = splines[ind].split_time(t_cut)
+				C0 = [splines[ind].point(t_cut, True), splines[ind].tangent(t_cut, True)]
 
 		
 			# Other cross sections
@@ -510,7 +540,7 @@ class ArterialTree:
 			for i in range(len(splines)):
 
 				t_ap = max(tAP[i])
-				t_cut = splines[i].length_to_time(splines[i].radius(t_ap) + splines[i].time_to_length(t_ap))
+				t_cut = splines[i].length_to_time(splines[i].radius(t_ap)*1 + splines[i].time_to_length(t_ap))
 				t_CUT.append(t_cut)
 
 				C.append([splines[i].point(t_cut, True), splines[i].tangent(t_cut, True)])
@@ -526,6 +556,7 @@ class ArterialTree:
 
 			# Five crsec model
 			bif = Nfurcation("crsec", [C, AC, AP, 0.3])
+			#bif.show(True)
 
 			ref = bif.get_reference_vectors()
 			endsec = bif.get_endsec()
@@ -556,6 +587,12 @@ class ArterialTree:
 				self._model_graph.remove_node(n)
 				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
 				self._model_graph.add_edge(e_in[0][0], nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
+
+				# Relabel sep node
+				all_id = [n for n in self._model_graph.nodes()]
+				label_dict = dict(zip(all_id, all_id))
+				label_dict[e_in[0][0]] = n
+				self._model_graph = nx.relabel_nodes(self._model_graph, label_dict)
 				nbif = nmax
 				nmax += 1
 
@@ -588,9 +625,8 @@ class ArterialTree:
 
 		else:
 		
-
 			# Change topology of topo graph
-			nbifprec = list(self._model_graph.predecessors(nbifprec))[0]
+			nbifprec = list(self._topo_graph.predecessors(n))[0]
 			for edg in e_out:
 				coords = np.vstack((self._topo_graph.edges[(nbifprec, n)]['coords'], self._topo_graph.nodes[n]['coords'], self._topo_graph.edges[edg]['coords']))
 				self._topo_graph.add_edge(nbifprec, edg[1], coords = coords)
@@ -620,11 +656,9 @@ class ArterialTree:
 			# Re-model furcation 
 			label_dict_topo = self.__model_furcation(nbifprec)
 
+
+
 		return label_dict_topo
-
-
-
-
 
 
 
@@ -1129,7 +1163,6 @@ class ArterialTree:
 		# Combine bifurcations
 		for n in self._model_graph.nodes():
 			if self._model_graph.nodes[n]['combine']:
-				print(n)
 				self.__combine_nfurcation(n)
 
 		nx.set_node_attributes(self._crsec_graph, None, name='id') # Add id attribute for meshing
@@ -1402,7 +1435,7 @@ class ArterialTree:
 		faces = faces[:nb_faces]
 		self._surface_mesh = pv.PolyData(vertices, faces)
 		
-		return self._surface_mesh
+		return pv.PolyData(vertices, faces)
 
 
 
@@ -2031,9 +2064,9 @@ class ArterialTree:
 
 
 
-	def spline_to_full(self):
+	def model_to_full(self):
 
-		""" Converts spline_graph to a full graph."""
+		""" Converts spline_graph to a full graph and set the full and topo graphs accordingly"""
 
 		G = nx.DiGraph()
 		k = 1
@@ -2067,7 +2100,9 @@ class ArterialTree:
 
 				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
 
-		return G
+		self._full_graph = G
+		self.__set_topo_graph()
+
 
 
 	#####################################
@@ -2075,7 +2110,8 @@ class ArterialTree:
 	#####################################
 
 
-	def deform_surface_to_mesh(self, mesh):
+
+	def deform_surface_to_mesh(self, mesh, edges=[]):
 
 		""" Deforms the original mesh to match a given surface mesh. 
 		Overwrite the cross section graph.
@@ -2084,8 +2120,10 @@ class ArterialTree:
 		mesh -- a surface mesh in vtk format
 		"""
 
+		if len(edges) == 0:
+			edges = [e for e in  self._crsec_graph.edges()]
 
-		for e in self._crsec_graph.edges():
+		for e in edges:
  
 			# Get the start cross section only if it is a terminating edge
 			if self._crsec_graph.in_degree(e[0]) == 0:
@@ -2477,7 +2515,7 @@ class ArterialTree:
 		return count
 
 
-	def add_noise_centerline(self, std):
+	def add_noise_centerline(self, std, normal = False):
 
 		""" Add noise to the radius of the initial centerlines.
 
@@ -2490,14 +2528,23 @@ class ArterialTree:
 			pts = self._topo_graph.edges[e]['coords']
 
 			for i in range(pts.shape[0]):
-				rand_dir = np.random.normal(0, 1, (1, 3))[0]
+				if normal:
+					# Random rotation angle
+					alpha = np.random.uniform(low=0.0, high=2*pi)
+					spl = self._model_graph.edges[e]['spline']
+					t = spl.project_point_to_centerline(pts[i,:-1])
+					tg = spl.tangent(t)
+					n = cross(np.array([0,1,0]), tg)
+					rand_dir = rotate_vector(n, tg, alpha)
+
+				else:
+					rand_dir = np.random.normal(0, 1, (1, 3))[0]
 
 				rand_norm = np.random.normal(0, std, (1, 1))[0]
-
 				pts[i, :-1] = pts[i,:-1] + rand_dir / norm(rand_dir) * pts[i,-1] * rand_norm
 
-			if std > 0.0:
-				pts = order_points(pts)
+			#if std > 0.0:
+			#	pts = order_points(pts)
 				
 			# Modify topo graph 
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
@@ -2890,6 +2937,60 @@ class ArterialTree:
 			file.write(str(mapping[p]) + '\t' + str(i) + '\t' + str(c[0]) + '\t' + str(c[1]) + '\t' + str(c[2]) + '\t' + str(c[3]) + '\t' + str(n) + '\n')
 
 		file.close()
+
+
+	def write_data_as_circles(self):
+		""" Writes the data points as circles on vtk format"""
+
+		def circle_polyline(coord, normal):
+
+			circle = pv.PolyData()
+			num = 20
+
+			v = np.zeros((num, 3))
+			f = []
+
+			angle = 2 * pi / num
+			angle_list = angle * np.arange(num)
+
+			ref = cross(normal, np.array([0,0,1]))
+			ref = ref/norm(ref)
+			for i in range(num):
+
+				n = rotate_vector(ref, normal, angle_list[i])
+				v[i, :] = coord[:-1] + coord[-1]*n
+				f.append([2, i, i+1])
+
+			f[-1][-1] = 0
+			circle.points = v
+			circle.lines = np.array(f)
+
+			return circle
+
+		circles = pv.MultiBlock()
+		centers = pv.MultiBlock()
+		for n in self._full_graph.nodes():
+
+			coord = self._full_graph.nodes[n]['coords']
+			# Get coordinates and normals of circle
+			centers[str(n)]= pv.Sphere(radius=0.2, center=(coord[0], coord[1], coord[2]))
+
+			normals = []
+			for k in self._full_graph.predecessors(n):
+				normal = coord[:-1] - self._full_graph.nodes[k]['coords'][:-1]
+				normals.append(normal / norm(normal))
+				
+
+			for k in self._full_graph.successors(n):
+				normal = coord[:-1] - self._full_graph.nodes[k]['coords'][:-1]
+				normals.append(-normal / norm(normal))
+				
+			circles[str(n) + "," + str(k)] = circle_polyline(coord, sum(normals))
+
+		return circles, centers
+
+
+
 
 
 

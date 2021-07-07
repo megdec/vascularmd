@@ -41,7 +41,7 @@ class Spline:
 			else: 
 				self._spl.knotvector = knot
 
-			#self.__set_length_tab()
+		self._model = [None, None]
 
 
 
@@ -79,6 +79,16 @@ class Spline:
 
 	def get_nb_control_points(self):
 		return len(self._spl.ctrlpts)
+
+	def get_model(self):
+		return self._model
+
+	def get_lbd(self):
+		lbd = []
+		for m in self._model:
+			if m is not None:
+				lbd.append(m.get_lbd())
+		return lbd
 
 
 
@@ -122,6 +132,27 @@ class Spline:
 			length.append(length[i-1] + norm(pts[i] - pts[i-1]))
 
 		self._length_tab = np.array(length)
+
+
+	def _set_lambda_model(self, lbd=[None, None]):
+		""" Modify the lambda values of the approximation models """
+		if lbd[0] != None:
+			self._model[0].set_lambda(lbd[0])
+
+		if lbd[1] != None:
+			self._model[1].set_lambda(lbd[1])
+
+		if len(self._model) == 2:
+
+			P =  np.hstack((self._model[0].P, np.reshape(self._model[1].P[:,-1], (self._model[1].P.shape[0],1))))
+			self._spl.ctrlpts = P.tolist()
+			self._spl.knotvector = self._model[0].get_knot()
+
+		else:
+			self._spl.ctrlpts = self_model[0].P.tolist()
+			self._spl.knotvector = self._model[0].get_knot()
+
+
 
 
 
@@ -301,7 +332,11 @@ class Spline:
 			if akaike:
 				n = self.__nb_control_points_akaike(D)
 			else:
-				n = self.__nb_control_points_stability(D, 10**(-3))
+				n = self.__nb_control_points_RMSE_thres(D, [0.5, 0.5*10**(-2)])
+				#n = self.__nb_control_points_max_dist_thres(D, [10**(-1), 10**(-3)])
+				#n = self.__nb_control_points_stability(D, 10**(-4))
+			print(n)
+				
 
 		if radius_model: 
 
@@ -349,8 +384,12 @@ class Spline:
 
 
 			P =  np.hstack((spatial_model.P, np.reshape(radius_model.P[:,-1], (radius_model.P.shape[0],1))))
+
+			self._model[0] = spatial_model
+			self._model[1] = radius_model
 			self._spl.ctrlpts = P.tolist()
 			self._spl.knotvector = spatial_model.get_knot()
+
 			
 
 
@@ -380,10 +419,10 @@ class Spline:
 					global_model = self.__optimize_model(global_model, criterion)
 					alpha, beta = global_model.get_magnitude()
 
-					
-
+			self._model[0] = global_model
 			self._spl.ctrlpts = global_model.P.tolist()
 			self._spl.knotvector = global_model.get_knot()
+
 			
 			
 		
@@ -391,7 +430,7 @@ class Spline:
 		
 	def __nb_control_points_stability(self, data, thres):
 
-		""" Find the optimal number of control points for a given ASE threshold """
+		""" Find the optimal number of control points for a given RMSE threshold """
 
 		from Model import Model
 
@@ -399,22 +438,21 @@ class Spline:
 		n = 4
 		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
-		ASE_act = model.quality("ASE")
-		ASE_prec = (ASE_act[0] + thres + 1, ASE_act[1] + thres + 1)
+		RMSE_act = model.quality("RMSE")
+		RMSE_prec = (RMSE_act[0] + thres + 1, RMSE_act[1] + thres + 1)
 
-		while n < len(data) and n < 150 and (abs(ASE_prec[0] - ASE_act[0])> thres or abs(ASE_prec[1] - ASE_act[1])> thres): # Stability
+		while n < len(data) and n < 100 and (abs(RMSE_prec[0] - RMSE_act[0])> thres or abs(RMSE_prec[1] - RMSE_act[1])> thres): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
-			ASE_prec = ASE_act[:]
-			ASE_act = model.quality("ASE")
+			RMSE_prec = RMSE_act[:]
+			RMSE_act = model.quality("RMSE")
 
 		return n
 
+	def __nb_control_points_RMSE_thres(self, data, thres):
 
-	def __nb_control_points_ASE_thres(self, data, thres):
-
-		""" Find the optimal number of control points for a given ASE threshold """
+		""" Find the optimal number of control points for a given RMSE threshold """
 
 		from Model import Model
 
@@ -422,15 +460,39 @@ class Spline:
 		n = 4
 		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
-		ASE = model.quality("ASE")
+		RMSE = model.quality("RMSE")
 
-		while n < len(data) and n < 60 and (ASE_prec[0] > thres[0] or ASE_prec[1] > thres[1]): # Stability
+		while n < len(data) and n < 100 and (RMSE[0] > thres[0] or RMSE[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
-			ASE = model.quality("ASE")
+			RMSE = model.quality("RMSE")
+		print(RMSE)
 
 		return n
+
+
+
+	def __nb_control_points_max_dist_thres(self, data, thres):
+
+		""" Find the optimal number of control points for a given RMSE threshold """
+
+		from Model import Model
+		
+		n = 4
+		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+		min_dist = model.quality("max_dist")
+
+		while n < len(data) and n < 100 and (min_dist[0] > thres[0] or min_dist[1] > thres[1]): # Stability
+			n += 1
+			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+
+			min_dist = model.quality("max_dist")
+		print(min_dist)
+
+		return n
+
 
 
 	def __nb_control_points_akaike(self, data):
@@ -447,7 +509,7 @@ class Spline:
 
 		AIC_min = model.quality("AICC")
 
-		while n < len(data) and n < 60:# and (AIC_prec > AIC_act): 
+		while n < len(data) and n < 200:# and (AIC_prec > AIC_act): 
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -1008,22 +1070,24 @@ class Spline:
 
 
 
-	def ASE(self, data):
+	def RMSE(self, data):
 		""" Returns the average squared error between the spline estimation and a set of data points.
-		Spatial and radius ASE are returned separatly."""
+		Spatial and radius RMSE are returned separatly."""
 
 		estim = self.estimated_point(data)
 
-		SE = np.sum((data - estim)**2, axis = 1)
-		ASE_spatial = np.sum(SE[:-1]) / len(data)
-		ASE_radius = SE[-1] / len(data)
+		MSE_spatial = np.sum(norm(data[:, :-1] - estim[:, :-1], axis=1)**2) / len(data)
+		RMSE_spatial = np.sqrt(MSE_spatial)
+		
+		MSE_radius = np.sum((data[:, -1] - estim[:, -1])**2) / len(data)
+		RMSE_radius = np.sqrt(MSE_radius)
 
-		return [ASE_spatial, ASE_radius]
+		return [RMSE_spatial, RMSE_radius]
 
 
-	def ASEder(self, data, data_der=None):
+	def RMSEder(self, data, data_der=None):
 		""" Returns the average squared error between the spline derivative estimation and a set of data points.
-		Spatial and radius ASE are returned separatly."""
+		Spatial and radius RMSE are returned separatly."""
 
 		# Estimation of the first derivative
 
@@ -1037,29 +1101,32 @@ class Spline:
 			estim = self.estimated_tangent(data[1:-1])
 
 
-		# ASEder computation
+		# RMSEder computation
 		estim = self.estimated_tangent(data)
 
-		SE = np.sum((data_der - estim)**2, axis = 1)
-		ASEder_spatial = np.sum(SE[:-1]) / len(data_der)
-		ASEder_radius = SE[-1] / len(data_der)
+		MSEder_spatial = np.sum(norm(data_der[:, :-1] - estim[:, :-1], axis=1)**2) / len(data)
+		RMSEder_spatial = np.sqrt(MSEder_spatial)
+		
+		MSEder_radius = np.sum((data_der[:, -1] - estim[:, -1])**2) / len(data)
+		RMSEder_radius = np.sqrt(MSEder_radius)
 
-		return [ASEder_spatial, ASEder_radius]
+		return [RMSEder_spatial, RMSEder_radius]
 
 
-	def ASEcurv(self, data, data_curv):
+	def RMSEcurv(self, data, data_curv):
 
 		""" Returns the average squared error between the spline curvature estimation and a set of data points.
-		Spatial and radius ASE are returned separatly."""
+		Spatial and radius RMSE are returned separatly."""
 
 		# Estimation of the curvature
 
-		# ASEcurv computation
+		# RMSEcurv computation
 		estim = self.estimated_curvature(data)
-		ASEcurv = np.sum((data_curv - estim)**2)
-	
 
-		return ASEcurv
+		MSEcurv = np.sum((data_curv - estim)**2) / len(data)
+		RMSEcurv = np.sqrt(MSEcurv)
+
+		return RMSEcurv
 
 
 

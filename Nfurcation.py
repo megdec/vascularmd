@@ -313,6 +313,47 @@ class Nfurcation:
 		self.__set_CT() # Common points (np array)
 
 		self.__set_tspl() # Trajectory splines
+
+
+
+	def rotate_apex_section(self, ind, angle):
+
+		""" Rotate apex section around the apex point 
+
+		Keyword arguments:
+		ind -- list of index of the apex section to rotate
+		angle -- rotation angle """
+
+		ct = self._apexsec[ind[0]][ind[1]][0][:-1]
+		tg = self._apexsec[ind[0]][ind[1]][1][:-1]
+
+		r = self._apexsec[ind[0]][ind[1]][0][-1]
+		ap = self._AP[ind[0] - 1]
+
+		v0 = ct - ap
+		v0 = v0/norm(v0)
+
+		ref = cross(v0, tg)
+		v1 = rotate_vector(v0, ref, angle)
+		v1 = v1/norm(v1)
+	
+
+		self._apexsec[ind[0]][ind[1]][0][:-1] = ap + v1 * r
+		self._apexsec[ind[0]][ind[1]][1][:-1] = cross(ref, v1)
+
+		self.__set_spl()
+		self.__set_tAP() # Times at apex
+
+		self.__set_key_pts() # Set key points times
+		self.__set_X() # Geometric center (np array)
+		self.__set_SP() # Separation points (np array)
+		self.__set_CT() # Common points (np array)
+
+		self.__set_tspl() # Trajectory splines
+		self._crsec = None
+		self._N = 24 # Number of nodes in a cross section
+		self._d = 0.2 # Ratio of density of cross section
+
 	
 
 
@@ -321,7 +362,7 @@ class Nfurcation:
 		""" Set the shape splines of the bifurcation.
 		"""
 
-		relax = 0.25
+		relax = 0.15
 
 		# Compute the shape splines from cross sections
 		self._spl = []
@@ -377,25 +418,24 @@ class Nfurcation:
 			self._spl.append(Spline(control_points = P, knot = knot))
 
 		# Check angles of the apex cross sections and apply rotation correction if necessary
-		"""
 		for i in range(self.n):
-			vec = (self._apexsec[i-1][0][:-1] - self._AP[0])
-			OP = self._apexsec[i-1][0][:-1] + self._apexsec[i-1][0][-1] * vec / norm(vec)
+			vec = (self._apexsec[i][0][0][:-1] - self._AP[0])
+			OP = self._apexsec[i][0][0][:-1] + self._apexsec[i][0][0][-1] * vec / norm(vec)
 
 			# Test if OP is at the surface of all other splines
 			ind_list = np.arange(0, self.n).tolist()
 			ind_list.remove(i)
-
+		
 			for ind in ind_list:
 
 				t = self._spl[ind].project_point_to_centerline(OP)
 				pt = self._spl[ind].point(t, True)
 
-				if norm(pt[:-1] - OP) < pt[-1]:
-					print("Error crsec")
+				if norm(pt[:-1] - OP) - pt[-1] < 10e-2:
+					self.rotate_apex_section([i, 0], 0.05)
+					self.__set_spl()
 
-					# If not, rotation(?)
-		"""
+
 
 	def __set_AP(self):
 		""" Set AP point """
@@ -859,8 +899,8 @@ class Nfurcation:
 
 		self.relaxation(5)
 
-		if self.R> 0:
-			self.smooth_apex(self.R)
+		if self.R > 0:
+			self.smooth_apex(self.optimal_smooth_radius())
 
 		return self._crsec
 
@@ -1063,6 +1103,21 @@ class Nfurcation:
 		mesh = self.mesh_surface()
 		mesh = mesh.smooth(n_iter, boundary_smoothing=False, relaxation_factor=0.8) # Laplacian smooth
 		self.mesh_to_crsec(mesh)
+
+
+	def optimal_smooth_radius(self):
+		""" Return a smoothing radius proportional to the bifurcation angle """
+	
+		v1 = self._apexsec[0][0][1][:-1]
+		v2 = self._apexsec[1][0][1][:-1]
+
+		a = angle(v1, v2)
+
+		R = (a * self.R) / (pi / 2)
+
+		return R
+
+
 
 
 	def smooth_apex(self, radius):

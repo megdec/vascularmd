@@ -40,7 +40,10 @@ class Model:
 			self._t = t
 
 		if knot is None: 
-			self._knot = self.uniform_knot() #self.averaging_knot()
+			if self._D.shape[0] == n:
+				self._knot = self.averaging_knot()
+			else:
+				self._knot = self.uniform_knot()
 		else: 
 			self._knot = knot
 
@@ -60,7 +63,9 @@ class Model:
 		self.spl = Spline(self.P, self._knot, self._p)
 		#self.spl.show(True, True, data=self._D)
 		
-
+	def get_n(self):
+		return self._n
+		
 	def get_t(self):
 		return self._t
 		
@@ -151,7 +156,7 @@ class Model:
 			if self._lbd != 0.0:
 				res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
 			else:
-				K = 4*self._n + self._p
+				K = self._D.shape[1]*self._n + self._p
 				if m == K + 1:
 					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / 1)
 				else:
@@ -169,16 +174,27 @@ class Model:
 			for i in range(m):
 				res += norm(self._D[i] - De[i])**2
 
-		elif criterion == "ASE":
-			
-			SE = np.sum((self._D - De)**2, axis = 1)
-			ASE_spatial = np.sum(SE[:-1]) / len(self._D)
-			ASE_radius = SE[-1] / len(self._D)
+		elif criterion == "RMSE":
 
-			res = [ASE_spatial, ASE_radius]
-			
+			MSE_spatial = np.sum(norm(self._D[:, :-1] - De[:, :-1], axis=1)**2) / len(self._D)
+			RMSE_spatial = np.sqrt(MSE_spatial)
+		
+			MSE_radius = np.sum((self._D[:, -1] - De[:, -1])**2) / len(self._D)
+			RMSE_radius = np.sqrt(MSE_radius)
 
-		elif criterion == "ASEder":
+			res = [RMSE_spatial, RMSE_radius]
+
+		elif criterion == "max_dist":
+
+			res = [0.0, 0.0]
+			for i in range(m):
+				dist = [norm(self._D[i, :-1] - De[i, :-1]), self._D[i,-1] - De[i,-1]]
+				if dist[0] > res[0]:
+					res[0] = dist[0]
+				if dist[1] > res[1]:
+					res[1] = dist[1]
+			
+		elif criterion == "RMSEder":
 			# Estimation of the first derivative
 			length = length_polyline(self._D)
 			data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
@@ -187,13 +203,16 @@ class Model:
 				data_der[i-1] = (self._D[i+1] - self._D[i-1]) / (length[i+1] - length[i-1])
 
 
-			# ASEder computation
+			# RMSEder computation
 			estim = self.spl.tangent(self._t, True)
 
-			SE = np.sum((data_der - estim)**2, axis = 1)
-			ASEder_spatial = np.sum(SE[:-1]) / len(data_der)
-			ASEder_radius = SE[-1] / len(data_der)
-			res = [ASEder_spatial, ASEder_radius]
+			MSEder_spatial = np.sum(norm(data_der[:, :-1] - estim[:, :-1], axis=1)**2) / len(data)
+			RMSEder_spatial = np.sqrt(MSEder_spatial)
+		
+			MSEder_radius = np.sum((data_der[:, -1] - estim[:, -1])**2) / len(data)
+			RMSEder_radius = np.sqrt(MSEder_radius)
+
+			res = [RMSEder_spatial, RMSEder_radius]
 
 
 		else: 
