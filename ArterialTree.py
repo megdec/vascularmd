@@ -139,24 +139,25 @@ class ArterialTree:
 		self._crsec_graph = None
 
 
-	def set_topo_graph(self, G):
+	def set_topo_graph(self, G, replace = True):
 
 		""" Set the topo graph of the arterial tree."""
 
 		self._topo_graph = G
-		self._full_graph = self.topo_to_full()
-		self._model_graph = None
-		self._crsec_graph = None
+		if replace:
+			self.topo_to_full(replace)
+			self._model_graph = None
+			self._crsec_graph = None
 
 
-	def set_model_graph(self, G):
+	def set_model_graph(self, G, replace = True):
 
 		""" Set the model graph of the arterial tree."""
 
 		self._model_graph = G
-		self._full_graph = self.spline_to_full()
-		self.__set_topo_graph()
-		self._crsec_graph = None
+		if replace:
+			self.model_to_full()
+			self._crsec_graph = None
 
 
 	def set_crsec_graph(self, G):
@@ -232,7 +233,7 @@ class ArterialTree:
 
 	
 
-	def model_network(self, radius_model = True, criterion="CV", akaike=False, parallel = True):
+	def model_network(self, radius_model = True, criterion="AIC", akaike=False, parallel = True):
 
 		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
@@ -301,6 +302,7 @@ class ArterialTree:
 		e_out.sort()
 
 		splines = []
+		datas = []
 
 		# Approximate vessels
 		for i in range(len(e_out)):
@@ -332,6 +334,7 @@ class ArterialTree:
 				constraint[0] = True
 				values[1,:] = self._model_graph.nodes[n]['tangent']
 				constraint[1] = True
+			datas.append(data)
 
 
 
@@ -408,8 +411,6 @@ class ArterialTree:
 			for j in range(len(splines)):
 				splines_reorder.append(splines[order[j]])
 			splines = splines_reorder
-
-
 
 
 		AP = []
@@ -2025,7 +2026,7 @@ class ArterialTree:
 	#####################################
 
 	
-	def topo_to_full(self):
+	def topo_to_full(self, replace=True):
 
 		""" Converts topo_graph to a full graph.""" 
 			
@@ -2058,13 +2059,16 @@ class ArterialTree:
 					k = k + 1
 
 				G.add_edge(k - 1, ndict[e[1]], coords = np.array([]).reshape(0,4))
-	
-		return G
+
+		if replace:
+			self._full_graph = G
+		else:
+			return G
 
 
 
 
-	def model_to_full(self):
+	def model_to_full(self, replace = True):
 
 		""" Converts spline_graph to a full graph and set the full and topo graphs accordingly"""
 
@@ -2099,9 +2103,14 @@ class ArterialTree:
 			else:
 
 				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
+		if replace:
+			self._full_graph = G
+			self.__set_topo_graph()
+		else:
+			return G
 
-		self._full_graph = G
-		self.__set_topo_graph()
+
+
 
 
 
@@ -2568,7 +2577,7 @@ class ArterialTree:
 			pts = self._topo_graph.edges[e]['coords']
 
 			rand = np.hstack((np.zeros((pts.shape[0], 3)), np.random.normal(0, std, (pts.shape[0], 1))))
-			pts += pts * rand
+			pts += rand #pts * rand
 
 			# Modify topo graph 
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
@@ -2869,39 +2878,38 @@ class ArterialTree:
 			G = self._topo_graph
 
 		elif type == "spline":
-			G = self.spline_to_full()
+			G = self.model_to_full(replace=False)
+
 		else: 
 			raise ValueError("Wrong graph type.")
 
 
-		v = np.zeros((G.number_of_nodes(), 3)) # Vertices
+		v = np.zeros((G.number_of_nodes(), 4)) # Vertices
 		f = [] # Connections
-		r = [] # Radius
-		iD = [] #id
+	
+		iD = {} #id
 
-		G = nx.convert_node_labels_to_integers(G, first_label=1, ordering='default', label_attribute=None)
-		for p in G.nodes():
+		i = 0
+		for n in G.nodes():
+			v[i, :] = G.nodes[n]['coords']
+			iD[n] = i
+			i+=1
 
-			v[p-1, :] = G.nodes[p]['coords'][:-1]
-			r.append(G.nodes[p]['coords'][-1])
-			iD.append(p)
+		for e in G.edges():
+			f.append([2, iD[e[0]], iD[e[1]]])
 
-			if G.in_degree(p) == 1:
-
-				n = list(G.predecessors(p))
-				f.append([2, p-1, n[0]-1])
 
 		# Create VTK polyLine 
 		poly = pv.PolyData()
-		poly.points = v
+		poly.points = v[:,:-1]
 		poly.lines = np.array(f)
 
 		# Add radius information
-		poly["radius"] = np.array(r)
-		poly["id"] = np.array(iD)
-		poly_tube = poly.tube(radius = 0.6)
+		poly["radius"] = v[:,-1]
+		#poly["id"] = np.array(list(iD.keys()))
+		#poly_tube = poly.tube(radius = 0.6)
 
-		poly_tube.save(filename)
+		poly.save(filename)
 
 
 

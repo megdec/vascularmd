@@ -10,6 +10,7 @@ from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
 from Simulation import Simulation
+from Editor import Editor
 from utils import *
 
 from numpy.linalg import norm
@@ -19,6 +20,16 @@ import vtk
 import copy
 
 import os
+
+
+def test_editor(patient):
+
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/" + patient + ".vtp"
+	file = open("simple_network.obj", 'rb') 
+	tree = pickle.load(file)
+	
+	#tree = ArterialTree("TestPatient", "BraVa", file)
+	e = Editor(tree)
 
 
 
@@ -221,3 +232,4 @@ def mesh_aneurism():
 	mesh.plot(show_edges=True)
 
 
+test_editor("C0099")

@@ -441,7 +441,7 @@ class Spline:
 		RMSE_act = model.quality("RMSE")
 		RMSE_prec = (RMSE_act[0] + thres + 1, RMSE_act[1] + thres + 1)
 
-		while n < len(data) and n < 100 and (abs(RMSE_prec[0] - RMSE_act[0])> thres or abs(RMSE_prec[1] - RMSE_act[1])> thres): # Stability
+		while n < len(data) and n < 200 and (abs(RMSE_prec[0] - RMSE_act[0])> thres or abs(RMSE_prec[1] - RMSE_act[1])> thres): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -462,7 +462,7 @@ class Spline:
 
 		RMSE = model.quality("RMSE")
 
-		while n < len(data) and n < 100 and (RMSE[0] > thres[0] or RMSE[1] > thres[1]): # Stability
+		while n < len(data) and n < 200 and (RMSE[0] > thres[0] or RMSE[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
@@ -484,7 +484,7 @@ class Spline:
 
 		min_dist = model.quality("max_dist")
 
-		while n < len(data) and n < 100 and (min_dist[0] > thres[0] or min_dist[1] > thres[1]): # Stability
+		while n < len(data) and n < 200 and (min_dist[0] > thres[0] or min_dist[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
