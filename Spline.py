@@ -84,7 +84,9 @@ class Spline:
 		return self._model
 
 	def get_lbd(self):
+		
 		lbd = []
+		
 		for m in self._model:
 			if m is not None:
 				lbd.append(m.get_lbd())
@@ -109,8 +111,9 @@ class Spline:
 		""" Sets spline control points using a list table of points."""
 
 		self._spl.ctrlpts = P
-		self._spl.knotvector = self.__uniform_knot()
-		self.__set_length_tab()
+		self._spl.knotvector = self.__uniform_knot(self._spl.order, self._spl.ctrlpts_size)
+		if self._length_tab is not None:
+			self.__set_length_tab()
 
 
 
@@ -422,6 +425,7 @@ class Spline:
 			self._model[0] = global_model
 			self._spl.ctrlpts = global_model.P.tolist()
 			self._spl.knotvector = global_model.get_knot()
+		
 
 			
 			

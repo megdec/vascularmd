@@ -24,12 +24,14 @@ import os
 
 def test_editor(patient):
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/" + patient + ".vtp"
-	file = open("simple_network.obj", 'rb') 
+
+	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Aneurism/" + patient +".vtp"
+	#tree = ArterialTree("TestPatient", "BraVa", file)
+
+	file = open("tree.obj", 'rb') 
 	tree = pickle.load(file)
 	
-	#tree = ArterialTree("TestPatient", "BraVa", file)
-	e = Editor(tree)
+	e = Editor(tree, 500, 200)
 
 
 
@@ -232,4 +234,4 @@ def mesh_aneurism():
 	mesh.plot(show_edges=True)
 
 
-test_editor("C0099")
+test_editor("C0006")

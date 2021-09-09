@@ -150,14 +150,15 @@ class ArterialTree:
 			self._crsec_graph = None
 
 
-	def set_model_graph(self, G, replace = True):
+	def set_model_graph(self, G, replace = True, down_replace = True):
 
 		""" Set the model graph of the arterial tree."""
 
 		self._model_graph = G
 		if replace:
-			self.model_to_full()
 			self._crsec_graph = None
+			if down_replace:
+				self.model_to_full()
 
 
 	def set_crsec_graph(self, G):
@@ -269,7 +270,6 @@ class ArterialTree:
 		for e in self._model_graph.edges():
 
 			if self._model_graph.nodes[e[1]]['type'] == "end":
-
 				self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model)
 
 		# Add rotation attributes
@@ -578,6 +578,11 @@ class ArterialTree:
 			if not combine:
 				self._model_graph.add_node(n, coords = endsec[0][0], bifurcation = None, combine = combine, type = "sep", ref = ref[0], tangent = endsec[0][1]) # Add bif node
 				self._model_graph.edges[e_in[0]]['coords'] = crop_data
+
+				# Add a model to the spline #TMP!!!!
+				#mod_spa = Model(crop_data, spline_in.get_nb_control_points(), 3, end_constraint, end_values, False, lbd = 0)
+				#mod_rad = Model(crop_data, spline_in.get_nb_control_points(), 3, end_constraint, end_values, False, lbd = 0)
+
 				self._model_graph.edges[e_in[0]]['spline'] = spline_in
 				self._model_graph.nodes[e_in[0][0]]['coords'] = spline_in.point(0.0, True)
 				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
@@ -2120,7 +2125,7 @@ class ArterialTree:
 
 
 
-	def deform_surface_to_mesh(self, mesh, edges=[]):
+	def deform_surface_to_mesh(self, mesh, edges=[], search_dist = 40):
 
 		""" Deforms the original mesh to match a given surface mesh. 
 		Overwrite the cross section graph.
@@ -2142,7 +2147,7 @@ class ArterialTree:
 			
 				new_crsec = np.zeros([crsec.shape[0], 3])
 				for i in range(crsec.shape[0]):
-					new_crsec[i] = self.__intersection(mesh, center, crsec[i])
+					new_crsec[i] = self.__intersection(mesh, center, crsec[i], search_dist)
 				self._crsec_graph.nodes[e[0]]['crsec'] = new_crsec
 
 			# Get the connection cross sections
@@ -2154,7 +2159,7 @@ class ArterialTree:
 					center = (crsec[0] + crsec[int(crsec.shape[0]/2)])/2.0
 			
 					for j in range(crsec.shape[0]):
-						new_crsec[i, j, :] = self.__intersection(mesh, center, crsec[j])
+						new_crsec[i, j, :] = self.__intersection(mesh, center, crsec[j], search_dist)
 
 			self._crsec_graph.edges[e]['crsec'] = new_crsec
 
@@ -2168,13 +2173,13 @@ class ArterialTree:
 			new_crsec = np.zeros([crsec.shape[0], 3])
 
 			for i in range(crsec.shape[0]):
-				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i])
+				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i], search_dist)
 
 			self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
 
 
 
-	def __intersection(self, mesh, center, coord):
+	def __intersection(self, mesh, center, coord, search_dist = 40):
 
 		""" Returns the first intersection point between the mesh and a ray passing through the points center and coord.
 
@@ -2183,21 +2188,20 @@ class ArterialTree:
 		center -- coordinate of the starting point of intersection ray
 		coord -- coordinate of a point on the intersection ray
 		"""
-
-		search_dist = 2
+		dist = 1
 		inter = coord
 		points = []
-		while len(points) == 0 and search_dist < 40:
+		while len(points) == 0 and dist < search_dist:
 
 			normal = coord - center
 			normal = normal / norm(normal) # Normal=direction of the projection 
-			p2 = center + normal * search_dist
+			p2 = center + normal * dist
 			points, ind = mesh.ray_trace(center, p2)
 
 			if len(points) > 0 :
 				inter = points[0]
 			else :
-				search_dist += 1
+				dist += 1
 
 		return inter
 
