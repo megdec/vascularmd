@@ -62,7 +62,10 @@ class Model:
 	
 		self.spl = Spline(self.P, self._knot, self._p)
 		#self.spl.show(True, True, data=self._D)
-		
+	
+	def get_data(self):
+		return self._D
+
 	def get_n(self):
 		return self._n
 		
@@ -339,6 +342,9 @@ class Model:
 
 
 		else: 
+
+			m, x = self._D.shape
+			n = self._n
 
 			D = self._D.reshape((m * x, 1))
 

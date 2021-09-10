@@ -654,6 +654,48 @@ class Spline:
 		spl2 = Spline()
 		spl2.set_spl(splb)
 
+		# Keep model if the original spline had one
+		if self._model[0] is not None and self._model[1] is not None:
+			from Model import Model
+
+			# Separate data points 
+			T = self._model[0].get_t()
+			thres = np.argmax(T>t)
+			D_spatial = self._model[0].get_data()
+			D_radius = self._model[1].get_data()
+			
+			D_spatial = [D_spatial[:thres,:], D_spatial[thres:,:]]
+			D_radius = [D_radius[:thres, 1], D_radius[thres:, 1]]
+
+			spl = [spl1, spl2]
+			# Set the spline models
+			for i in range(2):
+
+				if spl[i].get_nb_control_points() > 3:
+
+					values = np.zeros((4,4))
+					constraint = [True, True, True, True]
+
+					if constraint[0]:
+						values[0,:] = spl[i].point(0, True)
+					if constraint[1]:
+						values[1,:] = spl[i].tangent(0, True)
+
+					if constraint[-1]:
+						values[-1,:] = spl[i].point(1, True)
+					if constraint[-2]:
+						values[-2,:] = spl[i].tangent(1, True)
+				
+					spatial_model = Model(D_spatial[i], spl[i].get_nb_control_points(), 3, constraint, values[:,:-1], False, lbd = 0)
+					times = spatial_model.get_t()
+					data_radius = np.transpose(np.vstack((times, D_radius[i])))
+					radius_model = Model(data_radius, spl[i].get_nb_control_points(), 3, constraint, np.vstack((data_radius[0], [1,0], [1,0], data_radius[-1])), False, lbd = 0, knot = spatial_model.get_knot(), t = times)
+
+					if i == 0:
+						spl1._model = [spatial_model, radius_model]
+					else:
+						spl2._model = [spatial_model, radius_model]
+
 		return spl1, spl2
 
 

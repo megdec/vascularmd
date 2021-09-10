@@ -109,7 +109,7 @@ class Editor:
 		self.edge_size = {'full' : 0.2, 'topo' : 0.2, 'model': 0.2, 'mesh' : 0.05}
 		
 		scene.append_to_caption('\nResample\t\t\t\t\t\t\t\tNode radius\t\t\t\t\t\t\t\tNode radius\n')
-		self.node_size_sliders = {'full' : slider(bind = self.resample_nodes, value = 1, min=0.1, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)}
+		self.node_size_sliders = {'full' : slider(bind = self.resample_nodes, value = 1, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)}
 		self.node_size_sliders['topo'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
 		self.node_size_sliders['model'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, right = slider_right_margin)
 
@@ -134,7 +134,7 @@ class Editor:
 		self.target_mesh = None
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tSmoothing value') 
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
-		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 10000, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
+		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 10000, step = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
 
 
 		self.N = 24
@@ -207,6 +207,8 @@ class Editor:
 			for i in range(len(coords)):
 				c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
 				self.elements["model"]["control_nodes"][ids][i].pos = vector(coords[i][0], coords[i][1], coords[i][2])
+				if self.control_radius_checkbox.checked:
+					self.elements["model"]["control_nodes"][ids][i].radius = coords[i][3]
 
 			coords = spl.get_points()
 			
@@ -276,8 +278,39 @@ class Editor:
 			self.output_message("Mesh deformation complete!")
 
 
-	def resample_nodes(self):
-		pass
+	def resample_nodes(self, b):
+
+		self.show("full", ["nodes"])
+		self.modified_elements["full"]["delete"] = []
+
+		p = b.value
+
+		show_id = []
+		for n in self.tree.get_topo_graph().nodes():
+			show_id.append(self.tree.get_topo_graph().nodes[n]['full_id'])
+
+		for e in self.tree.get_topo_graph().edges():
+			pts_id = self.tree.get_topo_graph().edges[e]['full_id']
+
+			if len(pts_id)!=0:
+
+				if p!=0:
+					# Resampling
+					step = int(len(pts_id)/(p*len(pts_id)))
+					if step > 0 and len(pts_id[:-1:step]) > 0:
+						show_id = show_id +  pts_id[:-1:step]
+						
+					else:
+						show_id = show_id + [pts_id[int(len(pts_id)/2)]]
+				else:
+					show_id = show_id + [pts_id[int(len(pts_id)/2)]]
+					
+
+		for k in self.elements["full"]["nodes"].keys():
+			if k not in show_id:
+				self.elements["full"]["nodes"][k].visible = False
+				self.modified_elements["full"]["delete"].append(k)
+
 
 
 	def apply_function(self, mode, func, args, categories=[]):
@@ -354,10 +387,32 @@ class Editor:
 					if radius is not None:
 						self.tree.get_full_graph().nodes[ids]['coords'][3] = radius
 
+			if len(self.modified_elements[mode]['move']) > 0:
+				self.modified_elements[mode]['move'] = []
+				self.tree.set_full_graph(self.tree.get_full_graph())
+				self.refresh_display("full")
 
-			self.modified_elements[mode]['move'] = []
-			self.tree.set_full_graph(self.tree.get_full_graph())
-			self.refresh_display("full")
+			for n in self.modified_elements[mode]['delete']:
+				prec = list(self.tree.get_full_graph().predecessors(n))[0]
+				succ = list(self.tree.get_full_graph().successors(n))[0]
+				self.tree.get_full_graph().remove_node(n)
+				self.tree.get_full_graph().add_edge(prec, succ, coords = np.array([]).reshape(0,4))
+
+				self.elements["full"]["nodes"].pop(n)
+				self.elements["full"]["edges"][(n, succ)].visible = False
+				self.elements["full"]["edges"].pop((n, succ))
+				self.elements["full"]["edges"][(prec, succ)] = self.elements["full"]["edges"][(prec, n)]
+				self.elements["full"]["edges"].pop((prec, n))
+
+
+				
+
+			if len(self.modified_elements[mode]['delete']) > 0:
+				self.modified_elements[mode]['dalete'] = []
+				self.tree.set_full_graph(self.tree.get_full_graph())
+				self.refresh_display("full")
+
+
 			# Empty the model and mesh objects and make it invisible
 			self.hide("model")
 			self.elements["model"] = {}

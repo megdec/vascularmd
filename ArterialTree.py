@@ -196,7 +196,9 @@ class ArterialTree:
 
 
 		self._topo_graph = self._full_graph.copy()
-		nx.set_node_attributes(self._topo_graph, "reg", name=type)
+		nx.set_node_attributes(self._topo_graph, "reg", name="type")
+		nx.set_node_attributes(self._topo_graph, None, name="full_id")
+		nx.set_edge_attributes(self._topo_graph, None, name="full_id")
 
 
 		for n in self._full_graph.nodes():
@@ -219,6 +221,14 @@ class ArterialTree:
 					self._topo_graph.nodes[n]['type'] = "end" 
 				else: 
 					self._topo_graph.nodes[n]['type'] = "bif" 
+
+		# Store the matching of full graph node numbers
+		for n in self._topo_graph.nodes():
+			self._topo_graph.nodes[n]["full_id"] = n
+		for e in self._topo_graph.edges():
+			path = list(nx.all_simple_paths(self._full_graph, source=e[0], target=e[1]))[0]
+			self._topo_graph.edges[e]["full_id"] = path[1:-1]
+		
 
 		# Relabel nodes
 		self._topo_graph = nx.convert_node_labels_to_integers(self._topo_graph, first_label=1, ordering='default', label_attribute=None)
@@ -578,12 +588,8 @@ class ArterialTree:
 			if not combine:
 				self._model_graph.add_node(n, coords = endsec[0][0], bifurcation = None, combine = combine, type = "sep", ref = ref[0], tangent = endsec[0][1]) # Add bif node
 				self._model_graph.edges[e_in[0]]['coords'] = crop_data
-
-				# Add a model to the spline #TMP!!!!
-				#mod_spa = Model(crop_data, spline_in.get_nb_control_points(), 3, end_constraint, end_values, False, lbd = 0)
-				#mod_rad = Model(crop_data, spline_in.get_nb_control_points(), 3, end_constraint, end_values, False, lbd = 0)
-
 				self._model_graph.edges[e_in[0]]['spline'] = spline_in
+
 				self._model_graph.nodes[e_in[0][0]]['coords'] = spline_in.point(0.0, True)
 				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
 				self._model_graph.add_edge(n, nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge

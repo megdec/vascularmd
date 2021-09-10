@@ -25,11 +25,12 @@ import os
 def test_editor(patient):
 
 
-	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Aneurism/" + patient +".vtp"
-	#tree = ArterialTree("TestPatient", "BraVa", file)
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1-part.swc"
+	tree = ArterialTree("TestPatient", "BraVa", file)
 
-	file = open("tree.obj", 'rb') 
-	tree = pickle.load(file)
+	#file = open("tree.obj", 'rb') 
+	#tree = pickle.load(file)
 	
 	e = Editor(tree, 500, 200)
 
