@@ -25,14 +25,18 @@ import os
 def test_editor(patient):
 
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Aneurism/" + patient +".vtp"
 	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1-part.swc"
+	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Healthy/centerline_BA.vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0032.vtp"
 	tree = ArterialTree("TestPatient", "BraVa", file)
 
-	#file = open("tree.obj", 'rb') 
-	#tree = pickle.load(file)
+	file = open("tmp/tree_model.obj", 'rb') 
+	tree = pickle.load(file)
+	m = tree.get_bifurcations()[0].mesh_surface()
+	m.save("tmp/trifurcation.vtk")
 	
-	e = Editor(tree, 500, 200)
+	#e = Editor(tree, 500, 200)
 
 
 
@@ -235,4 +239,4 @@ def mesh_aneurism():
 	mesh.plot(show_edges=True)
 
 
-test_editor("C0006")
+test_editor("C0078")

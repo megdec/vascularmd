@@ -33,7 +33,7 @@ class Editor:
 		# Scene set up
 		scene.caption = ""
 		self.text_output = wtext(text="")
-		self.output_message("Zoom in with a mouse or by pinching the screen and rotate by right clicking and moving the mouse.")
+		self.output_message("Zoom in using mouse middle button, rotate by right clicking and moving the mouse and translate by pressing the shift key.")
 
 		scene.background = color.white
 		scene.width = width
@@ -50,12 +50,18 @@ class Editor:
 		self.elements = {'full' : {}, 'topo' : {}, 'model' : {}, 'mesh' : {}} 
 
 		scene.append_to_caption('\n\nEditing  ')
-		self.edition_menu = menu(choices = ['off', 'full', 'model', 'mesh'], selected = 'off', index=0, bind = self.update_edition_mode)
+		self.edition_menu = menu(choices = ['off', 'full', 'topo', 'model', 'mesh'], selected = 'off', index=0, bind = self.update_edition_mode)
 		self.edition_mode = 'off'
 
+		scene.append_to_caption('\t')
+
 		self.save_button = button(text = "Save", bind=self.save)
+		self.save_menu = menu(choices = ['model', 'mesh'], selected = 'model', index=0, bind = self.do_nothing)
+
+		
 		self.save_directory = None
-		self.save_winput = winput(text="", bind = self.update_save_directory, width=100)
+		scene.append_to_caption('\tOutput directory  ')
+		self.save_winput = winput(text="", bind = self.update_save_directory, width=200)
 
 
 		scene.append_to_caption('\n\n')
@@ -134,7 +140,7 @@ class Editor:
 		self.target_mesh = None
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tSmoothing value') 
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
-		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 10000, step = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
+		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 1000, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
 
 
 		self.N = 24
@@ -149,7 +155,7 @@ class Editor:
 		self.selected_node = None
 		self.selected_edge = None
 		self.drag = False
-		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'move' : [], 'parameter' : [], 'deform' : [], 'crsec' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
+		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'move' : [], 'parameter' : [], 'deform' : [], 'crsec' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
 
 		# Disable elements
 		self.disable(True, checkboxes = False)
@@ -158,6 +164,8 @@ class Editor:
 		self.disable(False, ["full"])
 
 
+	def do_nothing(self):
+		pass
 
 	def update_visibility_control_radius(self):
 
@@ -180,11 +188,32 @@ class Editor:
 		self.output_message("The output directory set to " + self.save_directory + ".")
 
 	def save(self):
+		try:
+			if self.save_directory is None: 
+				self.output_message("No output directory found. Please write the path in the text box.", "warning")
+			else:
+				if self.save_menu.selected == "model":
+					file = open(self.save_directory + "tree_model.obj", 'wb') 
+					pickle.dump(self.tree, file)
+					self.output_message("Vessel model saved in " + self.save_directory + ".")
 
-		file = open(self.save_directory + "tree.obj", 'wb') 
-		pickle.dump(self.tree, file)
-		self.output_message("Vessel model saved in " + self.save_directory + ".")
+				else:
+					mesh = self.tree.get_surface_mesh()
+					if mesh is None:
+						self.output_message("No mesh found. Please compute AND update the mesh first.")
+					else:
+						mesh.save(self.save_directory + "surface_mesh.vtk")
+						self.output_message("Surface mesh saved in " + self.save_directory  + ".")
+
+
+		except FileNotFoundError:
+			self.output_message("The output directory does not exist.", "error")
+
+		except PermissionError:
+			self.output_message("Writting permission denied. Please check the permissions on output folder.", "error")
+
 		
+
 
 	def smooth_spline(self):
 
@@ -340,6 +369,25 @@ class Editor:
 
 	def keyboard_control(self, evt):
 
+		if self.edition_mode == "topo" and self.selected_edge is not None:
+
+			if evt.key == "delete":
+
+				edg = self.selected_edge.id[0]
+				self.modified_elements["topo"]["delete"].append(edg)
+				G = self.tree.get_topo_graph()
+
+				# Hide the edges
+				for e in [edg] + list(nx.dfs_edges(G, source=edg[1])):
+					for elt in self.elements["topo"]["edges"][e]:
+						elt.visible = False
+
+				# Hide the nodes 
+				for n in list(nx.dfs_preorder_nodes(G, source=edg[1])):
+					self.elements["topo"]["nodes"][n].visible = False
+				
+
+
 		if self.edition_mode != "mesh" and self.selected_node is not None:
 			ids = self.selected_node.id
 		
@@ -391,7 +439,7 @@ class Editor:
 				self.modified_elements[mode]['move'] = []
 				self.tree.set_full_graph(self.tree.get_full_graph())
 				self.refresh_display("full")
-
+			
 			for n in self.modified_elements[mode]['delete']:
 				prec = list(self.tree.get_full_graph().predecessors(n))[0]
 				succ = list(self.tree.get_full_graph().successors(n))[0]
@@ -402,21 +450,25 @@ class Editor:
 				self.elements["full"]["edges"][(n, succ)].visible = False
 				self.elements["full"]["edges"].pop((n, succ))
 				self.elements["full"]["edges"][(prec, succ)] = self.elements["full"]["edges"][(prec, n)]
+				self.elements["full"]["edges"][(prec, succ)].id = (prec, succ) 
 				self.elements["full"]["edges"].pop((prec, n))
 
 
-				
-
 			if len(self.modified_elements[mode]['delete']) > 0:
-				self.modified_elements[mode]['dalete'] = []
+				self.modified_elements[mode]['delete'] = []
 				self.tree.set_full_graph(self.tree.get_full_graph())
 				self.refresh_display("full")
 
 
 			# Empty the model and mesh objects and make it invisible
+			self.hide("topo")
+			self.elements["topo"] = {}
+			self.checkboxes['topo'].checked = False
+
 			self.hide("model")
 			self.elements["model"] = {}
 			self.checkboxes['model'].checked = False
+
 			self.hide("mesh")
 			self.elements["mesh"] = {}
 			self.checkboxes['mesh'].checked = False
@@ -424,7 +476,21 @@ class Editor:
 
 
 		elif mode == "topo":
+
+			for e in self.modified_elements["topo"]["delete"]:
+				self.tree.remove_branch(e)
+
+
+			self.modified_elements["topo"]["delete"] = []
 			self.refresh_display("topo")
+			self.refresh_display("full")
+
+			if len(self.elements["model"]) > 0:
+				self.refresh_display("model")
+
+			if len(self.elements["mesh"]) > 0:
+				self.refresh_display("mesh")
+
 			self.output_message("Topo graph updated.")
 
 		elif mode == "model":
@@ -488,13 +554,36 @@ class Editor:
 		# Modify the edges and nodes position according to the modified graph
 		if self.elements[mode]:# If there is elements in the mode dictionnary
 
-			if mode == "full":
-				for n in self.tree.get_full_graph().nodes():
-					coords = self.tree.get_full_graph().nodes[n]['coords']
-					self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
-					self.elements[mode]["nodes"][n].radius = coords[3] 
+			if self.checkboxes[mode].checked:
+				visible = True
+			else:
+				visible = False
 
-				for e in self.tree.get_full_graph().edges():
+			if mode == "full":
+
+				nds = [n for n in self.tree.get_full_graph().nodes()]
+				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
+				for n in nds_elt:
+					if n not in nds:
+						self.elements[mode]["nodes"][n].visible = False
+						self.elements[mode]["nodes"].pop(n)
+
+				for n in nds:
+					coords = self.tree.get_full_graph().nodes[n]['coords']
+					if n in nds_elt: # Modify node
+						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
+						self.elements[mode]["nodes"][n].radius = coords[3] 
+					else: 
+						self.elements[mode]["nodes"][n] = sphere(pos=vector(coords[0], coords[1], coords[2]), color=color.red, radius=coords[3], mode = 'full', category = 'nodes', id = n, visible = visible) # Create node
+
+				edj = [e for e in self.tree.get_full_graph().edges()]
+				edj_elt = list(self.elements[mode]["edges"].keys())[:]
+				for e in edj_elt:
+					if e not in edj:
+						self.elements[mode]["edges"][e].visible = False
+						self.elements[mode]["edges"].pop(e)
+
+				for e in edj:
 					coords_0 = self.tree.get_full_graph().nodes[e[0]]['coords']
 					coords_1 = self.tree.get_full_graph().nodes[e[1]]['coords']
 
@@ -504,20 +593,47 @@ class Editor:
 					axis = axis / norm(axis)
 					axis = vector(axis[0], axis[1], axis[2]) 
 
-					self.elements[mode]["edges"][e].pos = pos
-					self.elements[mode]["edges"][e].axis = axis
-					self.elements[mode]["edges"][e].length = length
+					if e in edj_elt:
+						self.elements[mode]["edges"][e].pos = pos
+						self.elements[mode]["edges"][e].axis = axis
+						self.elements[mode]["edges"][e].length = length
+					else:
+						self.elements[mode]["edges"][e] = cylinder(pos=pos, axis=axis, length=length, radius=0.2, color=color.black, mode = 'full', category = 'edges', id = e, visible = visible)
+
+
 
 			elif mode == "topo":
+				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green}
+
 				G = self.tree.get_topo_graph()
+				nds = [n for n in G.nodes()]
+				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
+				for n in nds_elt:
+					if n not in nds:
+						self.elements[mode]["nodes"][n].visible = False
+						self.elements[mode]["nodes"].pop(n)
 
-				for n in G.nodes():
+				for n in nds:
 					coords = G.nodes[n]['coords']
-					self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
+					if n not in nds_elt:
+						pos = vector(coords[0], coords[1], coords[2])
+						pt_type = G.nodes[n]['type']
+						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'topo', category = 'nodes', id = n, visible = visible) # Create new point
+					else:
+						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
 
-				for e in G.edges():
+				edj = [e for e in G.edges()]
+				edj_elt = list(self.elements[mode]["edges"].keys())[:]
+				for e in edj_elt:
+					if e not in edj:
+						for elt in self.elements[mode]["edges"][e]:
+							elt.visible = False
+						self.elements[mode]["edges"].pop(e)
+
+				for e in edj:
+
 					coords = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
-
+					c_list = []
 					for i in range(len(coords) - 1):
 
 						pos = vector((coords[i][0]), (coords[i][1]), (coords[i][2]))
@@ -525,11 +641,18 @@ class Editor:
 						length = norm(axis)
 						axis = axis / length
 						axis = vector(axis[0], axis[1], axis[2])
+						c_list.append(cylinder(pos=pos, axis=axis, length=length, radius=0.2, color=color.black, mode = 'topo', category = 'edges', id = (e, i), visible = visible))
+
+						if e in edj_elt:
+							self.elements[mode]["edges"][e][i].pos = pos
+							self.elements[mode]["edges"][e][i].axis = axis
+							self.elements[mode]["edges"][e][i].length = length
+
+					if e not in edj_elt: 
+						# Create new edge
+						self.elements[mode]["edges"][e] = c_list
 
 
-						self.elements[mode]["edges"][e][i].pos = pos
-						self.elements[mode]["edges"][e][i].axis = axis
-						self.elements[mode]["edges"][e][i].length = length
 
 			elif mode == "model":
 
@@ -561,6 +684,9 @@ class Editor:
 
 			else:
 				mesh = self.tree.get_surface_mesh()
+				if mesh is None:
+					mesh = self.tree.mesh_surface()
+
 
 				if mesh.n_faces != len(self.elements["mesh"]["surface"]):
 					self.hide("mesh")
@@ -718,6 +844,18 @@ class Editor:
 
 			self.output_message("Spline selected. Check a smoothing box and use the slider smooth or unsmooth.")
 
+		elif type(obj) == cylinder and self.edition_mode == "topo":
+
+			self.unselect("edge")
+			self.selected_edge = obj
+		
+			for elt in self.elements["topo"]["edges"][obj.id[0]]:
+				elt.color = color.green
+					
+
+			self.output_message("Edge selected. Press suppr. to cut the corresponding branch.")
+
+
 	def unselect(self, elt = "node", mode = None):
 
 		if elt == "node":
@@ -733,15 +871,24 @@ class Editor:
 		else:
 			if self.selected_edge is not None:
 				if mode is None or self.selected_edge.mode == mode:
+					if type(self.selected_edge) == curve:
 
-					self.selected_edge.color = color.black
-					self.selected_edge = None
+						self.selected_edge.color = color.black
+						self.selected_edge = None
 
-					self.smooth_checkboxes['spatial'].disabled = True
-					self.smooth_checkboxes['radius'].disabled = True
-					self.smooth_checkboxes['spatial'].checked = False
-					self.smooth_checkboxes['radius'].checked = False
-					self.smooth_slider.disabled = True
+						self.smooth_checkboxes['spatial'].disabled = True
+						self.smooth_checkboxes['radius'].disabled = True
+						self.smooth_checkboxes['spatial'].checked = False
+						self.smooth_checkboxes['radius'].checked = False
+						self.smooth_slider.disabled = True
+
+					else:
+						if self.selected_edge.id[0] in self.elements["topo"]["edges"].keys():
+							for elt in self.elements["topo"]["edges"][self.selected_edge.id[0]]:
+								elt.color = color.black
+
+						self.selected_edge = None
+
 
 
 
@@ -760,6 +907,7 @@ class Editor:
 		self.elements["mesh"] = {}
 		self.create_elements("mesh")
 
+
 	def update_mesh_parameters(self, b):
 
 		if b.parameter == "N":
@@ -777,10 +925,19 @@ class Editor:
 		elif b.parameter == "search_dist":
 			self.search_dist  = float(self.parameters_winput['search_dist'].text)
 			self.output_message("Maximum projection distance set to " + str(self.search_dist) + ".")
+
 		else:
-			self.target_mesh = pv.read(self.parameters_winput['path'].text)
-			self.output_message("Target mesh is now : " + self.parameters_winput['path'].text + ".")
-			self.parameters_winput['path'].text = ""
+			try:
+				self.target_mesh = pv.read(self.parameters_winput['path'].text)
+				self.output_message("Target mesh is now : " + self.parameters_winput['path'].text + ".")
+				self.parameters_winput['path'].text = ""
+		
+			except FileNotFoundError:	
+				self.output_message("The target mesh file does not exist.", "error")
+
+		
+
+
 
 
 	def update_mesh_representation(self, b):

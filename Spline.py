@@ -338,7 +338,8 @@ class Spline:
 				n = self.__nb_control_points_RMSE_thres(D, [0.5, 0.5*10**(-2)])
 				#n = self.__nb_control_points_max_dist_thres(D, [10**(-1), 10**(-3)])
 				#n = self.__nb_control_points_stability(D, 10**(-4))
-			print(n)
+		
+		print(n)
 				
 
 		if radius_model: 
@@ -641,6 +642,7 @@ class Spline:
 	def split_time(self, t):
 
 		""" Splits the spline into two splines at time t."""
+
 		if t >= 1.0:
 			t = 0.9 # WORKAROUND !!!
 		elif t<= 0.0:
@@ -670,31 +672,32 @@ class Spline:
 			spl = [spl1, spl2]
 			# Set the spline models
 			for i in range(2):
+				if len(D_spatial[i])> 1:
 
-				if spl[i].get_nb_control_points() > 3:
+					if spl[i].get_nb_control_points() > 3:
 
-					values = np.zeros((4,4))
-					constraint = [True, True, True, True]
+						values = np.zeros((4,4))
+						constraint = [True, True, True, True]
 
-					if constraint[0]:
-						values[0,:] = spl[i].point(0, True)
-					if constraint[1]:
-						values[1,:] = spl[i].tangent(0, True)
+						if constraint[0]:
+							values[0,:] = spl[i].point(0, True)
+						if constraint[1]:
+							values[1,:] = spl[i].tangent(0, True)
 
-					if constraint[-1]:
-						values[-1,:] = spl[i].point(1, True)
-					if constraint[-2]:
-						values[-2,:] = spl[i].tangent(1, True)
-				
-					spatial_model = Model(D_spatial[i], spl[i].get_nb_control_points(), 3, constraint, values[:,:-1], False, lbd = 0)
-					times = spatial_model.get_t()
-					data_radius = np.transpose(np.vstack((times, D_radius[i])))
-					radius_model = Model(data_radius, spl[i].get_nb_control_points(), 3, constraint, np.vstack((data_radius[0], [1,0], [1,0], data_radius[-1])), False, lbd = 0, knot = spatial_model.get_knot(), t = times)
+						if constraint[-1]:
+							values[-1,:] = spl[i].point(1, True)
+						if constraint[-2]:
+							values[-2,:] = spl[i].tangent(1, True)
+					
+						spatial_model = Model(D_spatial[i], spl[i].get_nb_control_points(), 3, constraint, values[:,:-1], False, lbd = 0)
+						times = spatial_model.get_t()
+						data_radius = np.transpose(np.vstack((times, D_radius[i])))
+						radius_model = Model(data_radius, spl[i].get_nb_control_points(), 3, constraint, np.vstack((data_radius[0], [1,0], [1,0], data_radius[-1])), False, lbd = 0, knot = spatial_model.get_knot(), t = times)
 
-					if i == 0:
-						spl1._model = [spatial_model, radius_model]
-					else:
-						spl2._model = [spatial_model, radius_model]
+						if i == 0:
+							spl1._model = [spatial_model, radius_model]
+						else:
+							spl2._model = [spatial_model, radius_model]
 
 		return spl1, spl2
 

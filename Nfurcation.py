@@ -377,10 +377,12 @@ class Nfurcation:
 		"""
 	
 		# Check distance between apexsec coordinates
+		
 		for i in range(len(self._apexsec)):
 			for j in range(len(self._apexsec[i]) - 1):
 				if norm(self._apexsec[i][j + 1][:-1][0] - self._apexsec[i][j][:-1][0]) < 10*(-1):
 					self._apexsec.pop(j)
+	
 
 		for i in range(1, len(self._endsec)):
 			sec_list = [self._endsec[0]] + self._apexsec[i-1] + [self._endsec[i]] 
@@ -416,7 +418,7 @@ class Nfurcation:
 		
 
 			self._spl.append(Spline(control_points = P, knot = knot))
-
+		"""
 		# Check angles of the apex cross sections and apply rotation correction if necessary
 		for i in range(self.n):
 			vec = (self._apexsec[i][0][0][:-1] - self._AP[0])
@@ -434,6 +436,7 @@ class Nfurcation:
 				if norm(pt[:-1] - OP) - pt[-1] < 10e-2:
 					self.rotate_apex_section([i, 0], 0.05)
 					self.__set_spl()
+		"""
 
 
 

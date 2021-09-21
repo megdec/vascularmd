@@ -98,8 +98,9 @@ class ArterialTree:
 
 		if self._surface_mesh is None:
 			warnings.warn("No surface mesh found.")
-			
-		return self._surface_mesh
+
+		else:	
+			return pv.PolyData(self._surface_mesh[0], self._surface_mesh[1])
 
 
 	def get_volume_mesh(self):
@@ -107,8 +108,8 @@ class ArterialTree:
 
 		if self._volume_mesh is None:
 			warnings.warn("No volume mesh found.")
-			
-		return self._volume_mesh
+		else:	
+			return pv.UnstructuredGrid(np.array([0, 9]), self._volume_mesh[0], self._volume_mesh[1], self._volume_mesh[2])
 
 
 	def get_bifurcations(self):
@@ -506,7 +507,7 @@ class ArterialTree:
 				branch = branch.index(e_in[0][0])
 				bifprec = self._model_graph.nodes[nbifprec]['bifurcation']
 
-				if False: #bifprec.get_tspl()[branch + 1].project_point_to_centerline(self._model_graph.nodes[n]['coords'][:-1]) < 1.0:
+				if bifprec.get_tspl()[branch + 1].project_point_to_centerline(self._model_graph.nodes[n]['coords'][:-1]) < 1.0:
 
 					merge = True
 					combine = False
@@ -567,6 +568,7 @@ class ArterialTree:
 
 			# Five crsec model
 			bif = Nfurcation("crsec", [C, AC, AP, 0.3])
+
 			#bif.show(True)
 
 			ref = bif.get_reference_vectors()
@@ -646,7 +648,7 @@ class ArterialTree:
 
 			self._topo_graph.remove_node(n)
 			# Change topology of the full graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
 
 			# Reset the previous bifurcation in model graph
 			n_out = [e[1] for e in self._topo_graph.out_edges(nbifprec)]
@@ -750,13 +752,17 @@ class ArterialTree:
 
 
 			else: # Simple tube case
-				path.append(e[1])
+				if len(path) == 1:
+					path.append(e[1])
+				
 				spl = self._model_graph.edges[(path[0], path[1])]['spline']
 				ref1 =  cross(spl.tangent(0), np.array([0,0,1])) 
 				self._model_graph.nodes[path[0]]['ref'] = ref1
+				
 
 				# Transport reference along the path
 				for i in range(len(path)-1):
+					
 					spl = self._model_graph.edges[(path[i], path[i+1])]['spline']
 					# Transport ref vector 
 					ref1 = spl.transport_vector(ref1, 0.0, 1.0)
@@ -1445,7 +1451,7 @@ class ArterialTree:
 				nb_faces += 1
 		
 		faces = faces[:nb_faces]
-		self._surface_mesh = pv.PolyData(vertices, faces)
+		self._surface_mesh = vertices, faces
 		
 		return pv.PolyData(vertices, faces)
 
@@ -1621,8 +1627,8 @@ class ArterialTree:
 		cell_types = np.array([vtk.VTK_HEXAHEDRON] * cells.shape[0])
 
 		# Return volume mesh
-		self._volume_mesh = pv.UnstructuredGrid(np.array([0, 9]), cells, cell_types, vertices)
-		return self._volume_mesh
+		self._volume_mesh = [cells, cell_types, vertices]
+		return pv.UnstructuredGrid(np.array([0, 9]), cells, cell_types, vertices) 
 
 
 
@@ -2047,12 +2053,13 @@ class ArterialTree:
 		ndict = {}
 		for n in self._topo_graph.nodes():
 			G.add_node(k, coords = self._topo_graph.nodes[n]['coords'])
+			self._topo_graph.nodes[n]["full_id"] = k
 			ndict[n] = k
 			k  = k + 1
 
 		for e in self._topo_graph.edges():
 			pts = self._topo_graph.edges[e]['coords']
-
+			self._topo_graph.edges[e]["full_id"] = []
 			if len(pts) == 0:
 
 				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
@@ -2060,12 +2067,14 @@ class ArterialTree:
 			else: 
 
 				G.add_node(k, coords = pts[0])
+				self._topo_graph.edges[e]["full_id"].append(k)
 				G.add_edge(ndict[e[0]], k, coords = np.array([]).reshape(0,4))
 				k = k + 1
 
 				for i in range(1, len(pts)):
 
 					G.add_node(k, coords = pts[i])
+					self._topo_graph.edges[e]["full_id"].append(k)
 					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
 					k = k + 1
 
@@ -2182,6 +2191,9 @@ class ArterialTree:
 				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i], search_dist)
 
 			self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
+			if self._surface_mesh is not None:
+				self._surface_mesh = None
+				
 
 
 
@@ -2251,8 +2263,8 @@ class ArterialTree:
 
 		# Remove them from topo graph
 		for node in downstream_nodes:
+			#self._full_graph.remove_node(self._topo_graph.nodes[node]["full_id"])
 			self._topo_graph.remove_node(node)
-
 
 		# Merge data and remove bifurcation point
 		if self._topo_graph.out_degree(e[0]) == 1 and self._topo_graph.in_degree(e[0]) == 1:
@@ -2269,7 +2281,8 @@ class ArterialTree:
 
 
 			# Propagate to full_graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
+
 
 		
 		if self._model_graph is not None:
@@ -2569,7 +2582,7 @@ class ArterialTree:
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
 
 			# Change full graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
 
 	
 
@@ -2593,7 +2606,7 @@ class ArterialTree:
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
 
 			# Change full graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
 		
 
 
@@ -2623,7 +2636,7 @@ class ArterialTree:
 			self._topo_graph.add_edge(e[0], e[1], coords = pts)
 
 			# Change full graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
 
 
 
@@ -2646,7 +2659,7 @@ class ArterialTree:
 			self._topo_graph.add_edge(e[0], e[1], coords = pts[1:-1])
 
 			# Change full graph
-			self._full_graph = self.topo_to_full()
+			self.topo_to_full()
 
 
 
