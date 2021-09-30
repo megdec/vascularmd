@@ -2052,33 +2052,26 @@ class ArterialTree:
 
 		ndict = {}
 		for n in self._topo_graph.nodes():
-			G.add_node(k, coords = self._topo_graph.nodes[n]['coords'])
-			self._topo_graph.nodes[n]["full_id"] = k
-			ndict[n] = k
-			k  = k + 1
+			G.add_node(self._topo_graph.nodes[n]["full_id"], coords = self._topo_graph.nodes[n]['coords'])
 
 		for e in self._topo_graph.edges():
 			pts = self._topo_graph.edges[e]['coords']
-			self._topo_graph.edges[e]["full_id"] = []
+
 			if len(pts) == 0:
 
-				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
+				G.add_edge(self._topo_graph.nodes[e[0]]["full_id"], self._topo_graph.nodes[e[1]]["full_id"], coords = np.array([]).reshape(0,4))
 
 			else: 
-
-				G.add_node(k, coords = pts[0])
-				self._topo_graph.edges[e]["full_id"].append(k)
-				G.add_edge(ndict[e[0]], k, coords = np.array([]).reshape(0,4))
-				k = k + 1
+				G.add_node(self._topo_graph.edges[e]["full_id"][0], coords = pts[0])
+				G.add_edge(self._topo_graph.nodes[e[0]]["full_id"], self._topo_graph.edges[e]["full_id"][0], coords = np.array([]).reshape(0,4))
+				
 
 				for i in range(1, len(pts)):
 
-					G.add_node(k, coords = pts[i])
-					self._topo_graph.edges[e]["full_id"].append(k)
-					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
-					k = k + 1
-
-				G.add_edge(k - 1, ndict[e[1]], coords = np.array([]).reshape(0,4))
+					G.add_node(self._topo_graph.edges[e]["full_id"][i], coords = pts[i])
+					G.add_edge(self._topo_graph.edges[e]["full_id"][i-1], self._topo_graph.edges[e]["full_id"][i], coords = np.array([]).reshape(0,4))
+		
+				G.add_edge(self._topo_graph.edges[e]["full_id"][-1],self._topo_graph.nodes[e[1]]["full_id"], coords = np.array([]).reshape(0,4))
 
 		if replace:
 			self._full_graph = G

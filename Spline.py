@@ -338,9 +338,7 @@ class Spline:
 				n = self.__nb_control_points_RMSE_thres(D, [0.5, 0.5*10**(-2)])
 				#n = self.__nb_control_points_max_dist_thres(D, [10**(-1), 10**(-3)])
 				#n = self.__nb_control_points_stability(D, 10**(-4))
-		
-		print(n)
-				
+
 
 		if radius_model: 
 
@@ -408,7 +406,7 @@ class Spline:
 				thres = 15
 
 				if (alpha < thres or beta < thres) and not derivatives:
-					print(alpha, beta)
+					
 
 					end_values[-2,:] = end_values[-2,:] / norm(end_values[-2,:]) * beta
 					end_values[1,:] = end_values[1,:] / norm(end_values[1,:]) * alpha
@@ -472,7 +470,7 @@ class Spline:
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
 			RMSE = model.quality("RMSE")
-		print(RMSE)
+
 
 		return n
 
@@ -494,7 +492,6 @@ class Spline:
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
 			min_dist = model.quality("max_dist")
-		print(min_dist)
 
 		return n
 
