@@ -15,6 +15,9 @@ from Spline import Spline
 from Model import Model
 from utils import *
 
+
+
+
 class Editor:
 
 	""" Class to edit vascular networks with a vpython GUI """
@@ -156,7 +159,8 @@ class Editor:
 		self.selected_node = None
 		self.selected_edge = None
 		self.drag = False
-		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : [], 'move' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'move' : [], 'parameter' : [], 'deform' : [], 'crsec' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
+		self.running = False
+		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : [], 'move' : [], 'merge' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'move' : [], 'parameter' : [], 'deform' : [], 'crsec' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
 
 		# Disable elements
 		self.disable(True, checkboxes = False)
@@ -165,11 +169,63 @@ class Editor:
 		self.disable(False, ["full"])
 
 
+
+	###########################################
+	################ VISIBILITY ###############
+	###########################################
+
+
 	def do_nothing(self):
 		pass
 
+
+	def barycenter_finder(self):
+
+		""" Finds the scene barycenter by averaging the network nodes """
+
+		coords = list(nx.get_node_attributes(self.tree.get_full_graph(), 'coords').values())
+		barycenter = sum(coords) / len(coords)
+		return barycenter[:3]
+		
+
+	def update_visibility_state(self, b):
+		
+		""" Show / hide network representation when the corresponding checkbox is checked / unchecked. """
+
+		mode = b.mode
+
+		if mode == 'model':
+			categories = ['edges', 'nodes']
+		else:
+			categories = []
+
+		if b.checked:
+			self.show(mode, categories)
+			self.disable(False, [mode], checkboxes = False)
+		else:
+			self.hide(mode)
+			self.disable(True, [mode], checkboxes = False)
+
+
+	def update_visibility_control_pts(self):
+
+		""" Show/ hide model control points """
+
+		if self.control_pts_checkbox.checked:
+			self.control_radius_checkbox.disabled = False
+			self.show('model', ['control_edges', 'control_nodes'])
+		else:
+
+			# Control point radius can be displayed only if the control points are already displayed
+			self.control_radius_checkbox.disabled = True
+			self.control_radius_checkbox.checked = False
+			self.hide('model',['control_edges', 'control_nodes'])
+
+
+
 	def update_visibility_control_radius(self):
 
+		""" Show/ hide model control points radius """
 		if self.control_radius_checkbox.checked:
 
 			G = self.tree.get_model_graph()
@@ -184,11 +240,152 @@ class Editor:
 					self.elements["model"]["control_nodes"][k][i].radius = 0.5
 
 
+	def update_visibility_furcations(self):
+
+		""" Show / hide the furcation models """
+
+		if self.furcation_checkbox.checked:
+			self.show('model', ['furcation_edges', 'furcation_nodes'])
+		else:
+			self.hide('model', ['furcation_edges', 'furcation_nodes'])
+
+
+
+	def update_mesh_representation(self, b):
+
+		""" Switch the mesh representation mode (wireframe / sections/ solid)"""
+
+		if self.checkboxes["mesh"].checked:
+			representation = self.mesh_representation_menu.selected
+			if representation == "wireframe":
+				self.hide("mesh", ["surface"])
+				self.show("mesh", ["connecting_edges", "section_edges"])
+
+			elif representation == "sections":
+				self.show("mesh", ["section_edges"])
+				self.hide("mesh", ["surface", "connecting_edges"])
+
+			elif representation == 'solid':
+				self.show("mesh", ["surface"])
+				self.hide("mesh",["section_edges","connecting_edges"]) 
+			else: 
+				self.show("mesh")
+
+
+			self.output_message("Mesh representation mode switched to " +  representation + ".")
+
+
+
+	def show(self, mode, categories = []):
+
+		""" Show elements for a given mode and category 
+
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		categories -- list of object categrories (node, edges...) 
+		"""
+
+		def set_visible(elt, args):
+			elt.visible = args[0]
+
+		if len(self.elements[mode]) == 0:
+			# Creation of the mode objects
+			self.create_elements(mode)
+		else:
+			self.apply_function(mode, func = set_visible, args=[True], categories = categories)
+
+	
+
+
+	def hide(self, mode, categories=[]):
+
+		""" Hide elements for a given mode and category 
+
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		categories -- list of object categrories (node, edges...) 
+		"""
+
+		def set_visible(elt, args):
+			elt.visible = args[0]
+
+		self.apply_function(mode, func = set_visible, args=[False], categories = categories)
+
+
+
+	def disable(self, disabled=True, mode = ["full", "topo", "model", "mesh"], checkboxes = True):
+
+
+		""" Disable user interaction widgets for a given mode.
+
+		Keyword arguments:
+		mode -- list of newtwork modes (full, topo, model, mesh) to disable
+		checkboxes -- if true, disable also the mode checkbox 
+		"""
+
+		
+		if not disabled:
+			for m in mode:
+				self.checkboxes[m].disabled = disabled
+				if not self.checkboxes[m].checked:
+					mode.remove(m)
+	
+		for m in mode:
+			
+			if checkboxes:
+				self.checkboxes[m].disabled = disabled
+			self.update_buttons[m].disabled = disabled
+
+			if m in self.reset_buttons.keys():
+				self.reset_buttons[m].disabled = disabled
+
+			if m in self.opacity_sliders.keys():
+				self.opacity_sliders[m].disabled = disabled
+			if m in self.edge_size_sliders:
+				self.edge_size_sliders[m].disabled = disabled
+			if m in self.node_size_sliders:
+				self.node_size_sliders[m].disabled = disabled
+
+			if m == "model":
+				self.control_pts_checkbox.disabled = disabled
+				self.control_pts_checkbox.checked = False 
+				if disabled:
+					self.control_radius_checkbox.disabled = disabled
+					self.control_radius_checkbox.checked = False
+				self.furcation_checkbox.disabled = disabled
+				self.furcation_checkbox.checked = False
+
+				if disabled:
+					for k in self.smooth_checkboxes.keys():
+						self.smooth_checkboxes[k].disabled = disabled
+					self.smooth_slider.disabled = disabled
+
+
+			if m == "mesh":
+				self.deform_mesh_button.disabled = disabled
+				self.mesh_representation_menu.disabled = disabled
+
+
+
+
+
+	###########################################
+	################### SAVE ##################
+	###########################################
+
+
 	def update_save_directory(self):
+
+		""" Update the path to the output folder """
+
 		self.save_directory = self.save_winput.text
 		self.output_message("The output directory set to " + self.save_directory + ".")
 
+
 	def save(self):
+
+		""" Save the network or the mesh in a given output directory """
+
 		try:
 			if self.save_directory is None: 
 				self.output_message("No output directory found. Please write the path in the text box.", "warning")
@@ -213,137 +410,23 @@ class Editor:
 		except PermissionError:
 			self.output_message("Writting permission denied. Please check the permissions on output folder.", "error")
 
+
+
 		
-
-
-	def smooth_spline(self):
-
-		G = self.tree.get_model_graph()
-		ids = self.selected_edge.id
-		new_lbd = self.smooth_slider.value
-
-		spl = copy.deepcopy(G.edges[ids]["spline"])
-
-		if len(G.edges[ids]["spline"].get_lbd())>0:
-			if self.smooth_checkboxes["spatial"].checked:
-				spl._set_lambda_model([new_lbd, None])
-			else:
-				spl._set_lambda_model([None, new_lbd])
-
-			# Modify spline display
-			coords = spl.get_control_points()
-			c = self.elements["model"]["control_edges"][ids]
-
-			for i in range(len(coords)):
-				c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
-				self.elements["model"]["control_nodes"][ids][i].pos = vector(coords[i][0], coords[i][1], coords[i][2])
-				if self.control_radius_checkbox.checked:
-					self.elements["model"]["control_nodes"][ids][i].radius = coords[i][3]
-
-			coords = spl.get_points()
-			
-			self.selected_edge.clear()
-			for i in range(len(coords)):
-				self.selected_edge.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.green, radius=0.2)
-
-			# Add lambda modification
-			self.modified_elements["model"]["lambda"].append([ids, spl])
-
-		else:
-			self.output_message("There are no models associated with this spline.", mode = "warning")
-
-
-
-	def output_message(self, str, mode = 'msg'):
-
-		if mode == "error":
-			self.text_output.text = "<b>\n" + "Error : " + str  + "</b>\n-----------"
-			
-		elif mode == "warning":
-			self.text_output.text = "<b>\n" + "Warning : " + str  + "</b>\n-----------"
-		else:
-			self.text_output.text = "\n" + str  + "\n-----------"
-	
-
-	def select_smooth_parameter(self, b):
-
-
-		ids = self.selected_edge.id
-		lbd = self.tree.get_model_graph().edges[ids]['spline'].get_lbd()
-
-		if b.parameter == "spatial":
-			if len(lbd) == 0:
-				self.output_message("There are no models associated with this spline.", mode = "warning")
-				self.smooth_checkboxes["spatial"].checked = False
-			else:
-				self.smooth_checkboxes["radius"].checked = False
-				self.smooth_slider.value = lbd[0]
-
-		else:
-
-			if len(lbd) < 2:
-				self.output_message("There are no models associated with this spline.", mode = "warning")
-				self.smooth_checkboxes["radius"].checked = False
-			else:
-				self.smooth_checkboxes["spatial"].checked = False
-				self.smooth_slider.value = lbd[1]
-
-
-
-	def deform_mesh(self):
-
-		if self.target_mesh is not None:
-			self.output_message("Mesh deformation...")
-			self.disable(True)
-
-			G = self.tree.get_crsec_graph().copy()
-			self.tree.deform_surface_to_mesh(self.target_mesh, search_dist = self.search_dist)
-
-			self.modified_elements['mesh']['deform'].append(self.tree.get_crsec_graph().copy())
-
-			self.refresh_display("mesh")
-			self.tree.set_crsec_graph(G)
-
-			self.disable(False)
-			self.output_message("Mesh deformation complete!")
-
-
-	def resample_nodes(self, b):
-
-		self.show("full", ["nodes"])
-		self.modified_elements["full"]["delete"] = []
-
-		p = b.value
-
-		show_id = []
-		for n in self.tree.get_topo_graph().nodes():
-			show_id.append(self.tree.get_topo_graph().nodes[n]['full_id'])
-
-		for e in self.tree.get_topo_graph().edges():
-			pts_id = self.tree.get_topo_graph().edges[e]['full_id']
-
-			if len(pts_id)!=0:
-
-				if p!=0:
-					# Resampling
-					step = int(len(pts_id)/(p*len(pts_id)))
-					if step > 0 and len(pts_id[:-1:step]) > 0:
-						show_id = show_id +  pts_id[:-1:step]
-						
-					else:
-						show_id = show_id + [pts_id[int(len(pts_id)/2)]]
-				else:
-					show_id = show_id + [pts_id[int(len(pts_id)/2)]]
-					
-
-		for k in self.elements["full"]["nodes"].keys():
-			if k not in show_id:
-				self.elements["full"]["nodes"][k].visible = False
-				self.modified_elements["full"]["delete"].append(k)
-
+	###########################################
+	########## CREATION / UPDATE ##############
+	###########################################
 
 
 	def apply_function(self, mode, func, args, categories=[]):
+
+		""" Apply a modifier function to all elements of given mode and category.
+
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		categories -- list of object categrories (node, edges...) 
+		"""
+
 
 	
 		if len(categories) == 0:
@@ -365,887 +448,15 @@ class Editor:
 				for elt in obj_cat:
 					func(elt, args)
 
-	
 
-
-	def keyboard_control(self, evt):
-
-		if self.edition_mode == "topo" and self.selected_edge is not None:
-
-			finished = True
-			if (evt.key == "r" or evt.key == "R") and finished:
-
-				finished = False
-				# Get rotation angle and normal 
-				normal = scene.mouse.ray
-				normal = np.array([normal.x, normal.y, normal.z])
-			
-				
-				rot_center = self.selected_edge.point(0)['pos'] 
-				rot_center = np.array([rot_center.x, rot_center.y, rot_center.z]) # Coordinates of the first point of edge
-
-				if evt.key == "r":
-					alpha = 0.1
-				else:
-					alpha = -0.1
-
-				edg = self.selected_edge.id
-				G = self.tree.get_topo_graph()
-				edg_list = [edg] + list(nx.dfs_edges(G, source=edg[1]))
-				nds_list = list(nx.dfs_preorder_nodes(G, source=edg[1]))
-
-				for e in edg_list:
-					new_coords = np.vstack((np.zeros((1,4)), G.edges[e]['coords'], np.zeros((1,4))))
-					for i in range(self.elements["topo"]["edges"][e].npoints):
-						if e != edg or (e == edg and i > 0):
-							coord = self.elements["topo"]["edges"][e].point(i)['pos'] 
-							coord = np.array([coord.x, coord.y, coord.z])
-							l = norm(coord - rot_center)
-							v = (coord - rot_center) / l
-							
-							new_v = rotate_vector(v, normal, alpha)
-							new_pos = rot_center + l* new_v
-
-							self.elements["topo"]["edges"][e].modify(i, vector(new_pos[0], new_pos[1], new_pos[2]))
-
-							new_coords[i, :3] = new_pos
-							
-
-					self.modified_elements["topo"]["move"].append(["edges", e, new_coords[1:-1, :]])
-
-				for n in nds_list:
-					new_coords = G.nodes[n]['coords']
-
-					coord = self.elements["topo"]["nodes"][n].pos 
-					coord = np.array([coord.x, coord.y, coord.z])
-					l = norm(coord - rot_center)
-					v = (coord - rot_center) / l
-						
-					new_v = rotate_vector(v, normal, alpha)
-					new_pos = rot_center + l* new_v
-
-					self.elements["topo"]["nodes"][n].pos = vector(new_pos[0], new_pos[1], new_pos[2])
-					new_coords[:3] = np.array([new_pos[0], new_pos[1], new_pos[2]])
-					self.modified_elements["topo"]["move"].append(["nodes", n, new_coords])
-
-				finished = True
-
-			
-			
-			if evt.key == "delete":
-
-				edg = self.selected_edge.id
-				self.modified_elements["topo"]["delete"].append(edg)
-				G = self.tree.get_topo_graph()
-
-				# Hide the edges
-				for e in [edg] + list(nx.dfs_edges(G, source=edg[1])):
-					self.elements["topo"]["edges"][e].visible = False
-					#for elt in self.elements["topo"]["edges"][e]:
-					#	elt.visible = False
-
-				# Hide the nodes 
-				for n in list(nx.dfs_preorder_nodes(G, source=edg[1])):
-					self.elements["topo"]["nodes"][n].visible = False
-				
-
-
-		if self.edition_mode != "mesh" and self.selected_node is not None:
-			ids = self.selected_node.id
-		
-			if evt.key == "d":
-				self.selected_node.radius = self.selected_node.radius - 0.01
-
-			if evt.key == "u":
-				self.selected_node.radius = self.selected_node.radius + 0.01
-
-			# Save new position in changes
-			already_moved = False
-
-			for elt in self.modified_elements[self.edition_mode]['move']:
-				if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
-					already_moved = True
-					elt[3] = self.selected_node.radius
-		
-			if not already_moved:
-				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, self.selected_node.radius])
-
-
-
-	def update_edition_mode(self):
-
-		self.unselect("node", self.edition_mode)
-		self.unselect("edge", self.edition_mode)
-
-		self.edition_mode = self.edition_menu.selected
-		self.output_message("Edition mode switched to " + self.edition_mode + ".")
-	
-
-	def update_graph(self, b):
-		# Update the modified elements by changing the graph
-
-		mode = b.mode # The mode of the button is the representation it controls
-		if mode == "full":
-			for elt in self.modified_elements[mode]['move']:
-				category = elt[0]
-				ids = elt[1]
-				new_pos = elt[2]
-				radius = elt[3]
-
-				if category == "nodes":
-					self.tree.get_full_graph().nodes[ids]['coords'][:3] = np.array([new_pos.x, new_pos.y, new_pos.z])
-					if radius is not None:
-						self.tree.get_full_graph().nodes[ids]['coords'][3] = radius
-
-			if len(self.modified_elements[mode]['move']) > 0:
-				self.modified_elements[mode]['move'] = []
-				self.tree.set_full_graph(self.tree.get_full_graph())
-				self.refresh_display("full")
-			
-			for n in self.modified_elements[mode]['delete']:
-				prec = list(self.tree.get_full_graph().predecessors(n))[0]
-				succ = list(self.tree.get_full_graph().successors(n))[0]
-				self.tree.get_full_graph().remove_node(n)
-				self.tree.get_full_graph().add_edge(prec, succ, coords = np.array([]).reshape(0,4))
-
-				self.elements["full"]["nodes"].pop(n)
-				self.elements["full"]["edges"][(n, succ)].visible = False
-				self.elements["full"]["edges"].pop((n, succ))
-				self.elements["full"]["edges"][(prec, succ)] = self.elements["full"]["edges"][(prec, n)]
-				self.elements["full"]["edges"][(prec, succ)].id = (prec, succ) 
-				self.elements["full"]["edges"].pop((prec, n))
-
-
-			if len(self.modified_elements[mode]['delete']) > 0:
-				self.modified_elements[mode]['delete'] = []
-				self.tree.set_full_graph(self.tree.get_full_graph())
-				self.refresh_display("full")
-
-
-			# Empty the model and mesh objects and make it invisible
-			self.hide("topo")
-			self.elements["topo"] = {}
-			self.checkboxes['topo'].checked = False
-
-			self.hide("model")
-			self.elements["model"] = {}
-			self.checkboxes['model'].checked = False
-
-			self.hide("mesh")
-			self.elements["mesh"] = {}
-			self.checkboxes['mesh'].checked = False
-			self.output_message("Full graph updated.")
-
-
-		elif mode == "topo":
-
-			for e in self.modified_elements["topo"]["delete"]:
-				self.tree.remove_branch(e)
-
-			if len(self.modified_elements["topo"]["delete"]) > 0:
-
-				self.modified_elements["topo"]["delete"] = []
-				self.refresh_display("topo")
-				self.refresh_display("full")
-
-				if len(self.elements["model"]) > 0:
-					self.refresh_display("model")
-
-				if len(self.elements["mesh"]) > 0:
-					self.refresh_display("mesh")
-
-			for elt in self.modified_elements["topo"]["move"]:
-
-				G = self.tree.get_topo_graph()
-				if elt[0] == "edges":
-					G.edges[elt[1]]['coords'] = elt[2]
-
-				else:
-					G.nodes[elt[1]]['coords'] = elt[2]
-
-			if len(self.modified_elements["topo"]["move"]) > 0:
-
-				self.tree.set_topo_graph(G)
-
-				self.modified_elements["topo"]["move"] = []
-				self.refresh_display("topo")
-				self.refresh_display("full")
-
-				self.hide("model")
-				self.elements["model"] = {}
-				self.checkboxes['model'].checked = False
-
-				self.hide("mesh")
-				self.elements["mesh"] = {}
-				self.checkboxes['mesh'].checked = False
-
-
-
-
-			self.output_message("Topo graph updated.")
-
-		elif mode == "model":
-
-			G = self.tree.get_model_graph()
-
-			for elt in self.modified_elements[mode]['move']:
-				category = elt[0]
-				ids = elt[1]
-				new_pos = elt[2]
-				radius = elt[3]
-
-				if category == "control_nodes":
-
-					P = G.edges[ids[0]]['spline'].get_control_points()
-					P[ids[1], :3] = [new_pos.x, new_pos.y, new_pos.z]
-					if radius is not None:
-						P[ids[1], 3] = radius
-					G.edges[ids[0]]['spline'].set_control_points(P.tolist())
-
-				if category == "nodes":
-					pass
-
-			for elt in self.modified_elements[mode]['lambda']:
-				G.edges[elt[0]]['spline'] = elt[1]
-
-
-			self.tree.set_model_graph(G, down_replace = False)
-
-			for k in self.modified_elements[mode]:
-				self.modified_elements[mode][k] = []
-
-			self.refresh_display("model")
-			self.hide("mesh")
-			self.elements["mesh"] = {}
-			self.checkboxes['mesh'].checked = False
-			self.output_message("Model graph updated.")
-			
-
-		else:
-
-			# Parameter update
-			if len(self.modified_elements[mode]['parameter']) > 0:
-				self.compute_mesh()
-
-			else:
-				# Deform update
-				for G in self.modified_elements[mode]['deform']:
-					self.tree.set_crsec_graph(G)
-
-				self.modified_elements[mode]['deform'] = []
-				self.output_message("Mesh updated.")
-
-		self.unselect("node", mode)
-		self.unselect("edge", mode)
-
-
-
-	def refresh_display(self, mode, delete = True):
-
-		# Modify the edges and nodes position according to the modified graph
-		if self.elements[mode]:# If there is elements in the mode dictionnary
-
-			if self.checkboxes[mode].checked:
-				visible = True
-			else:
-				visible = False
-
-			if mode == "full":
-
-				nds = [n for n in self.tree.get_full_graph().nodes()]
-				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
-				for n in nds_elt:
-					if n not in nds:
-						self.elements[mode]["nodes"][n].visible = False
-						self.elements[mode]["nodes"].pop(n)
-
-
-				for n in nds:
-					coords = self.tree.get_full_graph().nodes[n]['coords']
-					if n in nds_elt: # Modify node
-						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
-						self.elements[mode]["nodes"][n].radius = coords[3] 
-					else: 
-						self.elements[mode]["nodes"][n] = sphere(pos=vector(coords[0], coords[1], coords[2]), color=color.red, radius=coords[3], mode = 'full', category = 'nodes', id = n, visible = visible) # Create node
-
-				edj = [e for e in self.tree.get_full_graph().edges()]
-				edj_elt = list(self.elements[mode]["edges"].keys())[:]
-				for e in edj_elt:
-					if e not in edj:
-						self.elements[mode]["edges"][e].visible = False
-						self.elements[mode]["edges"].pop(e)
-
-				for e in edj:
-					coords_0 = self.tree.get_full_graph().nodes[e[0]]['coords']
-					coords_1 = self.tree.get_full_graph().nodes[e[1]]['coords']
-
-					pos = vector(coords_0[0], coords_0[1], coords_0[2])
-					axis = coords_1[:-1] - coords_0[:-1]
-					length = norm(axis)
-					axis = axis / norm(axis)
-					axis = vector(axis[0], axis[1], axis[2]) 
-
-					if e in edj_elt:
-						self.elements[mode]["edges"][e].pos = pos
-						self.elements[mode]["edges"][e].axis = axis
-						self.elements[mode]["edges"][e].length = length
-					else:
-						self.elements[mode]["edges"][e] = cylinder(pos=pos, axis=axis, length=length, radius=0.2, color=color.black, mode = 'full', category = 'edges', id = e, visible = visible)
-
-
-
-			elif mode == "topo":
-				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green}
-
-				G = self.tree.get_topo_graph()
-				nds = [n for n in G.nodes()]
-				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
-				for n in nds_elt:
-					if n not in nds:
-						self.elements[mode]["nodes"][n].visible = False
-						self.elements[mode]["nodes"].pop(n)
-
-				for n in nds:
-					coords = G.nodes[n]['coords']
-					if n not in nds_elt:
-						pos = vector(coords[0], coords[1], coords[2])
-						pt_type = G.nodes[n]['type']
-						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'topo', category = 'nodes', id = n, visible = visible) # Create new point
-					else:
-						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
-
-				edj = [e for e in G.edges()]
-				edj_elt = list(self.elements[mode]["edges"].keys())[:]
-				for e in edj_elt:
-					if e not in edj:
-						for elt in self.elements[mode]["edges"][e]:
-							elt.visible = False
-						self.elements[mode]["edges"].pop(e)
-
-				for e in edj:
-
-					coords = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
-
-					if e in edj_elt:
-						c = self.elements[mode]["edges"][e]
-						for i in range(len(coords)):
-							c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
-					else:
-
-						c = curve(pos=pos, color = color.black, radius = 0.2, mode = 'topo', category = 'edges', id = e)
-
-						for i in range(1,len(coords)):
-							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
-
-						self.elements[mode]["edges"][e] = c
-
-
-			elif mode == "model":
-				
-				G = self.tree.get_model_graph()
-				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green, 'sep': color.purple}
-
-				# Remove nodes if required
-				nds = [n for n in G.nodes()]
-				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
-				for n in nds_elt:
-					if n not in nds:
-						self.elements[mode]["nodes"][n].visible = False
-						self.elements[mode]["nodes"].pop(n)
-
-						if n in self.elements[mode]["furcation_nodes"].keys(): # Remove the bifurcation nodes and edges
-							for i in range(len(self.elements[mode]["furcation_nodes"][n])):
-								self.elements[mode]["furcation_nodes"][n][i].visible = False
-
-							for i in range(len(self.elements[mode]["furcation_nodes"][n])):
-								self.elements[mode]["furcation_nodes"][n][i].visible = False
-
-
-				# Modify or add node
-				for n in nds:
-					coords = G.nodes[n]['coords']
-					pt_type = G.nodes[n]['type']
-					if n not in nds_elt:
-						pos = vector(coords[0], coords[1], coords[2])
-						pt_type = G.nodes[n]['type']
-						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'model', category = 'nodes', id = n, visible = visible) # Create new point
-					else:
-						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2]) # Change coordinates
-
-				# Remove edge is if required
-				edj = [e for e in G.edges()]
-				edj_elt = list(self.elements[mode]["edges"].keys())[:]
-				for e in edj_elt:
-					if e not in edj:
-						self.elements[mode]["edges"][e].visible = False
-						self.elements[mode]["edges"].pop(e)
-
-						self.elements[mode]["control_edges"][e].visible = False
-						self.elements[mode]["control_edges"].pop(e)
-
-						for i in range(len(self.elements[mode]["control_nodes"][e])):
-							self.elements[mode]["control_nodes"][e][i].visible = False
-
-						self.elements[mode]["control_nodes"].pop(e)
-
-				# Modify or add edge
-				for e in G.edges(): 
-	
-					spl = G.edges[e]['spline']
-					
-					if e in edj_elt: # Modify existing edge
-						# Update the control points positions
-						coords = spl.get_control_points()
-						c = self.elements[mode]["control_edges"][e]
-
-						if len(coords) == c.npoints: 
-
-							for i in range(len(coords)):
-								c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
-								self.elements[mode]["control_nodes"][e][i].pos = vector(coords[i][0], coords[i][1], coords[i][2])
-						else:
-							c.clear()
-							for i in len(self.elements[mode]["control_nodes"][e]):
-								self.elements[mode]["control_nodes"][e][i].visible = False
-
-							self.elements[mode]["control_nodes"][e] = []
-
-
-							for i in range(len(coords)):
-								c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
-								self.elements[mode]["control_nodes"][e].append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
-
-
-						# Update the spline curve point positions
-						coords = spl.get_points()
-						c = self.elements[mode]["edges"][e]
-
-						c.clear()
-						for i in range(len(coords)):
-							c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
-
-					else: # Create new edge
-
-						# Create control nodes
-						coords = spl.get_control_points()
-						pos = vector(coords[0][0], coords[0][1], coords[0][2])
-						c2 = curve(pos=pos, color = color.black, radius = 0.2, visible=False, mode = 'model', category = 'control_edges', id = e)
-						n_list = [sphere(pos = pos, color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, 0))]
-				
-						for i in range(1,len(coords)):
-							c2.append(vector(coords[i][0], coords[i][1], coords[i][2]))
-							n_list.append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
-
-						self.elements[mode]["control_edges"][e] = c2
-						self.elements[mode]["control_nodes"][e] = n_list
-				
-						# Create spline curve
-						coords = spl.get_points()
-						pos = vector(coords[0][0], coords[0][1], coords[0][2])
-						c = curve(pos=pos, color = color.black, radius = 0.2, mode = 'model', category = 'edges', id = e)
-
-						for i in range(1,len(coords)):
-							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
-
-						self.elements[mode]["edges"][e] = c
-
-			else:
-				mesh = self.tree.get_surface_mesh()
-				if mesh is None:
-					mesh = self.tree.mesh_surface()
-
-
-				if mesh.n_faces != len(self.elements["mesh"]["surface"]):
-					self.hide("mesh")
-					self.elements["mesh"] = {}
-
-					self.create_elements("mesh")
-				else:
-
-					mesh = self.tree.get_surface_mesh()
-					if mesh is None:
-						self.output_message("Computing mesh...")
-						self.disable_checkboxes(True)
-						mesh = self.tree.mesh_surface()
-						self.disable_checkboxes(False)
-
-					vertices = mesh.points
-					faces = mesh.faces.reshape((-1, 5))
-					faces.astype('int32')
-
-					v_obj = []
-					for v in vertices:
-						v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75)))
-
-					i = 0
-					for f in faces:
-						self.elements["mesh"]["surface"][i].v0 = v_obj[f[1]]
-						self.elements["mesh"]["surface"][i].v1 = v_obj[f[2]]
-						self.elements["mesh"]["surface"][i].v2 = v_obj[f[3]]
-						self.elements["mesh"]["surface"][i].v3 = v_obj[f[4]]
-						i+=1
-
-					G = self.tree.get_crsec_graph()
-					for n in G.nodes():
-						crsec = G.nodes[n]['crsec']
-
-						if G.nodes[n]['type'] == "bif":
-							N = (self.tree._N // 2) - 1
-							s = 2
-							for i in range(len(crsec) // N):
-								self.elements["mesh"]["section_edges"][n][i].modify(0, vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
-								c = 1
-								for k in range(N):
-									self.elements["mesh"]["section_edges"][n][i].modify(c, vector(crsec[s+k, 0], crsec[s+k, 1], crsec[s+k, 2]))
-									c +=1
-								s += k + 1
-								self.elements["mesh"]["section_edges"][n][i].modify(c,vector(crsec[1, 0], crsec[1, 1], crsec[1, 2]))
-
-						else:
-							
-							for i in range(len(crsec)):
-								self.elements["mesh"]["section_edges"][n][0].modify(i, vector(crsec[i, 0], crsec[i, 1], crsec[i, 2]))
-
-							self.elements["mesh"]["section_edges"][n][0].modify(len(crsec), vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
-					
-					for e in G.edges():
-
-						crsec_list = G.edges[e]['crsec']
-						
-						# Longitudinal curves
-						for i in range(crsec_list.shape[1]):
-							
-							# Starting point
-							start_sec = G.nodes[e[0]]['crsec']
-							self.elements["mesh"]["connecting_edges"][e][i].modify(0, vector(start_sec[i, 0], start_sec[i, 1], start_sec[i, 2]))
-							c = 1
-							for j in range(crsec_list.shape[0]):
-								self.elements["mesh"]["connecting_edges"][e][i].modify(c, vector(crsec_list[j, i, 0], crsec_list[j, i, 1], crsec_list[j, i, 2]))
-								c+=1
-								
-							# Ending point
-							end_sec = G.nodes[e[1]]['crsec']
-							l = G.edges[e]['connect'][i]
-							self.elements["mesh"]["connecting_edges"][e][i].modify(c,vector(end_sec[l][0], end_sec[l][1], end_sec[l][2]))
-
-
-						# Cross section curves
-						for i in range(len(crsec_list)):
-							crsec = crsec_list[i]
-							
-							for j in range(len(crsec)):
-								self.elements["mesh"]["section_edges"][e][i].modify(j, vector(crsec[j, 0], crsec[j, 1], crsec[j, 2]))
-							self.elements["mesh"]["section_edges"][e][i].modify(len(crsec),vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
-
-
-	def reset_graph(self, b):
-
-		# Empty the modified element and put everything back in place
-		mode = b.mode
-		refresh = True
-
-
-		if refresh:
-			self.refresh_display(mode)
-
-		if mode == "mesh":
-			self.output_message("Reset mesh.")
-		else:
-			self.output_message("Reset " + mode + " graph.")
-
-	
-		self.unselect("node", mode)
-		self.unselect("edge", mode)
-
-
-
-
-	def move(self, evt):
-
-		if self.edition_mode == "full" and self.selected_node is not None and self.drag:
-			self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
-
-
-
-		
-	def drop(self, evt):
-
-		# Save new position in changes
-		if self.selected_node is not None:
-			already_moved = False
-			for elt in self.modified_elements[self.edition_mode]['move']:
-				if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
-					already_moved = True
-					elt[2] = self.selected_node.pos
-			if not already_moved:
-				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, None])
-
-			self.unselect("node")
-			self.drag = False
-
-
-	def select(self):
-
-		obj = scene.mouse.pick
-
-		if type(obj) == sphere and obj.mode == self.edition_mode:
-	
-			self.unselect("node")
-
-			self.selected_node = obj
-			self.selected_node.color = color.yellow
-			self.drag = True
-			self.output_message("Node selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
-
-		elif type(obj) == curve and obj.mode == "model" and self.edition_mode == "model":
-			
-			self.unselect("edge")
-
-			self.selected_edge = obj
-			self.selected_edge.color = color.green
-
-			self.smooth_checkboxes['spatial'].disabled = False
-			self.smooth_checkboxes['radius'].disabled = False
-			self.smooth_slider.disabled = False
-
-			self.output_message("Spline selected. Check a smoothing box and use the slider smooth or unsmooth.")
-
-		elif type(obj) == curve and self.edition_mode == "topo":
-
-			self.unselect("edge")
-			self.selected_edge = obj
-			self.selected_edge.color = color.green
-
-			self.output_message("Edge selected. Press suppr. to cut the corresponding branch.")
-
-
-	def unselect(self, elt = "node", mode = None):
-
-		if elt == "node":
-			if self.selected_node is not None:
-				if mode is None or self.selected_node.mode == mode:
-					if self.selected_node.mode == "full":
-						self.selected_node.color = color.red
-					if self.selected_node.mode == "model":
-						self.selected_node.color = color.gray(0.5)
-
-					self.selected_node = None
-
-		else:
-			if self.selected_edge is not None:
-				if mode is None or self.selected_edge.mode == mode:
-					if type(self.selected_edge) == curve:
-
-						self.selected_edge.color = color.black
-						self.selected_edge = None
-
-						self.smooth_checkboxes['spatial'].disabled = True
-						self.smooth_checkboxes['radius'].disabled = True
-						self.smooth_checkboxes['spatial'].checked = False
-						self.smooth_checkboxes['radius'].checked = False
-						self.smooth_slider.disabled = True
-
-					else:
-						if self.selected_edge.id[0] in self.elements["topo"]["edges"].keys():
-							for elt in self.elements["topo"]["edges"][self.selected_edge.id[0]]:
-								elt.color = color.black
-
-						self.selected_edge = None
-
-
-
-
-	def compute_mesh(self):
-
-		self.output_message("Computing the mesh.")
-
-		self.disable(True)
-		self.tree.compute_cross_sections(self.N, self.d)
-		self.tree.mesh_surface()
-		self.disable(False
-			)
-		self.output_message("Mesh Complete!")
-		# Update the display
-		self.hide("mesh")
-		self.elements["mesh"] = {}
-		self.create_elements("mesh")
-
-
-	def update_mesh_parameters(self, b):
-
-		if b.parameter == "N":
-			self.N = int(self.parameters_winput['N'].text)
-			self.output_message("Number of cross section nodes set to " + str(self.N) + ".")
-			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
-				self.modified_elements['mesh']['parameter'].append(True)
-
-		elif b.parameter == "d":
-			self.d = float(self.parameters_winput['d'].text)
-			self.output_message("Density of cross section set to " + str(self.d) + ".")
-			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
-				self.modified_elements['mesh']['parameter'].append(True)
-
-		elif b.parameter == "search_dist":
-			self.search_dist  = float(self.parameters_winput['search_dist'].text)
-			self.output_message("Maximum projection distance set to " + str(self.search_dist) + ".")
-
-		else:
-			try:
-				self.target_mesh = pv.read(self.parameters_winput['path'].text)
-				self.output_message("Target mesh is now : " + self.parameters_winput['path'].text + ".")
-				self.parameters_winput['path'].text = ""
-		
-			except FileNotFoundError:	
-				self.output_message("The target mesh file does not exist.", "error")
-
-		
-
-
-	def update_mesh_representation(self, b):
-
-		if self.checkboxes["mesh"].checked:
-			representation = self.mesh_representation_menu.selected
-			if representation == "wireframe":
-				self.hide("mesh", ["surface"])
-				self.show("mesh", ["connecting_edges", "section_edges"])
-
-			elif representation == "sections":
-				self.show("mesh", ["section_edges"])
-				self.hide("mesh", ["surface", "connecting_edges"])
-
-			elif representation == 'solid':
-				self.show("mesh", ["surface"])
-				self.hide("mesh",["section_edges","connecting_edges"]) 
-			else: 
-				self.show("mesh")
-
-
-			self.output_message("Mesh representation mode switched to " +  representation + ".")
-
-
-	def update_visibility_control_pts(self):
-
-		if self.control_pts_checkbox.checked:
-			self.control_radius_checkbox.disabled = False
-			self.show('model', ['control_edges', 'control_nodes'])
-		else:
-			self.control_radius_checkbox.disabled = True
-			self.control_radius_checkbox.checked = False
-			self.hide('model',['control_edges', 'control_nodes'])
-
-
-	def update_visibility_furcations(self):
-
-		if self.furcation_checkbox.checked:
-			self.show('model', ['furcation_edges', 'furcation_nodes'])
-		else:
-			self.hide('model', ['furcation_edges', 'furcation_nodes'])
-
-
-
-	def update_visibility_state(self, b):
-
-		mode = b.mode
-
-		if mode == 'model':
-			categories = ['edges', 'nodes']
-		else:
-			categories = []
-
-		if b.checked:
-			self.show(mode, categories)
-			self.disable(False, [mode], checkboxes = False)
-		else:
-			self.hide(mode)
-			self.disable(True, [mode], checkboxes = False)
-	
-
-
-	def update_edge_size(self):
-
-		def set_edge_size(elt, args):
-			if type(elt) == curve:
-				if args[0] > 0:
-					elt.visible = True
-					for n in range(elt.npoints):
-						elt.modify(n, radius=args[0])
-				else:
-					elt.visible = False
-
-			else:
-				elt.radius = args[0]
-
-		for mode in self.edge_size_sliders.keys():
-			if self.edge_size_sliders[mode].value != self.edge_size[mode]:
-	
-				if mode == "mesh":
-					categories = ['section_edges', 'connecting_edges']
-				else:
-					categories = ['edges']
-
-				self.apply_function(mode, func=set_edge_size, args=[self.edge_size_sliders[mode].value], categories = categories)
-				self.edge_size[mode] = self.edge_size_sliders[mode].value
-
-
-
-	def update_node_size(self):
-
-		def set_node_size(elt, args):
-			elt.radius = args[0]
-
-		for mode in self.node_size_sliders.keys():
-			if self.node_size_sliders[mode].value != self.node_size[mode]:
-
-				categories = ['nodes']
-
-				self.apply_function(mode, func=set_node_size, args=[self.node_size_sliders[mode].value], categories = categories)
-				self.node_size[mode] = self.node_size_sliders[mode].value
-
-
-
-
-	def barycenter_finder(self):
-
-		coords = list(nx.get_node_attributes(self.tree.get_full_graph(), 'coords').values())
-		barycenter = sum(coords) / len(coords)
-		return barycenter[:3]
-
-
-
-	def update_opacity_state(self):
-
-		def set_opacity(elt, args):
-			elt.opacity = args[0]
-
-		for mode in self.opacity_sliders.keys():
-			if self.opacity_sliders[mode].value != self.opacity_value[mode]:
-				self.apply_function(mode, func=set_opacity, args=[self.opacity_sliders[mode].value])
-				self.opacity_value[mode] = self.opacity_sliders[mode].value
-
-
-	def show(self, mode, categories = []):
-
-		def set_visible(elt, args):
-			elt.visible = args[0]
-
-		if len(self.elements[mode]) == 0:
-			# Creation of the mode objects
-			self.create_elements(mode)
-		else:
-			self.apply_function(mode, func = set_visible, args=[True], categories = categories)
-
-	
-
-
-	def hide(self, mode, categories=[]):
-
-		def set_visible(elt, args):
-			elt.visible = args[0]
-
-		self.apply_function(mode, func = set_visible, args=[False], categories = categories)
-	
 
 	def create_elements(self, mode):
+
+		""" Create all 3D objects (nodes, edges) for a given mode.
+		
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		"""
 
 		if mode == 'full':
 
@@ -1291,24 +502,11 @@ class Editor:
 			for e in G.edges():
 				coords = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
 
-				c = curve(color = color.black, radius = 0.1, mode = 'topo', category = 'edges', id = e)
+				c = curve(color = color.black, radius = 0.2, mode = 'topo', category = 'edges', id = e)
 				for i in range(len(coords)):
 					c.append(vector(coords[i, 0], coords[i, 1], coords[i, 2]))
 
 				edges[e] = c
-
-
-				#coords = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
-
-				#c_list = []
-				#for i in range(len(coords) - 1):
-				#	pos = vector((coords[i][0]), (coords[i][1]), (coords[i][2]))
-				#	axis = coords[i+1][:-1] - coords[i][:-1]
-				#	length = norm(axis)
-				#	direction = axis / length
-				#	c_list.append(cylinder(pos=pos, axis=vector(direction[0], direction[1], direction[2]), length=length, radius=0.2, color=color.black, mode = 'topo', category = 'edges', id = (e, i)))
-
-				#	edges[e] = c_list
 
 	
 
@@ -1544,49 +742,1036 @@ class Editor:
 
 
 
-	def disable(self, disabled=True, mode = ["full", "topo", "model", "mesh"], checkboxes = True):
+
+	def update_graph(self, b):
+
+		""" Update the modified elements in the tree object by modifying the graphs"""
+
+		mode = b.mode # The mode of the button is the representation it controls
+		if mode == "full":
+			for elt in self.modified_elements[mode]['move']:
+				category = elt[0]
+				ids = elt[1]
+				new_pos = elt[2]
+				radius = elt[3]
+
+				if category == "nodes":
+					self.tree.get_full_graph().nodes[ids]['coords'][:3] = np.array([new_pos.x, new_pos.y, new_pos.z])
+					if radius is not None:
+						self.tree.get_full_graph().nodes[ids]['coords'][3] = radius
+
+			if len(self.modified_elements[mode]['move']) > 0:
+				self.modified_elements[mode]['move'] = []
+				self.tree.set_full_graph(self.tree.get_full_graph())
+				self.refresh_display("full")
+			
+			for n in self.modified_elements[mode]['delete']:
+				prec = list(self.tree.get_full_graph().predecessors(n))[0]
+				succ = list(self.tree.get_full_graph().successors(n))[0]
+				self.tree.get_full_graph().remove_node(n)
+				self.tree.get_full_graph().add_edge(prec, succ, coords = np.array([]).reshape(0,4))
+
+				self.elements["full"]["nodes"].pop(n)
+				self.elements["full"]["edges"][(n, succ)].visible = False
+				self.elements["full"]["edges"].pop((n, succ))
+				self.elements["full"]["edges"][(prec, succ)] = self.elements["full"]["edges"][(prec, n)]
+				self.elements["full"]["edges"][(prec, succ)].id = (prec, succ) 
+				self.elements["full"]["edges"].pop((prec, n))
+
+
+			if len(self.modified_elements[mode]['delete']) > 0:
+				self.modified_elements[mode]['delete'] = []
+				self.tree.set_full_graph(self.tree.get_full_graph())
+				self.refresh_display("full")
+
+
+			# Empty the model and mesh objects and make it invisible
+			self.hide("topo")
+			self.elements["topo"] = {}
+			self.checkboxes['topo'].checked = False
+
+			self.hide("model")
+			self.elements["model"] = {}
+			self.checkboxes['model'].checked = False
+
+			self.hide("mesh")
+			self.elements["mesh"] = {}
+			self.checkboxes['mesh'].checked = False
+			self.output_message("Full graph updated.")
+
+
+		elif mode == "topo":
+
+			for elt in self.modified_elements["topo"]["move"]:
+
+				G = self.tree.get_topo_graph()
+				if elt[0] == "edges":
+					G.edges[elt[1]]['coords'] = elt[2]
+
+				else:
+					G.nodes[elt[1]]['coords'] = elt[2]
+
+			if len(self.modified_elements["topo"]["move"]) > 0:
+
+				self.tree.set_topo_graph(G)
+
+				self.modified_elements["topo"]["move"] = []
+				self.refresh_display("topo")
+				self.refresh_display("full")
+
+				self.hide("model")
+				self.elements["model"] = {}
+				self.checkboxes['model'].checked = False
+
+				self.hide("mesh")
+				self.elements["mesh"] = {}
+				self.checkboxes['mesh'].checked = False
+
+			for elt in self.modified_elements["topo"]["merge"]:
+				self.tree.merge_branch(elt)
+
+			if len(self.modified_elements["topo"]["merge"]) > 0:
+
+				self.modified_elements["topo"]["merge"] = []
+				self.refresh_display("topo")
+				self.refresh_display("full")
+
+				self.hide("model")
+				self.elements["model"] = {}
+				self.checkboxes['model'].checked = False
+
+				self.hide("mesh")
+				self.elements["mesh"] = {}
+				self.checkboxes['mesh'].checked = False
+
+
+			for e in self.modified_elements["topo"]["delete"]:
+				self.tree.remove_branch(e)
+
+			if len(self.modified_elements["topo"]["delete"]) > 0:
+
+				self.modified_elements["topo"]["delete"] = []
+				self.refresh_display("topo")
+				self.refresh_display("full")
+
+				if len(self.elements["model"]) > 0:
+					self.refresh_display("model")
+
+				if len(self.elements["mesh"]) > 0:
+					self.refresh_display("mesh")
+
+			self.output_message("Topo graph updated.")
+
+		elif mode == "model":
+
+			G = self.tree.get_model_graph()
+
+			for elt in self.modified_elements[mode]['move']:
+				category = elt[0]
+				ids = elt[1]
+				new_pos = elt[2]
+				radius = elt[3]
+
+				if category == "control_nodes":
+
+					P = G.edges[ids[0]]['spline'].get_control_points()
+					P[ids[1], :3] = [new_pos.x, new_pos.y, new_pos.z]
+					if radius is not None:
+						P[ids[1], 3] = radius
+					G.edges[ids[0]]['spline'].set_control_points(P.tolist())
+
+				if category == "nodes":
+					pass
+
+			for elt in self.modified_elements[mode]['lambda']:
+				G.edges[elt[0]]['spline'] = elt[1]
+
+
+			self.tree.set_model_graph(G, down_replace = False)
+
+			for k in self.modified_elements[mode]:
+				self.modified_elements[mode][k] = []
+
+			self.refresh_display("model")
+			self.hide("mesh")
+			self.elements["mesh"] = {}
+			self.checkboxes['mesh'].checked = False
+			self.output_message("Model graph updated.")
+			
+
+		else:
+
+			# Parameter update
+			if len(self.modified_elements[mode]['parameter']) > 0:
+				self.compute_mesh()
+
+			else:
+				# Deform update
+				for G in self.modified_elements[mode]['deform']:
+					self.tree.set_crsec_graph(G)
+
+				self.modified_elements[mode]['deform'] = []
+				self.output_message("Mesh updated.")
+
+		self.unselect("node", mode)
+		self.unselect("edge", mode)
+
+
+
+
+
+	def refresh_display(self, mode):
+
+		""" Modify the edges and nodes position according to the tree object modified graph, for a given mode.
+
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		"""
+
+
+		if self.elements[mode]:# If there is elements in the mode dictionnary
+
+			if self.checkboxes[mode].checked:
+				visible = True
+			else:
+				visible = False
+
+			if mode == "full":
+
+				nds = [n for n in self.tree.get_full_graph().nodes()]
+				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
+				for n in nds_elt:
+					if n not in nds:
+						self.elements[mode]["nodes"][n].visible = False
+						self.elements[mode]["nodes"].pop(n)
+
+
+				for n in nds:
+					coords = self.tree.get_full_graph().nodes[n]['coords']
+					if n in nds_elt: # Modify node
+						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
+						self.elements[mode]["nodes"][n].radius = coords[3] 
+						self.elements[mode]["nodes"][n].visible = visible
+					else: 
+						self.elements[mode]["nodes"][n] = sphere(pos=vector(coords[0], coords[1], coords[2]), color=color.red, radius=coords[3], mode = 'full', category = 'nodes', id = n, visible = visible) # Create node
+
+				edj = [e for e in self.tree.get_full_graph().edges()]
+				edj_elt = list(self.elements[mode]["edges"].keys())[:]
+				for e in edj_elt:
+					if e not in edj:
+						self.elements[mode]["edges"][e].visible = False
+						self.elements[mode]["edges"].pop(e)
+
+				for e in edj:
+					coords_0 = self.tree.get_full_graph().nodes[e[0]]['coords']
+					coords_1 = self.tree.get_full_graph().nodes[e[1]]['coords']
+
+					pos = vector(coords_0[0], coords_0[1], coords_0[2])
+					axis = coords_1[:-1] - coords_0[:-1]
+					length = norm(axis)
+					axis = axis / norm(axis)
+					axis = vector(axis[0], axis[1], axis[2]) 
+
+					if e in edj_elt:
+						self.elements[mode]["edges"][e].pos = pos
+						self.elements[mode]["edges"][e].axis = axis
+						self.elements[mode]["edges"][e].length = length
+						self.elements[mode]["edges"][e].visible = visible
+
+					else:
+						self.elements[mode]["edges"][e] = cylinder(pos=pos, axis=axis, length=length, radius=0.2, color=color.black, mode = 'full', category = 'edges', id = e, visible = visible)
+
+
+
+			elif mode == "topo":
+				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green}
+
+				G = self.tree.get_topo_graph()
+				nds = [n for n in G.nodes()]
+				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
+				for n in nds_elt:
+					if n not in nds:
+						self.elements[mode]["nodes"][n].visible = False
+						self.elements[mode]["nodes"].pop(n)
+
+				for n in nds:
+					coords = G.nodes[n]['coords']
+					if n not in nds_elt:
+						pos = vector(coords[0], coords[1], coords[2])
+						pt_type = G.nodes[n]['type']
+						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'topo', category = 'nodes', id = n, visible = visible) # Create new point
+					else:
+						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
+						self.elements[mode]["nodes"][n].visible = visible
+
+
+				edj = [e for e in G.edges()]
+				edj_elt = list(self.elements[mode]["edges"].keys())[:]
+				for e in edj_elt:
+					if e not in edj:
+						self.elements[mode]["edges"][e].visible = False
+						self.elements[mode]["edges"].pop(e)
+
+				for e in edj:
+
+					coords = np.vstack((G.nodes[e[0]]['coords'], G.edges[e]['coords'], G.nodes[e[1]]['coords']))
+
+					if e in edj_elt:
+						c = self.elements[mode]["edges"][e]
+						for i in range(len(coords)):
+							c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
+
+					else:
+
+						c = curve(color = color.black, radius = 0.2, mode = 'topo', category = 'edges', id = e)
+
+						for i in range(len(coords)):
+							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
+
+						self.elements[mode]["edges"][e] = c
+					self.elements[mode]["edges"][e].visible = visible
+
+
+			elif mode == "model":
+				
+				G = self.tree.get_model_graph()
+				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green, 'sep': color.purple}
+
+				# Remove nodes if required
+				nds = [n for n in G.nodes()]
+				nds_elt = list(self.elements[mode]["nodes"].keys())[:]
+				for n in nds_elt:
+					if n not in nds:
+						self.elements[mode]["nodes"][n].visible = False
+						self.elements[mode]["nodes"].pop(n)
+
+						if n in self.elements[mode]["furcation_nodes"].keys(): # Remove the bifurcation nodes and edges
+							for i in range(len(self.elements[mode]["furcation_nodes"][n])):
+								self.elements[mode]["furcation_nodes"][n][i].visible = False
+
+							for i in range(len(self.elements[mode]["furcation_nodes"][n])):
+								self.elements[mode]["furcation_nodes"][n][i].visible = False
+
+
+				# Modify or add node
+				for n in nds:
+					coords = G.nodes[n]['coords']
+					pt_type = G.nodes[n]['type']
+					if n not in nds_elt:
+						pos = vector(coords[0], coords[1], coords[2])
+						pt_type = G.nodes[n]['type']
+						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'model', category = 'nodes', id = n, visible = visible) # Create new point
+					else:
+						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2]) # Change coordinates
+					self.elements[mode]["nodes"][n].visible = visible
+
+
+				# Remove edge is if required
+				edj = [e for e in G.edges()]
+				edj_elt = list(self.elements[mode]["edges"].keys())[:]
+				for e in edj_elt:
+					if e not in edj:
+						self.elements[mode]["edges"][e].visible = False
+						self.elements[mode]["edges"].pop(e)
+
+						self.elements[mode]["control_edges"][e].visible = False
+						self.elements[mode]["control_edges"].pop(e)
+
+						for i in range(len(self.elements[mode]["control_nodes"][e])):
+							self.elements[mode]["control_nodes"][e][i].visible = False
+
+						self.elements[mode]["control_nodes"].pop(e)
+
+
+				# Modify or add edge
+				for e in G.edges(): 
+	
+					spl = G.edges[e]['spline']
+					
+					if e in edj_elt: # Modify existing edge
+						# Update the control points positions
+						coords = spl.get_control_points()
+						c = self.elements[mode]["control_edges"][e]
+
+						if len(coords) == c.npoints: 
+
+							for i in range(len(coords)):
+								c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
+								self.elements[mode]["control_nodes"][e][i].pos = vector(coords[i][0], coords[i][1], coords[i][2])
+						else:
+							c.clear()
+							for i in len(self.elements[mode]["control_nodes"][e]):
+								self.elements[mode]["control_nodes"][e][i].visible = False
+
+							self.elements[mode]["control_nodes"][e] = []
+
+
+							for i in range(len(coords)):
+								c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
+								self.elements[mode]["control_nodes"][e].append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
+
+
+						# Update the spline curve point positions
+						coords = spl.get_points()
+						c = self.elements[mode]["edges"][e]
+
+						c.clear()
+						for i in range(len(coords)):
+							c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
+						self.elements[mode]["control_edges"][e].visible = visible
+
+					else: # Create new edge
+
+						# Create control nodes
+						coords = spl.get_control_points()
+						pos = vector(coords[0][0], coords[0][1], coords[0][2])
+						c2 = curve(pos=pos, color = color.black, radius = 0.2, visible=False, mode = 'model', category = 'control_edges', id = e)
+						n_list = [sphere(pos = pos, color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, 0))]
+				
+						for i in range(1,len(coords)):
+							c2.append(vector(coords[i][0], coords[i][1], coords[i][2]))
+							n_list.append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
+
+						self.elements[mode]["control_edges"][e] = c2
+						self.elements[mode]["control_nodes"][e] = n_list
+				
+						# Create spline curve
+						coords = spl.get_points()
+						pos = vector(coords[0][0], coords[0][1], coords[0][2])
+						c = curve(pos=pos, color = color.black, radius = 0.2, mode = 'model', category = 'edges', id = e)
+
+						for i in range(1,len(coords)):
+							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
+
+						self.elements[mode]["edges"][e] = c
+
+			else:
+				mesh = self.tree.get_surface_mesh()
+				if mesh is None:
+					mesh = self.tree.mesh_surface()
+
+
+				if mesh.n_faces != len(self.elements["mesh"]["surface"]):
+					self.hide("mesh")
+					self.elements["mesh"] = {}
+
+					self.create_elements("mesh")
+				else:
+
+					mesh = self.tree.get_surface_mesh()
+					if mesh is None:
+						self.output_message("Computing mesh...")
+						self.disable_checkboxes(True)
+						mesh = self.tree.mesh_surface()
+						self.disable_checkboxes(False)
+
+					vertices = mesh.points
+					faces = mesh.faces.reshape((-1, 5))
+					faces.astype('int32')
+
+					v_obj = []
+					for v in vertices:
+						v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75)))
+
+					i = 0
+					for f in faces:
+						self.elements["mesh"]["surface"][i].v0 = v_obj[f[1]]
+						self.elements["mesh"]["surface"][i].v1 = v_obj[f[2]]
+						self.elements["mesh"]["surface"][i].v2 = v_obj[f[3]]
+						self.elements["mesh"]["surface"][i].v3 = v_obj[f[4]]
+						i+=1
+
+					G = self.tree.get_crsec_graph()
+					for n in G.nodes():
+						crsec = G.nodes[n]['crsec']
+
+						if G.nodes[n]['type'] == "bif":
+							N = (self.tree._N // 2) - 1
+							s = 2
+							for i in range(len(crsec) // N):
+								self.elements["mesh"]["section_edges"][n][i].modify(0, vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+								c = 1
+								for k in range(N):
+									self.elements["mesh"]["section_edges"][n][i].modify(c, vector(crsec[s+k, 0], crsec[s+k, 1], crsec[s+k, 2]))
+									c +=1
+								s += k + 1
+								self.elements["mesh"]["section_edges"][n][i].modify(c,vector(crsec[1, 0], crsec[1, 1], crsec[1, 2]))
+
+						else:
+							
+							for i in range(len(crsec)):
+								self.elements["mesh"]["section_edges"][n][0].modify(i, vector(crsec[i, 0], crsec[i, 1], crsec[i, 2]))
+
+							self.elements["mesh"]["section_edges"][n][0].modify(len(crsec), vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+					
+					for e in G.edges():
+
+						crsec_list = G.edges[e]['crsec']
+						
+						# Longitudinal curves
+						for i in range(crsec_list.shape[1]):
+							
+							# Starting point
+							start_sec = G.nodes[e[0]]['crsec']
+							self.elements["mesh"]["connecting_edges"][e][i].modify(0, vector(start_sec[i, 0], start_sec[i, 1], start_sec[i, 2]))
+							c = 1
+							for j in range(crsec_list.shape[0]):
+								self.elements["mesh"]["connecting_edges"][e][i].modify(c, vector(crsec_list[j, i, 0], crsec_list[j, i, 1], crsec_list[j, i, 2]))
+								c+=1
+								
+							# Ending point
+							end_sec = G.nodes[e[1]]['crsec']
+							l = G.edges[e]['connect'][i]
+							self.elements["mesh"]["connecting_edges"][e][i].modify(c,vector(end_sec[l][0], end_sec[l][1], end_sec[l][2]))
+
+
+						# Cross section curves
+						for i in range(len(crsec_list)):
+							crsec = crsec_list[i]
+							
+							for j in range(len(crsec)):
+								self.elements["mesh"]["section_edges"][e][i].modify(j, vector(crsec[j, 0], crsec[j, 1], crsec[j, 2]))
+							self.elements["mesh"]["section_edges"][e][i].modify(len(crsec),vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+
+
+
+
+	def reset_graph(self, b):
+
+		""" Empty the modified element and refresh the display to show the unmodified tree object """
+
+		mode = b.mode
+		refresh = True
+
+
+		if refresh:
+			self.refresh_display(mode)
+
+		if mode == "mesh":
+			self.output_message("Reset mesh.")
+		else:
+			self.output_message("Reset " + mode + " graph.")
+
+	
+		self.unselect("node", mode)
+		self.unselect("edge", mode)
+
+
+
+	###########################################
+	########### USER INTERACTION ##############
+	###########################################
+
+	def output_message(self, str, mode = 'msg'):
+
+		""" Print a message under the 3D view.
+
+		Keyword arguments: 
+		str -- text to print
+		mode -- message mode (msg, warning, error)
+		"""
+
+		if mode == "error":
+			self.text_output.text = "<b>\n" + "Error : " + str  + "</b>\n-----------"
+			
+		elif mode == "warning":
+			self.text_output.text = "<b>\n" + "Warning : " + str  + "</b>\n-----------"
+		else:
+			self.text_output.text = "\n" + str  + "\n-----------"
+
+
+
+	def keyboard_control(self, evt):
+
+		""" Handle user keyboard input """
+
+		if self.edition_mode == "topo" and self.selected_edge is not None:
+
+			if evt.key == "i":
+
+				# Make the in node invisible
+				e = self.selected_edge.id
+				pred = list(self.tree.get_topo_graph().predecessors(e[0]))[0]
+				if self.tree.get_topo_graph().nodes[pred]["type"] == "end":
+					self.output_message("Edge can not be merged.")
+				else:
+					self.elements["topo"]["nodes"][e[0]].visible = False
+
+
+				# Add the merging to modified elements
+				self.modified_elements["topo"]["merge"] = [e]
+
 
 		
-		if not disabled:
-			for m in mode:
-				self.checkboxes[m].disabled = disabled
-				if not self.checkboxes[m].checked:
-					mode.remove(m)
-	
-		for m in mode:
+			if (evt.key == "r" or evt.key == "R") and not self.running:
+
+				self.running = True
+				# Get rotation angle and normal 
+				normal = scene.mouse.ray
+				normal = np.array([normal.x, normal.y, normal.z])
 			
-			if checkboxes:
-				self.checkboxes[m].disabled = disabled
-			self.update_buttons[m].disabled = disabled
+				
+				rot_center = self.selected_edge.point(0)['pos'] 
+				rot_center = np.array([rot_center.x, rot_center.y, rot_center.z]) # Coordinates of the first point of edge
 
-			if m in self.reset_buttons.keys():
-				self.reset_buttons[m].disabled = disabled
+				if evt.key == "r":
+					alpha = 0.1
+				else:
+					alpha = -0.1
 
-			if m in self.opacity_sliders.keys():
-				self.opacity_sliders[m].disabled = disabled
-			if m in self.edge_size_sliders:
-				self.edge_size_sliders[m].disabled = disabled
-			if m in self.node_size_sliders:
-				self.node_size_sliders[m].disabled = disabled
+				edg = self.selected_edge.id
+				G = self.tree.get_topo_graph()
+				edg_list = [edg] + list(nx.dfs_edges(G, source=edg[1]))
+				nds_list = list(nx.dfs_preorder_nodes(G, source=edg[1]))
 
-			if m == "model":
-				self.control_pts_checkbox.disabled = disabled
-				self.control_pts_checkbox.checked = False 
-				if disabled:
-					self.control_radius_checkbox.disabled = disabled
-					self.control_radius_checkbox.checked = False
-				self.furcation_checkbox.disabled = disabled
-				self.furcation_checkbox.checked = False
+				for e in edg_list:
+					new_coords = np.vstack((np.zeros((1,4)), G.edges[e]['coords'], np.zeros((1,4))))
+					for i in range(self.elements["topo"]["edges"][e].npoints):
+						if e != edg or (e == edg and i > 0):
+							coord = self.elements["topo"]["edges"][e].point(i)['pos'] 
+							coord = np.array([coord.x, coord.y, coord.z])
+							l = norm(coord - rot_center)
+							v = (coord - rot_center) / l
+							
+							new_v = rotate_vector(v, normal, alpha)
+							new_pos = rot_center + l* new_v
 
-				if disabled:
-					for k in self.smooth_checkboxes.keys():
-						self.smooth_checkboxes[k].disabled = disabled
-					self.smooth_slider.disabled = disabled
+							self.elements["topo"]["edges"][e].modify(i, vector(new_pos[0], new_pos[1], new_pos[2]))
+
+							new_coords[i, :3] = new_pos
+							
+
+					self.modified_elements["topo"]["move"].append(["edges", e, new_coords[1:-1, :]])
+
+				for n in nds_list:
+					new_coords = G.nodes[n]['coords']
+
+					coord = self.elements["topo"]["nodes"][n].pos 
+					coord = np.array([coord.x, coord.y, coord.z])
+					l = norm(coord - rot_center)
+					v = (coord - rot_center) / l
+						
+					new_v = rotate_vector(v, normal, alpha)
+					new_pos = rot_center + l* new_v
+
+					self.elements["topo"]["nodes"][n].pos = vector(new_pos[0], new_pos[1], new_pos[2])
+					new_coords[:3] = np.array([new_pos[0], new_pos[1], new_pos[2]])
+					self.modified_elements["topo"]["move"].append(["nodes", n, new_coords])
+
+				self.running = False
+
+			
+			
+			if evt.key == "delete":
+
+				edg = self.selected_edge.id
+				self.modified_elements["topo"]["delete"].append(edg)
+				G = self.tree.get_topo_graph()
+
+				# Hide the edges
+				for e in [edg] + list(nx.dfs_edges(G, source=edg[1])):
+					self.elements["topo"]["edges"][e].visible = False
+					#for elt in self.elements["topo"]["edges"][e]:
+					#	elt.visible = False
+
+				# Hide the nodes 
+				for n in list(nx.dfs_preorder_nodes(G, source=edg[1])):
+					self.elements["topo"]["nodes"][n].visible = False
+				
 
 
-			if m == "mesh":
-				self.deform_mesh_button.disabled = disabled
-				self.mesh_representation_menu.disabled = disabled
+		if self.edition_mode != "mesh" and self.selected_node is not None:
+			ids = self.selected_node.id
+		
+			if evt.key == "d":
+				self.selected_node.radius = self.selected_node.radius - 0.01
+
+			if evt.key == "u":
+				self.selected_node.radius = self.selected_node.radius + 0.01
+
+			# Save new position in changes
+			already_moved = False
+
+			for elt in self.modified_elements[self.edition_mode]['move']:
+				if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
+					already_moved = True
+					elt[3] = self.selected_node.radius
+		
+			if not already_moved:
+				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, self.selected_node.radius])
+
+
+	###########################################
+	############# NODE EDITION ################
+	###########################################
+
+	def update_edition_mode(self):
+
+		""" Update the edition mode chosen by the user in the edition menu """
+
+		self.unselect("node", self.edition_mode)
+		self.unselect("edge", self.edition_mode)
+
+		self.edition_mode = self.edition_menu.selected
+		self.output_message("Edition mode switched to " + self.edition_mode + ".")
+
+
+	def resample_nodes(self, b):
+
+		""" Resample nodes """
+
+		self.show("full", ["nodes"])
+		self.modified_elements["full"]["delete"] = []
+
+		p = b.value
+
+		show_id = []
+		for n in self.tree.get_topo_graph().nodes():
+			show_id.append(self.tree.get_topo_graph().nodes[n]['full_id'])
+
+		for e in self.tree.get_topo_graph().edges():
+			pts_id = self.tree.get_topo_graph().edges[e]['full_id']
+
+			if len(pts_id)!=0:
+
+				if p!=0:
+					# Resampling
+					step = int(len(pts_id)/(p*len(pts_id)))
+					if step > 0 and len(pts_id[:-1:step]) > 0:
+						show_id = show_id +  pts_id[:-1:step]
+						
+					else:
+						show_id = show_id + [pts_id[int(len(pts_id)/2)]]
+				else:
+					show_id = show_id + [pts_id[int(len(pts_id)/2)]]
+					
+
+		for k in self.elements["full"]["nodes"].keys():
+			if k not in show_id:
+				self.elements["full"]["nodes"][k].visible = False
+				self.modified_elements["full"]["delete"].append(k)
+
+
+
+	def move(self, evt):
+
+		""" Move the selected node with mouse cursor """
+
+		if self.edition_mode == "full" and self.selected_node is not None and self.drag:
+			self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
+
+
+
+		
+	def drop(self, evt):
+
+		""" Drop the node when mouse is released """
+
+		# Save new position in changes
+		if self.selected_node is not None:
+			already_moved = False
+			for elt in self.modified_elements[self.edition_mode]['move']:
+				if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
+					already_moved = True
+					elt[2] = self.selected_node.pos
+			if not already_moved:
+				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, None])
+
+			self.unselect("node")
+			self.drag = False
+
+
+	def select(self):
+
+		""" Select a node or edge by mouse clicking """
+
+		obj = scene.mouse.pick
+
+		if type(obj) == sphere and obj.mode == self.edition_mode:
+	
+			self.unselect("node")
+
+			self.selected_node = obj
+			self.selected_node.color = color.yellow
+			self.drag = True
+			self.output_message("Node selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
+
+		elif type(obj) == curve and obj.mode == "model" and self.edition_mode == "model":
+			
+			self.unselect("edge")
+
+			self.selected_edge = obj
+			self.selected_edge.color = color.green
+
+			self.smooth_checkboxes['spatial'].disabled = False
+			self.smooth_checkboxes['radius'].disabled = False
+			self.smooth_slider.disabled = False
+
+			self.output_message("Spline selected. Check a smoothing box and use the slider smooth or unsmooth.")
+
+		elif type(obj) == curve and self.edition_mode == "topo":
+
+			self.unselect("edge")
+			self.selected_edge = obj
+			self.selected_edge.color = color.green
+
+			self.output_message("Edge selected. Press suppr. to cut the corresponding branch. Press r (resp. R) to rotate the branch clockwise (resp. counterclockwise).")
+
+
+	def unselect(self, elt = "node", mode = None):
+
+		""" Unselect the selected edge or elements if it is associated to a given mode.
+
+		Keyword arguments:
+		mode -- newtwork mode (full, topo, model, mesh)
+		"""
+
+		if elt == "node":
+			if self.selected_node is not None:
+				if mode is None or self.selected_node.mode == mode:
+					if self.selected_node.mode == "full":
+						self.selected_node.color = color.red
+					if self.selected_node.mode == "model":
+						self.selected_node.color = color.gray(0.5)
+
+					self.selected_node = None
+
+		else:
+			if self.selected_edge is not None:
+				if mode is None or self.selected_edge.mode == mode:
+					if type(self.selected_edge) == curve:
+
+						self.selected_edge.color = color.black
+						self.selected_edge = None
+
+						self.smooth_checkboxes['spatial'].disabled = True
+						self.smooth_checkboxes['radius'].disabled = True
+						self.smooth_checkboxes['spatial'].checked = False
+						self.smooth_checkboxes['radius'].checked = False
+						self.smooth_slider.disabled = True
+
+					else:
+						if self.selected_edge.id[0] in self.elements["topo"]["edges"].keys():
+							for elt in self.elements["topo"]["edges"][self.selected_edge.id[0]]:
+								elt.color = color.black
+
+						self.selected_edge = None
+
+
+	###########################################
+	############# EDGE EDITION ################
+	###########################################
+
+
+	def select_smooth_parameter(self, b):
+
+		""" Update the user choice for the smoothing parameter (radius or spatial) to work with """
+
+
+		ids = self.selected_edge.id
+		lbd = self.tree.get_model_graph().edges[ids]['spline'].get_lbd()
+
+		if b.parameter == "spatial":
+			if len(lbd) == 0:
+				self.output_message("There are no models associated with this spline.", mode = "warning")
+				self.smooth_checkboxes["spatial"].checked = False
+			else:
+				self.smooth_checkboxes["radius"].checked = False
+				self.smooth_slider.value = lbd[0]
+
+		else:
+
+			if len(lbd) < 2:
+				self.output_message("There are no models associated with this spline.", mode = "warning")
+				self.smooth_checkboxes["radius"].checked = False
+			else:
+				self.smooth_checkboxes["spatial"].checked = False
+				self.smooth_slider.value = lbd[1]
+
+
+	def smooth_spline(self):
+
+		""" Change the spline smoothing parameter and update render. """
+
+		G = self.tree.get_model_graph()
+		ids = self.selected_edge.id
+		new_lbd = self.smooth_slider.value
+
+		spl = copy.deepcopy(G.edges[ids]["spline"])
+
+		if len(G.edges[ids]["spline"].get_lbd())>0:
+			if self.smooth_checkboxes["spatial"].checked:
+				spl._set_lambda_model([new_lbd, None])
+			else:
+				spl._set_lambda_model([None, new_lbd])
+
+			# Modify spline display
+			coords = spl.get_control_points()
+			c = self.elements["model"]["control_edges"][ids]
+
+			for i in range(len(coords)):
+				c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
+				self.elements["model"]["control_nodes"][ids][i].pos = vector(coords[i][0], coords[i][1], coords[i][2])
+				if self.control_radius_checkbox.checked:
+					self.elements["model"]["control_nodes"][ids][i].radius = coords[i][3]
+
+			coords = spl.get_points()
+			
+			self.selected_edge.clear()
+			for i in range(len(coords)):
+				self.selected_edge.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.green, radius=0.2)
+
+			# Add lambda modification
+			self.modified_elements["model"]["lambda"].append([ids, spl])
+
+		else:
+			self.output_message("There are no models associated with this spline.", mode = "warning")
+
+
+	###########################################
+	############# MESH EDITION ################
+	###########################################
+
+
+	def compute_mesh(self):
+
+		""" Recompute the mesh """
+
+		self.output_message("Computing the mesh.")
+
+		self.disable(True)
+		self.tree.compute_cross_sections(self.N, self.d)
+		self.tree.mesh_surface()
+		self.disable(False
+			)
+		self.output_message("Mesh Complete!")
+		# Update the display
+		self.hide("mesh")
+		self.elements["mesh"] = {}
+		self.create_elements("mesh")
+
+
+	def update_mesh_parameters(self, b):
+
+		""" Update user choice of meshing parameters """
+
+		if b.parameter == "N":
+			self.N = int(self.parameters_winput['N'].text)
+			self.output_message("Number of cross section nodes set to " + str(self.N) + ".")
+			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
+				self.modified_elements['mesh']['parameter'].append(True)
+
+		elif b.parameter == "d":
+			self.d = float(self.parameters_winput['d'].text)
+			self.output_message("Density of cross section set to " + str(self.d) + ".")
+			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
+				self.modified_elements['mesh']['parameter'].append(True)
+
+		elif b.parameter == "search_dist":
+			self.search_dist  = float(self.parameters_winput['search_dist'].text)
+			self.output_message("Maximum projection distance set to " + str(self.search_dist) + ".")
+
+		else:
+			try:
+				self.target_mesh = pv.read(self.parameters_winput['path'].text)
+				self.output_message("Target mesh is now : " + self.parameters_winput['path'].text + ".")
+				self.parameters_winput['path'].text = ""
+		
+			except FileNotFoundError:	
+				self.output_message("The target mesh file does not exist.", "error")
+
+
+
+	def deform_mesh(self):
+
+		""" Deform mesh to a given trget mesh """
+
+		if self.target_mesh is not None:
+			self.output_message("Mesh deformation...")
+			self.disable(True)
+
+			G = self.tree.get_crsec_graph().copy()
+			self.tree.deform_surface_to_mesh(self.target_mesh, search_dist = self.search_dist)
+
+			self.modified_elements['mesh']['deform'].append(self.tree.get_crsec_graph().copy())
+
+			self.refresh_display("mesh")
+			self.tree.set_crsec_graph(G)
+
+			self.disable(False)
+			self.output_message("Mesh deformation complete!")
+
+
+	###########################################
+	############# CUSTOMIZATION ###############
+	###########################################
+		
+
+	def update_edge_size(self):
+
+		""" Change edge size using slider """
+
+		def set_edge_size(elt, args):
+			if type(elt) == curve:
+				if args[0] > 0:
+					elt.visible = True
+					for n in range(elt.npoints):
+						elt.modify(n, radius=args[0])
+				else:
+					elt.visible = False
+
+			else:
+				elt.radius = args[0]
+
+		for mode in self.edge_size_sliders.keys():
+			if self.edge_size_sliders[mode].value != self.edge_size[mode]:
+	
+				if mode == "mesh":
+					categories = ['section_edges', 'connecting_edges']
+				else:
+					categories = ['edges']
+
+				self.apply_function(mode, func=set_edge_size, args=[self.edge_size_sliders[mode].value], categories = categories)
+				self.edge_size[mode] = self.edge_size_sliders[mode].value
+
+
+
+	def update_node_size(self):
+
+		""" Change node size using slider """
+
+		def set_node_size(elt, args):
+			elt.radius = args[0]
+
+		for mode in self.node_size_sliders.keys():
+			if self.node_size_sliders[mode].value != self.node_size[mode]:
+
+				categories = ['nodes']
+
+				self.apply_function(mode, func=set_node_size, args=[self.node_size_sliders[mode].value], categories = categories)
+				self.node_size[mode] = self.node_size_sliders[mode].value
+
+
+
+	def update_opacity_state(self):
+
+		""" Change opacity using slider """
+
+		def set_opacity(elt, args):
+			elt.opacity = args[0]
+
+		for mode in self.opacity_sliders.keys():
+			if self.opacity_sliders[mode].value != self.opacity_value[mode]:
+				self.apply_function(mode, func=set_opacity, args=[self.opacity_sliders[mode].value])
+				self.opacity_value[mode] = self.opacity_sliders[mode].value
+
+
+
+	
+
+
+
+
 
 
 
