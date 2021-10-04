@@ -101,8 +101,9 @@ def test_brava(patient):
 
 	tree = ArterialTree(patient, "BraVa", filename)
 	tree.show(True, False, False)
-	tree.resample(1)
-	tree.show(True, False, False)
+	#tree.resample(1)
+	#tree.show(True, False, False)
+	tree.topo_correction(3)
 
 	t1 = time.time()
 	tree.model_network()
@@ -110,24 +111,29 @@ def test_brava(patient):
 	print("The process took ", t2 - t1, "seconds." )
 	tree.show(False, True, False)
 
-	file = open("Results/BraVa/model/" + patient + ".obj", 'wb') 
-	pickle.dump(tree, file)
-
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, True)
+	tree.compute_cross_sections(24, 0.2, False)
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
 	t1 = time.time()
 	mesh = tree.mesh_surface()
-	t2 = time.time()
-	print("The process took ", t2 - t1, "seconds." )
-
-	print("plot mesh")
 	mesh = mesh.compute_cell_quality()
-	mesh.plot(show_edges=True)
+	t2 = time.time()
 	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
+
+	t1 = time.time()
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
+	mesh = mesh.compute_cell_quality()
+	t2 = time.time()
+	mesh.save("Results/BraVa/volume/" + patient + ".vtk")
+
+	print("The process took ", t2 - t1, "seconds." )
+	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
+	pickle.dump(tree, file)
+
+	
 
 
 
@@ -237,4 +243,53 @@ def mesh_aneurism():
 	mesh.plot(show_edges=True)
 
 
-test_editor("C0082")
+def test_merge():
+
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0099.vtp"
+	#file="/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
+
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	
+	tree.low_sample(0.1)
+	tree.show(False, False, False)
+	print([e for e in tree.get_topo_graph().edges()])
+	tree.merge_branch((4,5))
+	print([e for e in tree.get_topo_graph().edges()])
+	tree.show(False, False, False)
+
+def test_topo_correction():
+
+	file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	tree.show(False, False, False)
+	tree.topo_correction(3)
+	tree.show(False, False, False)
+
+def test_evaluation_mesh():
+
+	file = open("Results/BraVa/network/P1.obj", 'rb')
+	tree = pickle.load(file)
+	G = tree.get_model_graph()
+	
+	for n in G.nodes():
+		if G.nodes[n]["type"] == "bif":
+			m = tree.extract_furcation_mesh(n, volume = False)
+			m.plot(show_edges=True,  scalars = 'CellQuality')
+			
+
+	for e in G.edges():
+		if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
+			m = tree.extract_vessel_mesh(e, volume = True)
+			m.plot(show_edges=True, scalars = 'CellQuality')
+	
+	#tree.evaluate_mesh_quality()
+
+
+
+	
+
+#test_topo_correction()
+#test_editor("C0082")
+#test_brava("P1")
+
+test_evaluation_mesh()

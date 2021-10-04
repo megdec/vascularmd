@@ -245,7 +245,7 @@ class ArterialTree:
 
 	
 
-	def model_network(self, radius_model = True, criterion="AIC", akaike=False, parallel = True):
+	def model_network(self, radius_model = True, criterion="AIC", akaike=False):
 
 		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
@@ -275,6 +275,7 @@ class ArterialTree:
 			for n in l:
 				n = relabel[n]
 				if self._topo_graph.nodes[n]['type'] == "bif":
+					print("Model bifurcation")
 					relabel = self.__model_furcation(n)
 
 		# Spline models
@@ -324,8 +325,10 @@ class ArterialTree:
 			e_act = e_out[i]
 			while nb_data_out < nb_min:
 				if self._model_graph.out_degree(e_act[1])!= 0:
-					e_next = (e_act[1], [e for e in self._model_graph.successors(e_act[1])][0]) # Get a successor edge
+					e_next = (e_act[1], [e for e in self._model_graph.successors(e_act[1])][0]) # Get a successor edge		
 					data =  np.vstack((data, self._model_graph.nodes[e_next[0]]['coords'], self._model_graph.edges[e_next]['coords'])) # Add data
+
+
 					e_act = e_next
 				else: break
 
@@ -507,13 +510,13 @@ class ArterialTree:
 				branch = branch.index(e_in[0][0])
 				bifprec = self._model_graph.nodes[nbifprec]['bifurcation']
 
-				if bifprec.get_tspl()[branch + 1].project_point_to_centerline(self._model_graph.nodes[n]['coords'][:-1]) < 1.0:
+				if False:#bifprec.get_tspl()[branch + 1].project_point_to_centerline(self._model_graph.nodes[n]['coords'][:-1]) < 1.0:
 
 					merge = True
 					combine = False
 				else:
 					if splines[i].time_to_length(t_ap) < splines[i].radius(t_ap)*4:  # Check for combination of nfurcations
-						if bifprec.get_tspl()[branch + 1].length() + splines[i].time_to_length(t_ap) < splines[i].radius(t_ap)*3:
+						if False: #bifprec.get_tspl()[branch + 1].length() + splines[i].time_to_length(t_ap) < splines[i].radius(t_ap)*3:
 							merge = True
 							combine = False
 						else: 
@@ -708,6 +711,7 @@ class ArterialTree:
 		spl.approximation(pts, constraint, values, False, criterion=criterion, akaike=akaike, radius_model=radius_model)
 		
 		self._model_graph.edges[e]['spline'] = spl
+		self._model_graph.nodes[e[1]]['coords'] = spl.point(1.0, True)
 
 
 
@@ -1167,6 +1171,7 @@ class ArterialTree:
 			print('Meshing bifurcations.')
 			for  n in self._model_graph.nodes():
 				if self._model_graph.nodes[n]['type'] == "bif":
+					print("Meshing bifurcation")
 					self.__furcation_cross_sections(n)
 					
 
@@ -1174,6 +1179,7 @@ class ArterialTree:
 			print('Meshing edges.')
 			for e in self._model_graph.edges():
 				if self._model_graph.nodes[e[0]]['type'] != "bif" and self._model_graph.nodes[e[1]]['type'] != "bif":
+					print("Meshing vessels")
 					self.__vessel_cross_sections(e)
 
 		#self.show(False, False, False)
@@ -1451,13 +1457,13 @@ class ArterialTree:
 				nb_faces += 1
 		
 		faces = faces[:nb_faces]
-		self._surface_mesh = vertices, faces
+		self._surface_mesh = [vertices, faces]
 		
 		return pv.PolyData(vertices, faces)
 
 
 
-	def mesh_volume(self, layer_ratio, num_a, num_b):
+	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10):
 
 		""" Meshes the volume of the arterial tree with O-grid pattern.
 
@@ -1591,7 +1597,6 @@ class ArterialTree:
 				start_face = int(quarter * f_ogrid_reorder.shape[0] / 4)
 		
 				if start_face != 0:
-					print("Rotation")
 					f_ogrid_reorder = np.vstack((f_ogrid_reorder[start_face:, :], f_ogrid_reorder[:start_face, :]))
 		
 				cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_reorder)[:,1:]))
@@ -2042,7 +2047,56 @@ class ArterialTree:
 	###########  CONVERSIONS  ###########
 	#####################################
 
+	def topo_to_full(self, replace = True):
+
+		""" Converts topo_graph to a full graph.""" 
+			
+		G = nx.DiGraph()
+		k = 1
+
+		ndict = {}
+		for n in self._topo_graph.nodes():
+			G.add_node(k, coords = self._topo_graph.nodes[n]['coords'])
+			#self._topo_graph.nodes[n]["full_id"] = k
+			ndict[n] = k
+			k  = k + 1
+
+		for e in self._topo_graph.edges():
+			pts = self._topo_graph.edges[e]['coords']
+
+			if len(pts) == 0:
+
+				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
+				#self._topo_graph.edges[e]["full_id"] = np.array([])
+
+			else: 
+
+				G.add_node(k, coords = pts[0])
+				G.add_edge(ndict[e[0]], k, coords = np.array([]).reshape(0,4))
+				#self._topo_graph.edges[e]["full_id"][0] = k
+
+				k = k + 1
+
+				for i in range(1, len(pts)):
+
+					G.add_node(k, coords = pts[i])
+					#self._topo_graph.edges[e]["full_id"][i] = k
+
+					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
+					k = k + 1
+
+				G.add_edge(k - 1, ndict[e[1]], coords = np.array([]).reshape(0,4))
+
+		if replace:
+			self._full_graph = G
+		else:
+			return G
 	
+
+
+
+	'''
+
 	def topo_to_full(self, replace=True):
 
 		""" Converts topo_graph to a full graph.""" 
@@ -2077,6 +2131,7 @@ class ArterialTree:
 			self._full_graph = G
 		else:
 			return G
+	'''
 
 
 
@@ -2128,7 +2183,7 @@ class ArterialTree:
 
 
 	#####################################
-	############  OPERATIONS  ###########
+	######### POST PROCESSING  ##########
 	#####################################
 
 
@@ -2217,6 +2272,142 @@ class ArterialTree:
 		return inter
 
 
+	def extract_vessel_mesh(self, e, volume = True):
+
+		""" Create a submesh of vessel of edge e """
+
+		if volume:
+			self.__add_node_id_volume(self._num_a, self._num_b)
+		else:
+			self.__add_node_id_surface()
+
+
+		nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
+
+		start_id = self._crsec_graph.nodes[e[0]]['id']
+		if volume:
+			end_id = start_id + nb_nds_ogrid
+		else:
+			end_id = start_id + self._crsec_graph.nodes[e[0]]['crsec'].shape[0]
+
+		node_id_list = np.arange(start_id, end_id)
+		
+
+		start_id = self._crsec_graph.edges[e]['id']
+		if volume:
+			end_id = start_id + self._crsec_graph.edges[e]['crsec'].shape[0] * nb_nds_ogrid
+		else:
+			end_id = start_id + self._crsec_graph.edges[e]['crsec'].shape[0]*self._crsec_graph.edges[e]['crsec'].shape[1]
+		
+		node_id_list = np.hstack((node_id_list, np.arange(start_id, end_id)))
+
+		start_id = self._crsec_graph.nodes[e[1]]['id']
+		if volume:
+			end_id = start_id + nb_nds_ogrid
+		else:
+			end_id = start_id + self._crsec_graph.nodes[e[1]]['crsec'].shape[0]
+
+		node_id_list = np.hstack((node_id_list, np.arange(start_id, end_id)))
+		
+
+
+		if volume :
+
+			v = self._volume_mesh[2]
+			selected_point = np.zeros((len(v), 1))
+			for i in node_id_list:
+				selected_point[i, :] = 1.0
+
+			mesh = self.get_volume_mesh()
+			mesh["SelectedPoints"] = selected_point
+		
+			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point", all_scalars = True)
+
+		else:
+			v = self._surface_mesh[0]
+			selected_point = np.zeros((len(v), 1))
+			for i in node_id_list:
+				selected_point[i, :] = 1.0
+
+			mesh = self.get_surface_mesh()
+			mesh["SelectedPoints"] = selected_point
+		
+			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point", all_scalars = True)
+		
+		inside = inside.compute_cell_quality('scaled_jacobian')	
+		return inside
+
+
+		
+
+
+	def extract_furcation_mesh(self, n , volume = True):
+		""" Create a submesh of furcation of node n"""
+
+		if volume:
+			self.__add_node_id_volume(self._num_a, self._num_b)
+			nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
+		else:
+			self.__add_node_id_surface()	
+
+
+		start_id = self._crsec_graph.nodes[n]['id']
+		if volume:
+			nbif = self._crsec_graph.in_degree(n)
+			nb_nds_bif_ogrid = int(nb_nds_ogrid + (nbif-2) * ((self._N/2 - 1) * (self._num_a + self._num_b + 3) + (self._N - 4)/4 * (((self._N - 4)/4 -1)/2)))
+			end_id = start_id + nb_nds_bif_ogrid
+		else:
+			end_id = start_id + self._crsec_graph.nodes[n]['crsec'].shape[0]
+		node_id_list = np.arange(start_id, end_id)
+
+		for e in self._crsec_graph.in_edges(n):
+
+
+			start_id = self._crsec_graph.nodes[e[0]]['id']
+			if volume:
+				end_id = start_id + nb_nds_ogrid
+			else:
+				end_id = start_id + self._crsec_graph.nodes[e[0]]['crsec'].shape[0]
+
+			node_id_list = np.hstack((node_id_list, np.arange(start_id, end_id)))
+			
+
+			start_id = self._crsec_graph.edges[e]['id']
+			if volume:
+				end_id = start_id + self._crsec_graph.edges[e]['crsec'].shape[0] * nb_nds_ogrid
+			else:
+				end_id = start_id + self._crsec_graph.edges[e]['crsec'].shape[0]*self._crsec_graph.edges[e]['crsec'].shape[1]
+			
+			node_id_list = np.hstack((node_id_list, np.arange(start_id, end_id)))
+
+
+		if volume :
+
+			v = self._volume_mesh[2]
+			selected_point = np.zeros((len(v), 1))
+			for i in node_id_list:
+				selected_point[i, :] = 1.0
+
+			mesh = self.get_volume_mesh()
+			mesh["SelectedPoints"] = selected_point
+		
+			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point", all_scalars = True)
+
+
+		else:
+			v = self._surface_mesh[0]
+			selected_point = np.zeros((len(v), 1))
+			for i in node_id_list:
+				selected_point[i, :] = 1.0
+
+			mesh = self.get_surface_mesh()
+			mesh["SelectedPoints"] = selected_point
+		
+			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point", all_scalars = True)
+
+		inside = inside.compute_cell_quality('scaled_jacobian')	
+		return inside
+
 
 	def subgraph(self, nodes):
 
@@ -2232,6 +2423,53 @@ class ArterialTree:
 		
 			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
 			self.__set_topo_graph()
+
+
+	def topo_correction(self, threshold):
+
+		""" Correct the topology by merging close branches to form (n+1)-furcations
+
+		Keywork arguments:
+		threshold -- distance threshold for merging """
+
+		complete = False
+
+		while not complete:
+			complete = True
+			for e in self._topo_graph.edges():
+				D = np.vstack((self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords']))
+				l =  length_polyline(D[:,:-1])[-1]
+
+				if l < threshold and self._topo_graph.nodes[e[0]]["type"] != "end":
+					self.merge_branch(e[1])
+					print("merging branch ", e[1])
+					complete = False
+					break
+
+
+	def merge_branch(self, n):
+
+		""" Merge the branch with the previous one to from a (n+1)-furcation
+
+		Keyword arguments:
+		e -- edge of the branch to merge """
+
+		# Get previous node
+		pred = list(self._topo_graph.predecessors(n))[0]
+		if self._topo_graph.nodes[pred]["type"] == "end":
+			print("Branch cannot be merged.")
+
+		else:
+
+			for e in self._topo_graph.out_edges(n):
+				d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
+				self._topo_graph.add_edge(pred, e[1], coords = d)
+
+
+			self._topo_graph.remove_node(n)
+			self.topo_to_full()
+
+
 
 
 	
@@ -2267,8 +2505,10 @@ class ArterialTree:
  
 			# Create tables of regular nodes data
 			coords = np.vstack((self._topo_graph.edges[eprec]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[esucc]['coords']))
+			ids = np.hstack((self._topo_graph.edges[eprec]['full_id'], self._topo_graph.nodes[e[0]]['full_id'], self._topo_graph.edges[esucc]['full_id']))
+			
 			# Create new edge by merging the 2 edges of regular point
-			self._topo_graph.add_edge(eprec[0], esucc[1], coords = coords)
+			self._topo_graph.add_edge(eprec[0], esucc[1], coords = coords, full_id = ids)
 			# Remove regular point
 			self._topo_graph.remove_node(e[0])
 
@@ -2505,6 +2745,29 @@ class ArterialTree:
 
 
 		self.set_topo_graph(G)
+
+
+	def resample(self, p):
+
+		""" Add noise and resample the nodes of the initial centerlines.
+
+		Keyword arguments:
+		p -- ratio of nodes to add (>1)
+		"""
+
+		for e in self._topo_graph.edges():
+
+			pts = np.vstack((self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords']))
+
+			n = int(pts.shape[0]*p)
+			pts =  resample(pts, num = n+2)
+
+			# Modify topo graph 
+			self._topo_graph.add_edge(e[0], e[1], coords = pts[1:-1])
+
+			# Change full graph
+			self.topo_to_full()
+
 		
 
 
@@ -2632,27 +2895,21 @@ class ArterialTree:
 			self.topo_to_full()
 
 
+	def evaluate_mesh_quality(self):
 
-	def resample(self, p):
-
-		""" Add noise and resample the nodes of the initial centerlines.
-
-		Keyword arguments:
-		p -- ratio of nodes to add (>1)
+		""" Compute the quality metric form the cells of a surface mesh. 
 		"""
 
-		for e in self._topo_graph.edges():
+		mesh = self.get_volume_mesh()
+		quality = mesh.compute_cell_quality('scaled_jacobian')
 
-			pts = np.vstack((self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords']))
+		quality.plot(show_edges = True, scalars = 'CellQuality')
 
-			n = int(pts.shape[0]*p)
-			pts =  resample(pts, num = n+2)
+		tab = quality['CellQuality']
+		print(np.mean(tab), np.min(tab), np.max(tab))
+	
 
-			# Modify topo graph 
-			self._topo_graph.add_edge(e[0], e[1], coords = pts[1:-1])
 
-			# Change full graph
-			self.topo_to_full()
 
 
 
