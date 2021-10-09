@@ -269,14 +269,15 @@ class ArterialTree:
 
 		# Bifurcation models
 		all_id = [n for n in self._topo_graph.nodes()]
-		relabel = dict(zip(all_id, all_id))
+		original_label = dict(zip(all_id, all_id))
 
 		for l in dfs:
 			for n in l:
-				n = relabel[n]
-				if self._topo_graph.nodes[n]['type'] == "bif":
-					print("Model bifurcation")
-					relabel = self.__model_furcation(n)
+				if n in [nds for nds in self._topo_graph.nodes()]:
+					n = original_label[n]
+					if self._topo_graph.nodes[n]['type'] == "bif":
+						print("Model bifurcation")
+						original_label = self.__model_furcation(n, original_label)
 
 		# Spline models
 		for e in self._model_graph.edges():
@@ -293,7 +294,7 @@ class ArterialTree:
 			self.__compute_rotations(e)
 
 
-
+	'''
 	def __model_furcation(self, n):
 
 		""" Extract bifurcation parameters from the data and modify the model graph to add the bifurcation object and edges.
@@ -302,8 +303,12 @@ class ArterialTree:
 		n -- bifurcation node (model graph)
 		"""
 
+		# Get original label dictionary
 		all_id = [nds for nds in self._topo_graph.nodes()]
 		label_dict_topo = dict(zip(all_id, all_id))
+
+		all_id = [nds for nds in self._model_graph.nodes()]
+		label_dict_model = dict(zip(all_id, all_id))
 
 
 		nmax = max(list(self._model_graph.nodes())) + 1
@@ -313,14 +318,19 @@ class ArterialTree:
 		e_out = [e for e in self._model_graph.out_edges(n)]
 		e_out.sort()
 
+		apex_found = False
+
+		while not apex_found:
+
 		splines = []
 		datas = []
 
+		nb_min = 10
 		# Approximate vessels
 		for i in range(len(e_out)):
 			data = np.vstack((self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords']))
 			nb_data_out = self._model_graph.edges[e_out[i]]['coords'].shape[0]
-			nb_min = 10
+			
 
 			e_act = e_out[i]
 			while nb_data_out < nb_min:
@@ -360,7 +370,7 @@ class ArterialTree:
 
 		# Reorder nodes
 		if len(e_out) > 2: 
-			
+
 			all_id = [n for n in self._model_graph.nodes()]
 			label_dict = dict(zip(all_id, all_id))
 			
@@ -425,7 +435,7 @@ class ArterialTree:
 			for j in range(len(splines)):
 				splines_reorder.append(splines[order[j]])
 			splines = splines_reorder
-
+	
 
 		AP = []
 		tAP = []
@@ -471,6 +481,8 @@ class ArterialTree:
 				tAP[i].append(0.0)
 				tAP[i+1].append(0.0)
 
+
+
 	
 		# Show splines
 		"""
@@ -497,7 +509,6 @@ class ArterialTree:
 		"""
 
 		# C0 cross sections
-
 		combine = False
 		merge = False
 
@@ -673,9 +684,343 @@ class ArterialTree:
 			# Re-model furcation 
 			label_dict_topo = self.__model_furcation(nbifprec)
 
-
-
 		return label_dict_topo
+
+	'''
+
+	def __model_furcation(self, n, original_label):
+
+		""" Extract bifurcation parameters from the data and modify the model graph to add the bifurcation object and edges.
+
+		Keyword arguments:
+		n -- bifurcation node (model graph)
+		"""
+		from Model import Model
+		original_label_modif = original_label
+
+		# Get original label dictionary
+		all_id = [nds for nds in self._topo_graph.nodes()]
+		label_dict_topo = dict(zip(all_id, all_id))
+
+		all_id = [nds for nds in self._model_graph.nodes()]
+		label_dict_model = dict(zip(all_id, all_id))
+
+		nmax = max(list(self._model_graph.nodes())) + 1
+
+		e_in = [e for e in self._model_graph.in_edges(n)]
+		e_out = [e for e in self._model_graph.out_edges(n)]
+		e_out.sort()
+
+		apex_found = False
+
+
+		nb_min = 10
+		while not apex_found:
+
+			apex_found = True
+			splines = []
+		
+
+			# Approximate vessels
+			for i in range(len(e_out)):
+				data = np.vstack((self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords']))
+				nb_data_out = self._model_graph.edges[e_out[i]]['coords'].shape[0]
+				
+
+				e_act = e_out[i]
+				while nb_data_out < nb_min:
+					if self._model_graph.out_degree(e_act[1])!= 0:
+						e_next = (e_act[1], [e for e in self._model_graph.successors(e_act[1])][0]) # Get a successor edge		
+						data =  np.vstack((data, self._model_graph.nodes[e_next[0]]['coords'], self._model_graph.edges[e_next]['coords'])) # Add data
+
+
+						e_act = e_next
+					else: break
+
+				values = np.zeros((4,4))
+				constraint = [False] * 4
+
+				if self._model_graph.nodes[e_in[0][0]]['type'] != "bif":
+					data = np.vstack((self._model_graph.nodes[e_in[0][0]]['coords'], self._model_graph.edges[e_in[0]]['coords'], data))
+
+					if self._model_graph.nodes[e_in[0][0]]['type'] == "sep":
+						values[0,:] = self._model_graph.nodes[e_in[0][0]]['coords']
+						constraint[0] = True
+						values[1,:] = self._model_graph.nodes[e_in[0][0]]['tangent']
+						constraint[1] = True
+				else: 
+					values[0,:] = self._model_graph.nodes[n]['coords']
+					constraint[0] = True
+					values[1,:] = self._model_graph.nodes[n]['tangent']
+					constraint[1] = True
+
+
+
+				spl = Spline()
+				spl.approximation(data, constraint, values, False, criterion = "AIC") 
+
+				#spl.show(data=data)
+				splines.append(spl)
+		
+
+			# Reorder nodes
+			if len(e_out) > 2: 
+				order, label_dict_model, label_dict_topo, original_label_modif = self.__reorder_branches(n, splines, original_label, dist_threshold = 0.5)
+
+				# Reorder splines 
+				splines_reordered = []
+				for j in range(len(splines)):
+					splines_reordered.append(splines[order[j]])
+				splines = splines_reordered
+
+			
+			AP = []
+			tAP = []
+			for i in range(len(splines)):
+				tAP.append([])
+
+			# Find apex
+			for i in range(len(splines)-1):
+				# Compute apex value
+				ap, t = splines[i].first_intersectionv2(splines[i+1])
+				if t[0] == 1.0 or t[1] == 1.0:
+					# Splines were included in each other, add more data
+					apex_found = False
+					nb_min += 10 
+
+				
+				AP.append(ap)
+				tAP[i].append(t[0])
+				tAP[i+1].append(t[1])
+
+
+		self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict_topo)
+		self._model_graph = nx.relabel_nodes(self._model_graph, label_dict_model)
+
+		combine = False
+		merge_next = False
+
+		# Get index of the in spline with max diameter for C0
+		r = 0
+		ind = 0
+		for i in range(len(splines)):
+			rad = splines[i].radius(max(tAP[i]))
+			if rad > r:
+				r = rad
+				ind = i
+
+		t_ap = max(tAP[ind])
+		l_ap = splines[ind].time_to_length(t_ap)
+
+
+		if l_ap - splines[ind].radius(t_ap)*4 > 0.2: # We can cut!
+			t_cut = splines[ind].length_to_time(l_ap - splines[ind].radius(t_ap)*4)
+			spline_in, tmp_spl = splines[ind].split_time(t_cut)
+
+			model =  splines[ind].get_model()
+			T = model[0].get_t()
+			thres = np.argmax(T>t_cut)
+			thres = thres - 1
+			data = self._model_graph.edges[e_out[ind]]['coords']
+			D_in = data[:thres,:]
+
+			C0 = [splines[ind].point(t_cut, True), splines[ind].tangent(t_cut, True)]
+
+		else: # Merge with LAST one to create trifurcation or combine (length criterion)
+			print("Combine!")
+			
+			combine = True
+			nbifprec = list(self._model_graph.predecessors(e_in[0][0]))[0]
+			branch = list(self._model_graph.successors(nbifprec))
+			branch = branch.index(e_in[0][0])
+			bifprec = self._model_graph.nodes[nbifprec]['bifurcation']
+
+			C0 = bifprec.get_apexsec()[branch][0] # If merged bifurcations, C0 is the apex section of the previous bifurcation
+			
+
+
+		if not merge_next: # Keep on building the model
+
+			# Compute apical and enc cross sections + new data
+			C = [C0]
+			AC = []
+
+			spl_out = []
+			D_out = []
+
+			for i in range(len(splines)):
+
+				t_ap = max(tAP[i])
+				t_cut = splines[i].length_to_time(splines[i].radius(t_ap)*2 + splines[i].time_to_length(t_ap))
+
+				n_next = e_out[i][1]
+
+				if t_cut > splines[i].project_point_to_centerline(self._topo_graph.nodes[n_next]['coords'][:-1]) and self._topo_graph.nodes[n_next]['type'] == "bif":
+					merge_next = True
+					print("Merging to next!")
+					break
+
+				else:
+					# Separate data points 
+					model =  splines[i].get_model()
+					T = model[0].get_t()
+					thres = np.argmax(T>t_cut)
+					nb_in = len(np.vstack((self._model_graph.nodes[e_in[0][0]]['coords'], self._model_graph.edges[e_in[0]]['coords'])))
+					thres = thres - nb_in - 1
+
+					data = self._model_graph.edges[e_out[i]]['coords']
+
+					if thres >= len(data):
+						D_out.append(np.array([]).reshape(0,4))
+					else:
+						D_out.append(data[thres:,:])
+
+					C.append([splines[i].point(t_cut, True), splines[i].tangent(t_cut, True)])
+					AC.append([])
+
+					for t_ap in tAP[i]:
+						AC[i].append([splines[i].point(t_ap, True), splines[i].tangent(t_ap, True)])
+
+		if merge_next:
+			self.merge_branch(n_next) # Merge in topo graph and recompute
+			self.merge_branch(n_next, mode = "model")
+			
+		
+			# Re-model furcation 
+			original_label = self.__model_furcation(n, original_label)
+
+
+		else: # Build bifurction and include it in graph
+			original_label = original_label_modif
+			bif = Nfurcation("crsec", [C, AC, AP, 0.3])
+
+			ref = bif.get_reference_vectors()
+			endsec = bif.get_endsec()
+
+
+			if combine:
+
+				# Add in edge and bif
+				self._model_graph.remove_node(n)
+				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
+				self._model_graph.add_edge(e_in[0][0], nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
+
+				# Relabel sep node
+				all_id = [n for n in self._model_graph.nodes()]
+				label_dict = dict(zip(all_id, all_id))
+				label_dict[e_in[0][0]] = n
+				self._model_graph = nx.relabel_nodes(self._model_graph, label_dict)
+				nbif = nmax
+				nmax += 1
+
+			else:
+
+				# Add in edge and bif
+				self._model_graph.add_node(n, coords = endsec[0][0], bifurcation = None, combine = combine, type = "sep", ref = ref[0], tangent = endsec[0][1]) # Change bif node to sep
+				self._model_graph.edges[e_in[0]]['coords'] = D_in
+				self._model_graph.edges[e_in[0]]['spline'] = spline_in
+
+				self._model_graph.nodes[e_in[0][0]]['coords'] = spline_in.point(0.0, True)
+				self._model_graph.add_node(nmax, coords = bif.get_X(), bifurcation = bif, combine = combine, type = "bif", ref = None, tangent = None) # Add bif node
+				self._model_graph.add_edge(n, nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[0]) # Add in edge
+				nbif = nmax
+				nmax += 1
+
+			for i in range(len(splines)): # Add out edges
+
+				self._model_graph.add_node(nmax, coords = C[i+1][0], bifurcation = None, combine = False, type = "sep", ref =  ref[i+1], tangent = C[i+1][1]) 
+				self._model_graph.add_edge(nbif, nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[i+1])
+				self._model_graph.add_edge(nmax, e_out[i][1], coords = D_out[i], spline = None)
+				if not combine:
+					self._model_graph.remove_edge(e_out[i][0], e_out[i][1])
+				nmax += 1
+
+		return original_label
+
+
+
+
+	def __reorder_branches(self, n, splines, original_label, dist_threshold = 1.5):
+
+		""" Reorder branches to handle planar furcation case.
+
+		Keyword arguments:
+		n -- furcation node
+		splines -- list of splines
+		dist_threshold -- minimum distance between evaluated points
+		"""
+
+		# Get label dictionnaries
+		all_id = [nds for nds in self._topo_graph.nodes()]
+		label_dict_topo = dict(zip(all_id, all_id))
+
+		all_id = [nds for nds in self._model_graph.nodes()]
+		label_dict_model = dict(zip(all_id, all_id))
+
+		# Get edges and nodes ids
+		edg_id = [edg for edg in self._model_graph.out_edges(n)]
+		edg_id.sort()
+		nds_id = [e[1] for e in edg_id]
+
+		# Order by angles
+		dist_min = False
+		tmax = False
+		l = 1
+
+		while not dist_min and not tmax:
+
+			# Spline evaluation at length l
+			pt = []
+			for s in range(len(splines)):
+				t = splines[s].length_to_time(l)
+				if t == 1.0:
+					tmax = True
+					# We can't search further
+
+				pt.append(splines[s].point(t))
+
+			# Check distance condition
+			for j in range(len(pt)-1):
+				if norm(pt[j] - pt[j+1]) < dist_threshold: 
+					# Distance condition is not satisfied
+					dist_min = False 
+
+			if not dist_min: # Search further points
+				l += 1
+
+		# Get angles
+		angles = np.zeros((len(pt), len(pt)))
+		for j in range(len(pt)):
+			for k in range(len(pt)):
+				if k > j:
+					# Compute angle
+					v1 = pt[j] - self._model_graph.nodes[n]['coords'][:-1]
+					v2 = pt[k] - self._model_graph.nodes[n]['coords'][:-1]
+					a = angle(v1, v2)
+					angles[j, k] = a
+					angles[k, j] = a
+		
+		# Get index of maximum angles			
+		ind = np.argmax(angles)
+		ind = np.unravel_index(ind, (len(pt), len(pt)))
+
+		order = [ind[0]]
+		angles[:, ind[0]] = [2*pi] * len(pt)
+
+		for j in range(len(pt)-1):
+
+			ind = np.argmin(angles[order[j-1]])
+			order.append(ind)
+			angles[:, ind] = [2*pi] * len(pt)
+					
+		# Relabel nodes
+		for j in range(len(nds_id)):
+			label_dict_model[nds_id[order[j]]] = nds_id[j]
+			label_dict_topo[nds_id[order[j]]] = nds_id[j]
+			original_label[nds_id[order[j]]] = nds_id[j]
+
+
+		return order, label_dict_model, label_dict_topo, original_label
 
 
 
@@ -2447,7 +2792,7 @@ class ArterialTree:
 					break
 
 
-	def merge_branch(self, n):
+	def merge_branch(self, n, mode = "topo"):
 
 		""" Merge the branch with the previous one to from a (n+1)-furcation
 
@@ -2455,20 +2800,34 @@ class ArterialTree:
 		e -- edge of the branch to merge """
 
 		# Get previous node
-		pred = list(self._topo_graph.predecessors(n))[0]
-		if self._topo_graph.nodes[pred]["type"] == "end":
-			print("Branch cannot be merged.")
+		if mode == "topo":
+			pred = list(self._topo_graph.predecessors(n))[0]
+			if self._topo_graph.nodes[pred]["type"] == "end":
+				print("Branch cannot be merged.")
 
+			else:
+
+				for e in self._topo_graph.out_edges(n):
+					d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
+					self._topo_graph.add_edge(pred, e[1], coords = d)
+
+
+				self._topo_graph.remove_node(n)
+				self.topo_to_full()
 		else:
 
-			for e in self._topo_graph.out_edges(n):
-				d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
-				self._topo_graph.add_edge(pred, e[1], coords = d)
+			pred = list(self._model_graph.predecessors(n))[0]
+			if self._model_graph.nodes[pred]["type"] == "end":
+				print("Branch cannot be merged.")
+
+			else:
+
+				for e in self._model_graph.out_edges(n):
+					d = np.vstack((self._model_graph.edges[(pred, e[0])]['coords'], self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[(e)]['coords']))
+					self._model_graph.add_edge(pred, e[1], coords = d)
 
 
-			self._topo_graph.remove_node(n)
-			self.topo_to_full()
-
+				self._model_graph.remove_node(n)
 
 
 
@@ -2895,22 +3254,60 @@ class ArterialTree:
 			self.topo_to_full()
 
 
-	def evaluate_mesh_quality(self):
+	def evaluate_mesh_quality(self, volume = True, display = False):
 
-		""" Compute the quality metric form the cells of a surface mesh. 
+		""" Compute quality metrics and statistics from surface or volume meshes
 		"""
 
-		mesh = self.get_volume_mesh()
-		quality = mesh.compute_cell_quality('scaled_jacobian')
+		# Whole mesh
 
-		quality.plot(show_edges = True, scalars = 'CellQuality')
+		#mesh = self.get_volume_mesh()
+		#quality = mesh.compute_cell_quality('scaled_jacobian')
+		#quality.plot(show_edges = True, scalars = 'CellQuality')
 
-		tab = quality['CellQuality']
-		print(np.mean(tab), np.min(tab), np.max(tab))
-	
+		# Separate parts
+		G = self._model_graph
+
+		valid_furcations = 0
+		nb_furcations = 0
+
+		stats_furcations = {}
+
+		for n in G.nodes():
+			if G.nodes[n]["type"] == "bif":
+				m = self.extract_furcation_mesh(n, volume)
+				tab = m['CellQuality']
+				if np.min(tab) > 0:
+					valid_furcations+=1
+					stats_furcations[n] = [np.min(tab), np.mean(tab), np.max(tab)]
+				nb_furcations += 1
+				if display:
+					m.plot(show_edges=True,  scalars = 'CellQuality')
+			
+
+		valid_vessels = 0
+		nb_vessels = 0
+
+		stats_vessels = {}
+
+		for e in G.edges():
+			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
+				m = self.extract_vessel_mesh(e)
+				tab = m['CellQuality']
+				if np.min(tab) > 0:
+					valid_vessels+=1
+					stats_vessels[n] = [np.min(tab), np.mean(tab), np.max(tab)]
+				nb_vessels += 1
+				if display:
+					m.plot(show_edges=True, scalars = 'CellQuality')
+
+		ratio_furcation = valid_furcations/nb_furcations
+		ratio_vessels = valid_vessels/nb_vessels
+
+		return ratio_furcation, ratio_vessels, stats_furcations, stats_vessels
 
 
-
+		
 
 
 
@@ -3038,7 +3435,6 @@ class ArterialTree:
 
 		return G
 
-		c = pv.read(filename)
 
 
 

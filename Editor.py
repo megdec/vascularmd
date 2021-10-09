@@ -111,17 +111,17 @@ class Editor:
 		# Size sliders
 		scene.append_to_caption('\nEdge radius\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\tEdge radius\n')
 		
-		self.edge_size_sliders = {'full' :  slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin)}
-		self.edge_size_sliders['topo'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin)
-		self.edge_size_sliders['model'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin)
-		self.edge_size_sliders['mesh'] = slider(bind = self.update_edge_size, value = 0.05, min=0, max = 0.2, length=slider_length, width = slider_width, right = slider_right_margin)
+		self.edge_size_sliders = {'full' :  slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode = "full")}
+		self.edge_size_sliders['topo'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "topo")
+		self.edge_size_sliders['model'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "model")
+		self.edge_size_sliders['mesh'] = slider(bind = self.update_edge_size, value = 0.05, min=0, max = 0.2, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "mesh")
 
 		self.edge_size = {'full' : 0.2, 'topo' : 0.2, 'model': 0.2, 'mesh' : 0.05}
 		
 		scene.append_to_caption('\nResample\t\t\t\t\t\t\t\tNode radius\t\t\t\t\t\t\t\tNode radius\n')
-		self.node_size_sliders = {'full' : slider(bind = self.resample_nodes, value = 1, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)}
-		self.node_size_sliders['topo'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
-		self.node_size_sliders['model'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, right = slider_right_margin)
+		self.node_size_sliders = {'full' : slider(bind = self.resample_nodes, value = 1, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10, mode  = "full")}
+		self.node_size_sliders['topo'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10, mode  = "topo")
+		self.node_size_sliders['model'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "model")
 
 
 		self.node_size = {'topo' : 0.5, 'model' : 0.5}
@@ -1736,20 +1736,21 @@ class Editor:
 
 
 
-	def update_node_size(self):
+	def update_node_size(self, b):
 
 		""" Change node size using slider """
+		mode = b.mode
 
 		def set_node_size(elt, args):
 			elt.radius = args[0]
 
-		for mode in self.node_size_sliders.keys():
-			if self.node_size_sliders[mode].value != self.node_size[mode]:
+		
+		if self.node_size_sliders[mode].value != self.node_size[mode]:
 
-				categories = ['nodes']
+			categories = ['nodes']
 
-				self.apply_function(mode, func=set_node_size, args=[self.node_size_sliders[mode].value], categories = categories)
-				self.node_size[mode] = self.node_size_sliders[mode].value
+			self.apply_function(mode, func=set_node_size, args=[self.node_size_sliders[mode].value], categories = categories)
+			self.node_size[mode] = self.node_size_sliders[mode].value
 
 
 

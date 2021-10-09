@@ -22,17 +22,22 @@ import copy
 import os
 
 
+
 def test_editor(patient):
 
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Healthy/" + patient +".vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Teaching/Projects/Shiraishi/data.swc"
+
 	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1-part.swc"
 	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Healthy/centerline_BA.vtp"
+	#file =  "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations" + patient +".vtp"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
+	tree.show(True, False, False)
+	
 	#file = open("tmp/tree_model.obj", 'rb') 
 	#tree = pickle.load(file)
-
 	
 	e = Editor(tree, 1500, 600)
 
@@ -40,7 +45,7 @@ def test_editor(patient):
 
 def test_aneurisk(patient):
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/" + patient + ".vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
 	#file="/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
@@ -76,6 +81,7 @@ def test_aneurisk(patient):
 	mesh.plot(show_edges=True)
 	mesh.save("Results/Aneurisk/" + patient + "_mesh_surface.vtk")
 
+	"""
 	bifurcations = tree.get_bifurcations()
 
 	for i in range(len(bifurcations)):
@@ -86,6 +92,7 @@ def test_aneurisk(patient):
 		mesh.plot(show_edges = True)
 		#file = open(patient + "_bif_" + str(i) + ".obj", 'wb') 
 		#pickle.dump(bifurcations[i], file)
+	"""
 
 
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
@@ -93,6 +100,7 @@ def test_aneurisk(patient):
 	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
 	mesh.plot(show_edges=True, scalars= 'CellQuality')
 	mesh.save("Results/Aneurisk/" + patient + "_volume_mesh.vtk")
+	
 
 
 def test_brava(patient):
@@ -100,16 +108,15 @@ def test_brava(patient):
 	filename = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + patient + ".swc"
 
 	tree = ArterialTree(patient, "BraVa", filename)
-	tree.show(True, False, False)
+	#tree.show(True, False, False)
 	#tree.resample(1)
 	#tree.show(True, False, False)
-	tree.topo_correction(3)
 
 	t1 = time.time()
 	tree.model_network()
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
-	tree.show(False, True, False)
+	#tree.show(False, True, False)
 
 
 	t1 = time.time()
@@ -119,13 +126,12 @@ def test_brava(patient):
 
 	t1 = time.time()
 	mesh = tree.mesh_surface()
-	mesh = mesh.compute_cell_quality()
 	t2 = time.time()
 	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
+	#mesh.plot(show_edges = True)
 
 	t1 = time.time()
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
-	mesh = mesh.compute_cell_quality()
 	t2 = time.time()
 	mesh.save("Results/BraVa/volume/" + patient + ".vtk")
 
@@ -265,31 +271,37 @@ def test_topo_correction():
 	tree.topo_correction(3)
 	tree.show(False, False, False)
 
+
 def test_evaluation_mesh():
+	
+
+	volume = True
 
 	file = open("Results/BraVa/network/P1.obj", 'rb')
 	tree = pickle.load(file)
-	G = tree.get_model_graph()
-	
-	for n in G.nodes():
-		if G.nodes[n]["type"] == "bif":
-			m = tree.extract_furcation_mesh(n, volume = False)
-			m.plot(show_edges=True,  scalars = 'CellQuality')
-			
-
-	for e in G.edges():
-		if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
-			m = tree.extract_vessel_mesh(e, volume = True)
-			m.plot(show_edges=True, scalars = 'CellQuality')
-	
-	#tree.evaluate_mesh_quality()
+	mesh = tree.get_volume_mesh()
+	mesh.plot()
 
 
+	ratio_furcation, ratio_vessels, stats_furcations, stats_vessels = tree.evaluate_mesh_quality(volume = True, display = True)
+
+
+
+	print("Ratio furcations: ", ratio_furcation)
+	print("Ratio_vessels : ", ratio_vessels)
+	print("Stats furcations : ", stats_furcations)
+	print("Stats vessels : ", stats_vessels)
 
 	
+
+
+
+#for i in range(1, 59):	
+	#test_brava("P" + str(i))
 
 #test_topo_correction()
-#test_editor("C0082")
-#test_brava("P1")
+test_editor("C0078")
+#test_brava("P9")
 
-test_evaluation_mesh()
+#test_aneurisk("C0078")
+#test_evaluation_mesh()

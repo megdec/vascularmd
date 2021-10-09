@@ -362,7 +362,7 @@ class Nfurcation:
 		""" Set the shape splines of the bifurcation.
 		"""
 
-		relax = 0.15
+		relax = 0.1
 
 		# Compute the shape splines from cross sections
 		self._spl = []

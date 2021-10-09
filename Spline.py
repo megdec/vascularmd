@@ -83,6 +83,21 @@ class Spline:
 	def get_model(self):
 		return self._model
 
+	def get_data(self):
+
+		D = None
+		if self._model[0] is not None and self._model[1] is None:
+			D = self._model[0].get_data()
+
+		if self._model[0] is not None and self._model[1] is not None:
+			D_spatial = self._model[0].get_data()
+			D_radius = self._model[1].get_data()
+			
+			D = np.hstack((D_spatial, D_radius[:,1].reshape((-1, 1))))
+
+		return D
+
+
 	def get_lbd(self):
 		
 		lbd = []
@@ -641,9 +656,10 @@ class Spline:
 		""" Splits the spline into two splines at time t."""
 
 		if t >= 1.0:
-			t = 0.9 # WORKAROUND !!!
-		elif t<= 0.0:
+			t = 0.9# WORKAROUND !!!
+		elif t<= 10**(-2):
 			t = 0.1
+
 
 		spla, splb = operations.split_curve(self._spl, t)
 
@@ -1210,7 +1226,34 @@ class Spline:
 		ind = np.argmax(measure)
 
 		return res[ind, 2:], res[ind, :2]
+
+
+	def first_intersectionv2(self, spl):
+		""" Returns the coordinates and time of the furthest intersection point
+
+		Keyword arguments: 
+		spl -- Spline object
+		"""
+		inter_pt1, inter_t1 = self.first_intersection_centerlinev2(spl)
+		inter_pt2, inter_t2 = spl. first_intersection_centerlinev2(self)
 	
+		if inter_t1 > 0.0 and inter_t2 > 0.0:
+
+			# Apex direction 
+			v = inter_pt2 - inter_pt1
+			v = v / norm(v)
+				
+			# Compute apex value
+			AP, tAP = self.intersection(spl, v, inter_t1, 1.0)
+				
+	
+		else:
+			AP = spl.point(0)
+			tAP = [0, 0]
+
+
+		return AP, tAP
+
 
 	def intersection(self, spl, v0, t0, t1):
 
@@ -1271,6 +1314,38 @@ class Spline:
 		'''
 
 		return pt, [t, t2]
+
+
+	def first_intersection_centerlinev2(self, spl):
+
+		""" Returns the intersection point and time between a the spline and a spline model
+
+		Keywords arguments: 
+		spl -- Spline object
+		"""
+
+		#Plot distance as a function of time
+		times, dist = spl.distance(self.get_points())
+		radius = spl.radius(times)
+		sign = np.sign(radius - dist)
+		idx = np.argwhere(np.diff(sign)).flatten()
+
+		# Get point and time where distance and radius intersects
+		if len(idx)> 0:
+			inter_pt = self.get_points()[idx[-1], :-1] 
+			inter_t = self.project_point_to_centerline(inter_pt)
+		else:
+			if sign[-1] > 0:
+				# Splines are included in each other
+				inter_pt = self.point(1.0)
+				inter_t = 1.0
+
+			else:
+				# Splines are totally separated 
+				inter_pt = self.point(0.0)
+				inter_t = 0.0
+
+		return inter_pt, inter_t
 
 
 
