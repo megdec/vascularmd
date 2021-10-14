@@ -136,7 +136,11 @@ class Spline:
 
 		""" Set arc length estimation of spline."""
 		length = operations.length_curve(self._spl)
-		self._spl.delta = 1 / int(length * 20)
+		
+		if int(length * 20) > 1:
+			self._spl.delta = 1 / int(length * 20)
+		else:
+			self._spl.delta = 0.01
 
 		if self._spl.dimension == 3:
 			pts = np.array(self._spl.evalpts)

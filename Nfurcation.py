@@ -362,7 +362,7 @@ class Nfurcation:
 		""" Set the shape splines of the bifurcation.
 		"""
 
-		relax = 0.1
+		relax = 0.15
 
 		# Compute the shape splines from cross sections
 		self._spl = []
@@ -687,7 +687,7 @@ class Nfurcation:
 	def show(self, nodes = False):
 
 		""" Display the bifurcation key points and modeling splines."""
-
+		col = {0 : "red", 1 : "orange", 2 : "yellow", 3: "green"}
 		# 3D plot
 		with plt.style.context(('ggplot')):
 				
@@ -696,9 +696,9 @@ class Nfurcation:
 			ax.set_facecolor('white')
 				
 			# Plot the shape splines 
-			for s in self._spl:
-				points = s.get_points()
-				ax.plot(points[:,0], points[:,1], points[:,2])
+			for i in range(len(self._spl)):
+				points = self._spl[i].get_points()
+				ax.plot(points[:,0], points[:,1], points[:,2], c = col[i])
 
 			# Plot the trajectory splines 
 			for s in self._tspl:
@@ -725,7 +725,7 @@ class Nfurcation:
 
 			if nodes: 
 
-				N = 24
+				N = 48
 				# Separation sections
 				nds = self.__separation_section(N)
 				ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='black')
@@ -738,19 +738,20 @@ class Nfurcation:
 
 				# Apex sections
 				for i in range(len(self._apexsec)):
+					for j in range(len(self._apexsec[i])):
 
-					nds = np.zeros((N, 3))
-					tg = self._apexsec[i][0][1][:-1]
-					ref = cross(tg, np.array([0,0,1]))
-					ref = ref / norm(ref)
+						nds = np.zeros((N, 3))
+						tg = self._apexsec[i][j][1][:-1]
+						ref = cross(tg, np.array([0,0,1]))
+						ref = ref / norm(ref)
 
-					angle_list = (2 * pi / N) * np.arange(N)
+						angle_list = (2 * pi / N) * np.arange(N)
 
-					for j in range(N):
-						n = np.array(rotate_vector(ref, tg, angle_list [j]))
-						nds[j] = self._apexsec[i][0][0][:-1] + n * self._apexsec[i][0][0][-1] / norm(n)
+						for k in range(N):
+							n = np.array(rotate_vector(ref, tg, angle_list [k]))
+							nds[k] = self._apexsec[i][j][0][:-1] + n * self._apexsec[i][j][0][-1] / norm(n)
 
-					ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c='black')
+						ax.scatter(nds[:,0], nds[:,1], nds[:,2],  c=col[i])
 
 					
 
