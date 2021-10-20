@@ -109,7 +109,11 @@ class ArterialTree:
 		if self._volume_mesh is None:
 			warnings.warn("No volume mesh found.")
 		else:	
-			return pv.UnstructuredGrid(self._volume_mesh[0], self._volume_mesh[1], self._volume_mesh[2])
+			#return self.write_pyvista_mesh_from_vtk(self._volume_mesh[2], self._volume_mesh[0])
+			cells = self._volume_mesh[0]
+			cell_types = self._volume_mesh[1]
+			points = self._volume_mesh[2]
+			return pv.UnstructuredGrid(cells, cell_types, points)
 
 
 	def get_bifurcations(self):
@@ -280,10 +284,11 @@ class ArterialTree:
 						original_label = self.__model_furcation(n, original_label)
 
 		# Spline models
-		for e in self._model_graph.edges():
+		#for e in self._model_graph.edges():
 
-			if self._model_graph.nodes[e[1]]['type'] == "end":
-				self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model)
+		#	if self._model_graph.nodes[e[1]]['type'] == "end":
+		#		print("Model Vessel")
+		#		self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model)
 
 		# Add rotation attributes
 		nx.set_edge_attributes(self._model_graph, None, name='alpha')
@@ -329,19 +334,20 @@ class ArterialTree:
 
 			# Approximate vessels
 			for i in range(len(e_out)):
-				data = np.vstack((self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords']))
-				nb_data_out = self._model_graph.edges[e_out[i]]['coords'].shape[0]
+				data = np.vstack((self._model_graph.nodes[n]['coords'], self._model_graph.edges[e_out[i]]['coords'], self._model_graph.nodes[e_out[i][1]]['coords']))
+				nb_data_out = self._model_graph.edges[e_out[i]]['coords'].shape[0] + 1
 				
 
 				e_act = e_out[i]
 				while nb_data_out < nb_min:
 					if self._model_graph.out_degree(e_act[1])!= 0:
 						e_next = (e_act[1], [e for e in self._model_graph.successors(e_act[1])][0]) # Get a successor edge		
-						data =  np.vstack((data, self._model_graph.nodes[e_next[0]]['coords'], self._model_graph.edges[e_next]['coords'])) # Add data
+						data =  np.vstack((data, self._model_graph.edges[e_next]['coords'], self._model_graph.nodes[e_next[1]]['coords'])) # Add data
 
 
 						e_act = e_next
 					else: break
+
 
 				values = np.zeros((4,4))
 				constraint = [False] * 4
@@ -363,7 +369,7 @@ class ArterialTree:
 
 
 				spl = Spline()
-				spl.approximation(data, constraint, values, False, criterion = "AIC") 
+				spl.approximation(data, constraint, values, False, criterion = "AIC", max_distance = 2) 
 
 				#spl.show(data=data)
 				splines.append(spl)
@@ -455,14 +461,22 @@ class ArterialTree:
 
 		if l_ap - splines[ind].radius(t_ap)*3 > 0.2: # We can cut!
 			t_cut = splines[ind].length_to_time(l_ap - splines[ind].radius(t_ap)*3)
-			spline_in, tmp_spl = splines[ind].split_time(t_cut)
+
+		
+			if t_cut < 10**(-2):
+				pt_cut = splines[ind].point(t_cut)
+				spline_cut, tmp_spl = splines[ind].split_time(0.1)
+				new_t_cut = spline_cut.project_point_to_centerline(pt_cut)
+				spline_in, tmp_spl = spline_cut.split_time(new_t_cut)
+			else:
+				spline_in, tmp_spl = splines[ind].split_time(t_cut)
 
 			model =  splines[ind].get_model()
 			T = model[0].get_t()
 			thres = np.argmax(T>t_cut)
-			thres = thres - 1
-			data = self._model_graph.edges[e_out[ind]]['coords']
-			D_in = data[:thres,:]
+			thres = thres + 1
+			data = self._model_graph.edges[e_in[0]]['coords']
+			D_in = data[1:thres,:]
 
 			C0 = [splines[ind].point(t_cut, True), splines[ind].tangent(t_cut, True)]
 
@@ -501,6 +515,10 @@ class ArterialTree:
 					break
 
 				else:
+					# Cut spline_out
+					tmp_spl, spl = splines[i].split_time(t_cut)
+					spl_out.append(spl)
+
 					# Separate data points 
 					model =  splines[i].get_model()
 					T = model[0].get_t()
@@ -513,7 +531,7 @@ class ArterialTree:
 					if thres >= len(data):
 						D_out.append(np.array([]).reshape(0,4))
 					else:
-						D_out.append(data[thres:,:])
+						D_out.append(data[thres:-1,:])
 
 					C.append([splines[i].point(t_cut, True), splines[i].tangent(t_cut, True)])
 					AC.append([])
@@ -536,8 +554,8 @@ class ArterialTree:
 
 		else: # Build bifurction and include it in graph
 			original_label = original_label_modif
-			bif = Nfurcation("crsec", [C, AC, AP, 0.3])
-			bif.show(True)
+			bif = Nfurcation("crsec", [C, AC, AP, 0.6])
+			#bif.show(True)
 
 			ref = bif.get_reference_vectors()
 			endsec = bif.get_endsec()
@@ -575,7 +593,13 @@ class ArterialTree:
 
 				self._model_graph.add_node(nmax, coords = C[i+1][0], bifurcation = None, combine = False, type = "sep", ref =  ref[i+1], tangent = C[i+1][1]) 
 				self._model_graph.add_edge(nbif, nmax, coords = np.array([]).reshape(0,4), spline = bif.get_tspl()[i+1])
-				self._model_graph.add_edge(nmax, e_out[i][1], coords = D_out[i], spline = None)
+
+				if self._topo_graph.nodes[e_out[i][1]]["type"] == "end": # Add the cut out splines if end segments
+					self._model_graph.add_edge(nmax, e_out[i][1], coords = D_out[i], spline = spl_out[i])
+					self._model_graph.nodes[e_out[i][1]]['coords'] = spl_out[i].point(1.0, True)
+				else:
+					self._model_graph.add_edge(nmax, e_out[i][1], coords = D_out[i], spline = None) # Do not add the cut out splines
+
 				if not combine:
 					self._model_graph.remove_edge(e_out[i][0], e_out[i][1])
 				nmax += 1
@@ -1626,8 +1650,39 @@ class ArterialTree:
 
 		# Return volume mesh
 		self._volume_mesh = [cells, cell_types, vertices]
-		return pv.UnstructuredGrid(cells, cell_types, vertices) 
 
+		#mesh =  self.write_pyvista_mesh_from_vtk(vertices, cells)
+		mesh = pv.UnstructuredGrid(cells, cell_types, vertices) 
+
+		return mesh
+
+
+	def write_pyvista_mesh_from_vtk(self, vertices, cells):
+
+		points = vtk.vtkPoints()		
+		cell = vtk.vtkCellArray()
+
+		for i in range(len(vertices)):
+			points.InsertNextPoint(vertices[i, 0],vertices[i, 1],vertices[i, 2])
+
+		for i in range(len(cells)):
+			quad = vtk.vtkHexahedron()
+			for j in range(1, 9):
+				quad.GetPointIds().SetId(j-1,cells[i, j])
+			cell.InsertNextCell(quad)
+
+		grid = vtk.vtkUnstructuredGrid()
+		grid.SetPoints(points)
+		grid.SetCells(vtk.VTK_HEXAHEDRON, cell)
+
+		writer = vtk.vtkXMLUnstructuredGridWriter()
+		writer.SetFileName('tmp.vtu')
+		writer.SetInputData(grid)
+		writer.Write() 
+
+		mesh = pv.read("tmp.vtu")
+
+		return mesh
 
 
 	def bif_ogrid_pattern(self, center, crsec, N, nbif, layer_ratio, num_a, num_b):
@@ -2271,11 +2326,12 @@ class ArterialTree:
 
 		if volume:
 			self.__add_node_id_volume(self._num_a, self._num_b)
+			nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
 		else:
 			self.__add_node_id_surface()
 
 
-		nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
+		
 
 		start_id = self._crsec_graph.nodes[e[0]]['id']
 		if volume:
@@ -2327,8 +2383,7 @@ class ArterialTree:
 		
 			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
 		
-		inside = inside.compute_cell_quality('scaled_jacobian')	
-		return inside
+		return inside, selected_point
 
 
 		
@@ -2398,8 +2453,7 @@ class ArterialTree:
 		
 			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
 
-		inside = inside.compute_cell_quality('scaled_jacobian')	
-		return inside
+		return inside, selected_point
 
 
 	def subgraph(self, nodes):
@@ -2698,7 +2752,6 @@ class ArterialTree:
 
 
 
-
 	def transpose(self, val):
 
 		""" Cuts the original graph to a subgraph. 
@@ -2920,11 +2973,12 @@ class ArterialTree:
 		nb_furcations = 0
 
 		stats_furcations = {}
-
+		
 		for n in G.nodes():
 			if G.nodes[n]["type"] == "bif":
 				print("Bifurcation evaluation")
-				m = self.extract_furcation_mesh(n, volume)
+				m, tmp = self.extract_furcation_mesh(n, volume)
+				m = m.compute_cell_quality('scaled_jacobian')	
 				tab = m['CellQuality']
 				if np.min(tab) > 0:
 					valid_furcations+=1
@@ -2935,17 +2989,17 @@ class ArterialTree:
 				nb_furcations += 1
 				if display:
 					m.plot(show_edges=True,  scalars = 'CellQuality')
-			
+				
 
 		valid_vessels = 0
 		nb_vessels = 0
 
 		stats_vessels = {}
-
 		for e in G.edges():
 			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
 				print("Vessel evaluation")
-				m = self.extract_vessel_mesh(e)
+				m, tmp = self.extract_vessel_mesh(e, volume)
+				m = m.compute_cell_quality('scaled_jacobian')	
 				tab = m['CellQuality']
 				if np.min(tab) > 0:
 					valid_vessels+=1
@@ -2963,7 +3017,37 @@ class ArterialTree:
 		return ratio_furcation, ratio_vessels, stats_furcations, stats_vessels
 
 
-		
+	def check_mesh(self):
+		""" Compute quality metrics and statistics from surface or volume meshes
+		"""
+
+		# Separate parts
+		G = self._model_graph
+		color_field = None
+		for n in G.nodes():
+			if G.nodes[n]["type"] == "bif":
+				print("Bifurcation evaluation")
+				mesh, field = self.extract_furcation_mesh(n, volume = False)
+				mesh = mesh.compute_cell_quality('scaled_jacobian')	
+				tab = mesh['CellQuality']
+
+				if color_field  is None:
+					color_field = np.zeros(field.shape)
+				print(np.min(tab))
+				if np.min(tab) <= 0.5:
+					color_field = field + color_field
+
+		for e in G.edges():
+			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
+				print("Vessel evaluation")
+				mesh, tmp = self.extract_vessel_mesh(e, volume = False)
+				mesh = mesh.compute_cell_quality('scaled_jacobian')	
+				tab = mesh['CellQuality']
+				print(np.min(tab))
+				if np.min(tab) <= 0.5:
+					color_field = field + color_field
+
+		return color_field
 
 
 
@@ -3106,7 +3190,7 @@ class ArterialTree:
 		G = nx.DiGraph() # Create graph
 
 		centerline = pv.read(filename)
-		nb_centerlines = centerline.cell_arrays['CenterlineIds'].max() + 1
+		nb_centerlines = centerline.cell_data['CenterlineIds'].max() + 1
 
 		cells = centerline.GetLines()
 		cells.InitTraversal()
@@ -3249,7 +3333,7 @@ class ArterialTree:
 
 		file = open(filename, 'w') 
 
-		keys = list(nx.dfs_preorder_nodes(self._full_graph , 1))
+		keys = list(nx.dfs_preorder_nodes(self._full_graph , 0))
 		values = range(1, len(keys) + 1)
 
 		mapping = dict(zip(keys, values))
@@ -3259,7 +3343,7 @@ class ArterialTree:
 			c = self._full_graph.nodes[p]['coords']
 
 			if self._full_graph.in_degree(p) == 1:
-
+				print(list(self._full_graph.predecessors(p)))
 				n = mapping[list(self._full_graph.predecessors(p))[0]]
 				i = 3
 

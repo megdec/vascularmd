@@ -27,6 +27,7 @@ def test_editor(patient):
 
 
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P9.swc"
 	#file = "/home/decroocq/Documents/Thesis/Teaching/Projects/Shiraishi/data.swc"
 
 	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1-part.swc"
@@ -34,7 +35,9 @@ def test_editor(patient):
 	#file =  "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations" + patient +".vtp"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
-	tree.show(True, False, False)
+	#file = open("Results/BraVa/network/P9.obj", 'rb')
+	#tree = pickle.load(file)
+	
 	
 	#file = open("tmp/tree_model.obj", 'rb') 
 	#tree = pickle.load(file)
@@ -45,7 +48,7 @@ def test_editor(patient):
 
 def test_aneurisk(patient):
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/" + patient +".vtp"
 	#file="/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
@@ -103,11 +106,10 @@ def test_aneurisk(patient):
 	
 
 
-def test_brava(patient):
+def test_brava(filename):
 
-	filename = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/" + patient + ".swc"
 
-	tree = ArterialTree(patient, "BraVa", filename)
+	tree = ArterialTree(filename, "BraVa", filename)
 	#tree.show(True, False, False)
 	#tree.resample(1)
 	#tree.show(True, False, False)
@@ -130,10 +132,12 @@ def test_brava(patient):
 	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
 	#mesh.plot(show_edges = True)
 
+	"""
 	t1 = time.time()
 	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
 	t2 = time.time()
-	mesh.save("Results/BraVa/volume/" + patient + ".vtk")
+	mesh.save("Results/BraVa/volume/" + patient + ".vtu")
+	"""
 
 	print("The process took ", t2 - t1, "seconds." )
 	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
@@ -239,7 +243,7 @@ def mesh_aneurism():
 	tree.model_network()
 	tree.show(False, True, False)
 
-	tree.compute_cross_sections(24, 0.2, False)
+	tree.compute_cross_sections(24, 0.2, True)
 
 	mesh = pv.read("/home/decroocq/Documents/Thesis/Data/Aneurisk/C0097/surface/model.vtp")
 	tree.deform_surface_to_mesh(mesh, [(14, 6), (14, 12)])
@@ -263,27 +267,26 @@ def test_merge():
 	print([e for e in tree.get_topo_graph().edges()])
 	tree.show(False, False, False)
 
-def test_topo_correction():
-
-	file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
-	tree = ArterialTree("TestPatient", "BraVa", file)
-	tree.show(False, False, False)
-	tree.topo_correction(3)
-	tree.show(False, False, False)
 
 
 def test_evaluation_mesh():
+
 	
 
-	volume = True
-
-	file = open("Results/BraVa/network/P1.obj", 'rb')
+	file = open("Results/BraVa/network/P3.obj", 'rb')
 	tree = pickle.load(file)
 	mesh = tree.get_volume_mesh()
 	mesh.plot()
+	"""
+	bifs = tree.get_bifurcations()
+	for b in bifs:
+		b.R = b.optimal_smooth_radius(0.5)
+		b.compute_cross_sections(24, 0.2)
+		m = b.mesh_surface()
+		m.plot(show_edges=True)
+		"""
 
-
-	ratio_furcation, ratio_vessels, stats_furcations, stats_vessels = tree.evaluate_mesh_quality(volume = True, display = True)
+	ratio_furcation, ratio_vessels, stats_furcations, stats_vessels = tree.evaluate_mesh_quality(volume = True, display = False)
 
 
 
@@ -295,13 +298,21 @@ def test_evaluation_mesh():
 	
 
 
+path =  "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
+list_of_files = []
 
-#for i in range(1, 59):	
-	#test_brava("P" + str(i))
+for root, dirs, files in os.walk(path):
+	for file in files:
+		list_of_files.append(os.path.join(root,file))
+for name in list_of_files:
+	print(name)
+	test_brava(name)
+
+
+#test_brava("P" + str(i))
 
 #test_topo_correction()
-test_editor("C0078")
-#test_brava("P9")
-
-#test_aneurisk("C0078")
+#test_editor("C0006")
+#test_brava("P14")
+#test_aneurisk("C0082")
 #test_evaluation_mesh()

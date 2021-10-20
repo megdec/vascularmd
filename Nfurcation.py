@@ -36,7 +36,6 @@ class Nfurcation:
 		self.model = model
 		
 		# Set user paramaters
-		self.R = args[-1]  # Minimum curvature for rounded apex
 
 		if model == "spline":
 
@@ -81,6 +80,8 @@ class Nfurcation:
 		self._crsec = None
 		self._N = 24 # Number of nodes in a cross section
 		self._d = 0.2 # Ratio of density of cross section
+
+		self.R = self.optimal_smooth_radius(args[-1])   # Minimum curvature for rounded apex
 
 	
 
@@ -901,10 +902,12 @@ class Nfurcation:
 		self._N = N
 		self._d = d
 
-		self.relaxation(5)
+		self.relaxation(2)
 
 		if self.R > 0:
-			self.smooth_apex(self.optimal_smooth_radius())
+			self.smooth_apex(self.R)
+		self.relaxation(3)
+
 
 		return self._crsec
 
@@ -1109,15 +1112,56 @@ class Nfurcation:
 		self.mesh_to_crsec(mesh)
 
 
-	def optimal_smooth_radius(self):
+	def optimal_smooth_radius(self, param):
 		""" Return a smoothing radius proportional to the bifurcation angle """
-	
+
+		# Get the vifurcation angle
 		v1 = self._apexsec[0][0][1][:-1]
 		v2 = self._apexsec[1][0][1][:-1]
+		n = cross(v1, v2)
+		r = self._apexsec[0][0][0][-1]*1.5
 
-		a = angle(v1, v2)
+		end2 = self._AP[0] + v1 * r
+		end1 = self._AP[0] + v2 * r
 
-		R = (a * self.R) / (pi / 2)
+		ang = angle(v1, v2, axis= n, signed = True)
+		a = abs(ang)
+
+		# Compute the radius for which the circle goes down to 1/3 of the out branch length
+		mag = param / 2
+		
+		# Get 1/3 point position
+		pt = self._AP[0] + (r * mag) * rotate_vector(v1, n, ang/2) # apex + 1/3 is bisectrice direction rotate (v1, a/2)
+
+		# Get segment equation
+		u = (self._AP[0] + r*v1) - self._AP[0]
+		A = self._AP[0]
+
+		# Projet to line : the distance is the circle radius
+		k = (u[0]*(pt[0] - A[0]) + u[1]*(pt[1] - A[1]) + u[2]*(pt[2] -A[2])) / (u[0]**2 + u[1]**2 + u[2]**2)
+		P = np.array([k*u[0] + A[0], k*u[1] + A[1], k*u[2] + A[2]])
+
+		R = norm(P - pt)
+		"""
+
+		with plt.style.context(('ggplot')):
+		
+			fig = plt.figure(figsize=(10,7))
+			ax = Axes3D(fig)
+			ax.set_facecolor('white')
+
+			ax.plot([self._AP[0][0], end1[0]], [self._AP[0][1], end1[1]], [self._AP[0][2], end1[2]])
+			ax.plot([self._AP[0][0], end2[0]], [self._AP[0][1], end2[1]], [self._AP[0][2], end2[2]])
+
+			ax.scatter(pt[0], pt[1], pt[2])
+			ax.scatter(P[0], P[1], P[2])
+			plt.show()
+			"""
+		
+
+		#R = (a * self.R) / (pi / 2)
+		if R > 0.5:
+			R = 0.5
 
 		return R
 

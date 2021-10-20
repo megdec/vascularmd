@@ -3,7 +3,7 @@ import vtk
 import os
 import pyvista as pv # Meshing
 
-import PyFoam
+
 from ArterialTree import ArterialTree
 
 
@@ -263,7 +263,7 @@ FoamFile
 				internal_faces.append(cell_internal_faces[f])
 
 		for i in range(num_boundaries):
-			print(boundary_names[i] + ":", len(boundary_faces[i]) + "faces")
+			print(boundary_names[i] + ":", len(boundary_faces[i]),  "faces")
 
 		# write files
 		points_file = open(os.path.join(output_dir, "points"), "w")

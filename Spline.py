@@ -336,7 +336,7 @@ class Spline:
 	#####################################
 	
 
-	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, akaike=False, min_tangent=False, n=None, knot=None, lbd=0.0, criterion="None"): 
+	def approximation(self, D, end_constraint, end_values, derivatives, radius_model=True, curvature=False, akaike=False, min_tangent=False, max_distance = np.inf,  n=None, knot=None, lbd=0.0, criterion="None"): 
 
 		"""Approximate data points using a spline with given end constraints.
 
@@ -354,22 +354,19 @@ class Spline:
 			if akaike:
 				n = self.__nb_control_points_akaike(D)
 			else:
-				n = self.__nb_control_points_RMSE_thres(D, [0.5, 0.5*10**(-2)])
-				#n = self.__nb_control_points_max_dist_thres(D, [10**(-1), 10**(-3)])
-				#n = self.__nb_control_points_stability(D, 10**(-4))
-
+				n = self.__nb_control_points_accuracy(D, [0.5, 0.5*10**(-2)], "RMSE")
 
 		if radius_model: 
 
 			# Spatial model
 			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd, knot= knot)
-			spatial_model = self.__optimize_model(spatial_model, criterion)
+			spatial_model = self.__optimize_model(spatial_model, criterion, max_distance)
 
 			# Radius model
 			t = spatial_model.get_t()
 			data = np.transpose(np.vstack((t, D[:,-1])))
 			radius_model = Model(data, n, 3, end_constraint, np.vstack((data[0], [1,0], [1,0], data[-1])), False, lbd, knot = spatial_model.get_knot(), t = spatial_model.get_t())
-			radius_model = self.__optimize_model(radius_model, criterion)
+			radius_model = self.__optimize_model(radius_model, criterion, max_distance)
 
 			
 			if min_tangent:
@@ -401,6 +398,7 @@ class Spline:
 
 			# Curvature optimization 
 			if curvature: 
+				
 				spatial_model = self.__constraint_curvature(spatial_model, radius_model)
 
 
@@ -416,7 +414,7 @@ class Spline:
 
 		else:
 			global_model = Model(D, n, 3, end_constraint, end_values, derivatives, lbd, knot=knot)
-			global_model = self.__optimize_model(global_model, criterion)
+			global_model = self.__optimize_model(global_model, criterion, max_distance)
 
 
 			if min_tangent:
@@ -437,7 +435,7 @@ class Spline:
 
 
 					global_model = Model(D, n, 3, end_constraint, end_values, True, lbd)
-					global_model = self.__optimize_model(global_model, criterion)
+					global_model = self.__optimize_model(global_model, criterion, max_distance)
 					alpha, beta = global_model.get_magnitude()
 
 			self._model[0] = global_model
@@ -447,73 +445,31 @@ class Spline:
 
 			
 			
-		
-			#self.show(data = D)
-		
-	def __nb_control_points_stability(self, data, thres):
+	
+	def __nb_control_points_accuracy(self, data, thres, criterion = "RMSE"):
 
 		""" Find the optimal number of control points for a given RMSE threshold """
 
 		from Model import Model
 
-		
+		# Find the maximum number of control point in function of the spline length
+		max_n = 200
+		#n_opt = self.__nb_control_points_akaike(data)
+		#model = Model(data, n_opt, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+		#length_approx = model.spl.length()
+		#max_n = int(length_approx * 10)
+
 		n = 4
 		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
+		ev = model.quality(criterion)
 
-		RMSE_act = model.quality("RMSE")
-		RMSE_prec = (RMSE_act[0] + thres + 1, RMSE_act[1] + thres + 1)
-
-		while n < len(data) and n < 200 and (abs(RMSE_prec[0] - RMSE_act[0])> thres or abs(RMSE_prec[1] - RMSE_act[1])> thres): # Stability
+		while n < len(data) and n < max_n and (ev[0] > thres[0] or ev[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
-			RMSE_prec = RMSE_act[:]
-			RMSE_act = model.quality("RMSE")
+			ev = model.quality(criterion)
 
 		return n
-
-	def __nb_control_points_RMSE_thres(self, data, thres):
-
-		""" Find the optimal number of control points for a given RMSE threshold """
-
-		from Model import Model
-
-		
-		n = 4
-		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-
-		RMSE = model.quality("RMSE")
-
-		while n < len(data) and n < 200 and (RMSE[0] > thres[0] or RMSE[1] > thres[1]): # Stability
-			n += 1
-			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-
-			RMSE = model.quality("RMSE")
-
-
-		return n
-
-
-
-	def __nb_control_points_max_dist_thres(self, data, thres):
-
-		""" Find the optimal number of control points for a given RMSE threshold """
-
-		from Model import Model
-		
-		n = 4
-		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-
-		min_dist = model.quality("max_dist")
-
-		while n < len(data) and n < 200 and (min_dist[0] > thres[0] or min_dist[1] > thres[1]): # Stability
-			n += 1
-			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-
-			min_dist = model.quality("max_dist")
-
-		return n
-
 
 
 	def __nb_control_points_akaike(self, data):
@@ -530,27 +486,21 @@ class Spline:
 
 		AIC_min = model.quality("AICC")
 
-		while n < len(data) and n < 200:# and (AIC_prec > AIC_act): 
+		while n < len(data) and n < 200:
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 
 			AIC = model.quality("AICC")
-			#AIC_list.append(AIC_act)
-			#n_list.append(n)
 			if AIC < AIC_min:
 				n_min = n
 				AIC_min = AIC
-
-		#plt.plot(n_list, AIC_list)
-		#plt.show()
-	
 
 		return n_min
 
 
 
 
-	def __optimize_model(self, model, criterion):
+	def __optimize_model(self, model, criterion, max_distance):
 
 		""" Optimise the value of smoothing parameter lambda 
 		for a given model according to a smoothing criterion."""
@@ -570,10 +520,12 @@ class Spline:
 
 				model.set_lambda(c)
 				fc = model.quality(criterion)
+				dc = model.quality("max_dist")[0]
 				model.set_lambda(d)
 				fd = model.quality(criterion)
+				#dd = model.quality("max_dist")[0]
 			
-				if fc < fd:
+				if fc < fd or dc > max_distance :
 					b = d
 				else:
 					a = c
@@ -591,8 +543,7 @@ class Spline:
 
 	def __constraint_curvature(self, spatial_model, radius_model):
 
-		""" Check curvature and smoothes the spline is the constraint 
-		radius of curvature > radius is not respected """
+		""" Set lambda to lower the spline max """
 
 		num = 100
 		tol = 10**(-6)
@@ -600,6 +551,9 @@ class Spline:
 
 		curv_rad = spatial_model.spl.curvature_radius(t)
 		rad = radius_model.spl.point(t)[:, -1]
+
+		# Increase or lower lambda test
+		
 			
 		if not all((curv_rad - rad) > tol):
 
@@ -659,10 +613,10 @@ class Spline:
 
 		""" Splits the spline into two splines at time t."""
 
-		if t >= 1.0:
-			t = 0.9# WORKAROUND !!!
-		elif t<= 10**(-2):
-			t = 0.1
+		#if t > 1.0 - 10**(-2):
+		#	t = 1.0 - 10**(-2)
+		#elif t< 10**(-2):
+		#	t = 10**(-2)
 
 
 		spla, splb = operations.split_curve(self._spl, t)
