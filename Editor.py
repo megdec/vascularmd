@@ -53,7 +53,7 @@ class Editor:
 		self.elements = {'full' : {}, 'topo' : {}, 'model' : {}, 'mesh' : {}} 
 
 		scene.append_to_caption('\n\nEditing  ')
-		self.edition_menu = menu(choices = ['off', 'full', 'topo', 'model', 'mesh'], selected = 'off', index=0, bind = self.update_edition_mode)
+		self.edition_menu = menu(choices = ['off', 'data', 'topo', 'model', 'mesh'], selected = 'off', index=0, bind = self.update_edition_mode)
 		self.edition_mode = 'off'
 
 		scene.append_to_caption('\t')
@@ -70,23 +70,25 @@ class Editor:
 		scene.append_to_caption('\n\n')
 
 		# Check boxes
-		self.checkboxes = {'full' : checkbox(text= "Full Graph  ", bind=self.update_visibility_state, checked=True, mode = "full")}
+		self.checkboxes = {'full' : checkbox(text= "Data Graph  ", bind=self.update_visibility_state, checked=True, mode = "full")}
 		self.update_buttons = {'full' : button(text = "Update", bind=self.update_graph, mode = 'full')}
 		self.reset_buttons = {'full' : button(text = "Reset", bind=self.reset_graph, mode = 'full')}
 		scene.append_to_caption('\t\t\t\t')
 		self.checkboxes['topo'] = checkbox(text= "Topo Graph  ", bind=self.update_visibility_state, checked = False, mode = "topo")
 		self.update_buttons['topo'] = button(text = "Update", bind=self.update_graph, mode = 'topo')
 		self.reset_buttons['topo'] = button(text = "Reset", bind=self.reset_graph, mode = 'topo')
-		scene.append_to_caption('\t\t\t')
+		scene.append_to_caption('\t\t\t\t')
 		self.checkboxes['model'] = checkbox(text= "Model Graph  ", bind=self.update_visibility_state, mode = "model", checked = False)
 		self.update_buttons['model'] = button(text = "Update", bind=self.update_graph, mode = 'model')
 		self.reset_buttons['model'] = button(text = "Reset", bind=self.reset_graph, mode = 'model')
-		scene.append_to_caption('\t\t\t')
+		scene.append_to_caption('\t\t\t\t')
 		self.checkboxes['mesh'] = checkbox(text= "Mesh  " , bind=self.update_visibility_state, mode="mesh", checked = False)
 		self.update_buttons['mesh'] = button(text="Update", bind=self.update_graph, mode = 'mesh')
 		self.reset_buttons['mesh'] = button(text="Reset", bind=self.reset_graph, mode = 'mesh')
 
 		self.deform_mesh_button = button(text="Deform", bind=self.deform_mesh)
+		self.check_mesh_button = button(text=" Check ", bind=self.check_mesh)
+		self.check_state = False
 
 		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
 
@@ -144,11 +146,12 @@ class Editor:
 		self.target_mesh = None
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tSmoothing value') 
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
-		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 1000, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
+		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 100, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
 
 
 		self.N = 24
 		self.d = 0.2
+		self.display_spline_step = 10
 		self.search_dist = 40
 		scene.bind('click', self.select)
 		scene.bind('mousedown', self.select)
@@ -220,6 +223,10 @@ class Editor:
 			self.control_radius_checkbox.disabled = True
 			self.control_radius_checkbox.checked = False
 			self.hide('model',['control_edges', 'control_nodes'])
+
+			for k in self.elements["model"]["control_nodes"].keys():
+				for i in range(len(self.elements["model"]["control_nodes"][k])):
+					self.elements["model"]["control_nodes"][k][i].radius = 0.5
 
 
 
@@ -363,6 +370,7 @@ class Editor:
 
 			if m == "mesh":
 				self.deform_mesh_button.disabled = disabled
+				self.check_mesh_button.disabled = disabled
 				self.mesh_representation_menu.disabled = disabled
 
 
@@ -602,6 +610,7 @@ class Editor:
 				spl = G.edges[e]['spline']
 
 				coords = spl.get_points()
+				coords = np.vstack((coords[0, :], coords[::self.display_spline_step, :], coords[-1, :]))
 				pos = vector(coords[0][0], coords[0][1], coords[0][2])
 				c = curve(pos=pos, color = color.black, radius = 0.2, mode = 'model', category = 'edges', id = e)
 
@@ -903,7 +912,13 @@ class Editor:
 
 			# Parameter update
 			if len(self.modified_elements[mode]['parameter']) > 0:
-				self.compute_mesh()
+				self.disable(True)
+				self.tree.compute_cross_sections(self.N, self.d)
+				self.tree.mesh_surface()
+				self.disable(False)
+				
+				self.modified_elements[mode]['parameter'] = []
+
 
 			else:
 				# Deform update
@@ -912,6 +927,8 @@ class Editor:
 
 				self.modified_elements[mode]['deform'] = []
 				self.output_message("Mesh updated.")
+
+			self.refresh_display("mesh")
 
 		self.unselect("node", mode)
 		self.unselect("edge", mode)
@@ -1033,6 +1050,7 @@ class Editor:
 
 
 			elif mode == "model":
+
 				
 				G = self.tree.get_model_graph()
 				col = {'end': color.blue, 'bif' : color.red, 'reg' : color.green, 'sep': color.purple}
@@ -1101,7 +1119,7 @@ class Editor:
 						else:
 							c.clear()
 							for i in len(self.elements[mode]["control_nodes"][e]):
-								self.elements[mode]["control_nodes"][e][i].visible = False
+								self.elements[mode]["control_nodes"][e][i].visible = self.control_pts_checkbox.checked
 
 							self.elements[mode]["control_nodes"][e] = []
 
@@ -1113,12 +1131,13 @@ class Editor:
 
 						# Update the spline curve point positions
 						coords = spl.get_points()
+						coords = np.vstack((coords[0, :], coords[::self.display_spline_step, :], coords[-1, :]))
 						c = self.elements[mode]["edges"][e]
 
 						c.clear()
 						for i in range(len(coords)):
 							c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
-						self.elements[mode]["control_edges"][e].visible = visible
+						self.elements[mode]["control_edges"][e].visible = self.control_pts_checkbox.checked
 
 					else: # Create new edge
 
@@ -1137,6 +1156,7 @@ class Editor:
 				
 						# Create spline curve
 						coords = spl.get_points()
+						coords = np.vstack((coords[0, :], coords[::self.display_spline_step, :], coords[-1, :]))
 						pos = vector(coords[0][0], coords[0][1], coords[0][2])
 						c = curve(pos=pos, color = color.black, radius = 0.2, mode = 'model', category = 'edges', id = e)
 
@@ -1146,6 +1166,7 @@ class Editor:
 						self.elements[mode]["edges"][e] = c
 
 			else:
+
 				mesh = self.tree.get_surface_mesh()
 				if mesh is None:
 					mesh = self.tree.mesh_surface()
@@ -1186,6 +1207,7 @@ class Editor:
 						crsec = G.nodes[n]['crsec']
 
 						if G.nodes[n]['type'] == "bif":
+
 							N = (self.tree._N // 2) - 1
 							s = 2
 							for i in range(len(crsec) // N):
@@ -1413,6 +1435,9 @@ class Editor:
 		self.unselect("edge", self.edition_mode)
 
 		self.edition_mode = self.edition_menu.selected
+		if self.edition_mode == "data":
+			self.edition_mode = "full"
+
 		self.output_message("Edition mode switched to " + self.edition_mode + ".")
 
 
@@ -1457,7 +1482,7 @@ class Editor:
 
 		""" Move the selected node with mouse cursor """
 
-		if self.edition_mode == "full" and self.selected_node is not None and self.drag:
+		if (self.edition_mode == "full" or self.edition_mode == "model") and self.selected_node is not None and self.drag:
 			self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
 
 
@@ -1616,6 +1641,7 @@ class Editor:
 					self.elements["model"]["control_nodes"][ids][i].radius = coords[i][3]
 
 			coords = spl.get_points()
+			coords = np.vstack((coords[0, :], coords[::self.display_spline_step, :], coords[-1, :]))
 			
 			self.selected_edge.clear()
 			for i in range(len(coords)):
@@ -1631,24 +1657,6 @@ class Editor:
 	###########################################
 	############# MESH EDITION ################
 	###########################################
-
-
-	def compute_mesh(self):
-
-		""" Recompute the mesh """
-
-		self.output_message("Computing the mesh.")
-
-		self.disable(True)
-		self.tree.compute_cross_sections(self.N, self.d)
-		self.tree.mesh_surface()
-		self.disable(False
-			)
-		self.output_message("Mesh Complete!")
-		# Update the display
-		self.hide("mesh")
-		self.elements["mesh"] = {}
-		self.create_elements("mesh")
 
 
 	def update_mesh_parameters(self, b):
@@ -1684,7 +1692,7 @@ class Editor:
 
 	def deform_mesh(self):
 
-		""" Deform mesh to a given trget mesh """
+		""" Deform mesh to a given target mesh """
 
 		if self.target_mesh is not None:
 			self.output_message("Mesh deformation...")
@@ -1700,6 +1708,39 @@ class Editor:
 
 			self.disable(False)
 			self.output_message("Mesh deformation complete!")
+
+
+	def check_mesh(self):
+		""" Checks the mesh quality and display the mesh segments not compatible with simulation in red """
+		self.disable(True)
+
+		if self.check_state == False:
+
+			field = self.tree.check_mesh()
+			for i in range(len(self.elements["mesh"]["surface"])):
+				if field[i] == 1:
+					self.elements["mesh"]["surface"][i].v0.color = color.red
+					self.elements["mesh"]["surface"][i].v1.color = color.red
+					self.elements["mesh"]["surface"][i].v2.color = color.red
+					self.elements["mesh"]["surface"][i].v3.color = color.red
+			self.check_state = True
+			self.check_mesh_button.text = "Uncheck"
+
+		else:
+			for i in range(len(self.elements["mesh"]["surface"])):
+				
+				self.elements["mesh"]["surface"][i].v0.color = color.gray(0.75)
+				self.elements["mesh"]["surface"][i].v1.color = color.gray(0.75)
+				self.elements["mesh"]["surface"][i].v2.color = color.gray(0.75)
+				self.elements["mesh"]["surface"][i].v3.color = color.gray(0.75)
+
+			self.check_state = False
+			self.check_mesh_button.text = "Check"
+
+		self.disable(False)
+
+
+
 
 
 	###########################################
