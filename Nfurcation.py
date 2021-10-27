@@ -82,6 +82,7 @@ class Nfurcation:
 		self._d = 0.2 # Ratio of density of cross section
 
 		self.R = self.optimal_smooth_radius(args[-1])   # Minimum curvature for rounded apex
+		
 
 	
 
@@ -316,6 +317,65 @@ class Nfurcation:
 		self.__set_tspl() # Trajectory splines
 
 
+	def correct_apex_section(self, ind):
+
+		""" Rotate apex section around the apex point 
+
+		Keyword arguments:
+		ind -- list of index of the apex section to rotate """
+
+		print("Correct section")
+		ct = self._apexsec[ind[0]][ind[1]][0][:-1]
+		tg = self._apexsec[ind[0]][ind[1]][1][:-1]
+
+		r = self._apexsec[ind[0]][ind[1]][0][-1]
+		ap = self._AP[ind[0] - 1]
+
+		v0 = ct - ap
+		v0 = v0/norm(v0)
+
+		ref = cross(v0, tg)
+
+		# Dichotomy 
+		a1 = 0
+		a2 = pi / 4.
+
+		v1 = rotate_vector(v0, ref, a2)
+		v1 = v1/norm(v1)
+		OP = ap + v1 * 2 * r
+
+		t = self._spl[ind[0]].project_point_to_centerline(OP)
+		pt = self._spl[ind[0]].point(t, True)
+
+		if norm(pt[:-1] - OP) - pt[-1] < 10**(-2):
+			print("Apex section could not be corrected")
+		else:
+
+			while abs(a1 - a2) > 10**(-2):
+
+				a3 = (a1 + a2) / 2.
+
+				v1 = rotate_vector(v0, ref, a3)
+				v1 = v1/norm(v1)
+				OP = ap + v1 * 2 * r
+
+				t = self._spl[ind[0]].project_point_to_centerline(OP)
+				pt = self._spl[ind[0]].point(t, True)
+
+				if norm(pt[:-1] - OP) - pt[-1] < 10**(-2):
+					a2 = a3
+				else:
+					a1 = a3
+			ang = (a1 + a2) / 2.
+
+			v1 = rotate_vector(v0, ref, 0.01)
+			print("Rotation angle: ", (a1 + a2) / 2.)
+			print(np.vstack(( ap + v1 * r, cross(ref, v1))))
+
+			return np.vstack(( ap + v1 * r, cross(ref, v1)))
+				
+
+
 
 	def rotate_apex_section(self, ind, angle):
 
@@ -435,9 +495,15 @@ class Nfurcation:
 				pt = self._spl[ind].point(t, True)
 
 				if norm(pt[:-1] - OP) - pt[-1] < 10e-2:
-					self.rotate_apex_section([i, 0], 0.05)
-					self.__set_spl()
+					crsec = self.correct_apex_section([i,0])
+					if crsec is not None:
+
+						self._apexsec[i][0][0][:-1] = crsec[0]
+						self._apexsec[i][0][1][:-1] = crsec[1]
+
+						self.__set_spl()
 		"""
+	
 
 
 

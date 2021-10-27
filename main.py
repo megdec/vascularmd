@@ -105,48 +105,6 @@ def test_aneurisk(patient):
 	mesh.save("Results/Aneurisk/" + patient + "_volume_mesh.vtk")
 	
 
-
-def test_brava(filename):
-
-
-	tree = ArterialTree(filename, "BraVa", filename)
-	#tree.show(True, False, False)
-	#tree.resample(1)
-	#tree.show(True, False, False)
-
-	t1 = time.time()
-	tree.model_network()
-	t2 = time.time()
-	print("The process took ", t2 - t1, "seconds." )
-	#tree.show(False, True, False)
-
-
-	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, False)
-	t2 = time.time()
-	print("The process took ", t2 - t1, "seconds." )
-
-	t1 = time.time()
-	mesh = tree.mesh_surface()
-	t2 = time.time()
-	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
-	#mesh.plot(show_edges = True)
-
-	"""
-	t1 = time.time()
-	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
-	t2 = time.time()
-	mesh.save("Results/BraVa/volume/" + patient + ".vtu")
-	"""
-
-	print("The process took ", t2 - t1, "seconds." )
-	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
-	pickle.dump(tree, file)
-
-	
-
-
-
 def test_remove_branch():
 
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0099.vtp"
@@ -296,18 +254,126 @@ def test_evaluation_mesh():
 	print("Stats vessels : ", stats_vessels)
 
 	
+def test_distance_constraint():
+	# Get centerline data
+	file = "/home/decroocq/Documents/Thesis/Data/Test/tube.swc"
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	tree.model_network()
+	tree.add_noise_centerline(1, normal = True)
+	tree.show(True)
+
+	# Model with different constraints
+	tree.model_network(max_distance = 3)
+	tree.show(True, True, True)
 
 
-path =  "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
-list_of_files = []
+def test_part_meshing():
 
-for root, dirs, files in os.walk(path):
-	for file in files:
-		list_of_files.append(os.path.join(root,file))
-for name in list_of_files:
-	print(name)
-	test_brava(name)
+	file = open("Results/BraVa/network/P44.obj", 'rb')
+	tree = pickle.load(file)
 
+	G = tree.get_crsec_graph()
+	for e in G.edges():
+		if G.nodes[e[1]]["type"] != "bif":
+			m = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10, edg = [e])
+			m.plot(show_edges = True)
+
+def show_edges_data():
+
+	file = open("Results/BraVa/network/P1.obj", 'rb')
+	tree = pickle.load(file)
+
+	centers = pv.MultiBlock()
+	c = 0
+		
+
+	G = tree.get_model_graph()
+	for e in G.edges():
+		if G.nodes[e[0]]["type"]!= "bif" and G.nodes[e[1]]["type"]!= "bif":
+			spl = G.edges[e]["spline"]
+
+				
+			#fig = plt.figure(figsize=(10,7))
+			#ax = Axes3D(fig)
+			#ax.set_facecolor('white')
+
+			pts = spl.get_points()
+			#ax.plot(pts[:,0], pts[:,1], pts[:,2],  c='black')
+
+			data = spl.get_data()
+			if data is not None:
+				#ax.scatter(data[:, 0],data[:, 1], data[:, 2],  c='red', s = 20, depthshade=False)
+				for coord in data:
+					centers[str(c)]= pv.Sphere(radius=0.2, center=(coord[0], coord[1], coord[2]))
+					c += 1
+
+				t, d = spl.distance(data)
+				print("Maximum distance :", max(d))
+
+			#ax.set_axis_off()
+			#plt.show()
+	centers.save("data_P1.vtm")
+			
+
+
+
+def test_brava(filename, patient):
+
+
+	tree = ArterialTree(patient, "BraVa", filename)
+	
+	#tree.show(True, False, False)
+	#tree.resample(1)
+	#tree.show(True, False, False)
+
+	t1 = time.time()
+	tree.model_network(max_distance = 4)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+	#tree.show(False, True, False)
+
+
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2, False)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+	t2 = time.time()
+	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
+	#mesh.plot(show_edges = True)
+
+	"""
+	t1 = time.time()
+	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
+	t2 = time.time()
+	mesh.save("Results/BraVa/volume/" + patient + ".vtu")
+	"""
+
+	print("The process took ", t2 - t1, "seconds." )
+	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
+	pickle.dump(tree, file)
+
+
+
+def launch_brava_meshing():
+
+	root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
+	for i in range(54,59):
+		patient = "P" + str(i)
+
+		print(root+patient+".swc", patient)
+		try:
+			test_brava(root+patient+".swc", patient)
+		except:
+			print("Not found.")
+
+
+			
+launch_brava_meshing()
+#test_part_meshing()
+#show_edges_data()
 
 #test_brava("P" + str(i))
 
@@ -316,3 +382,4 @@ for name in list_of_files:
 #test_brava("P14")
 #test_aneurisk("C0082")
 #test_evaluation_mesh()
+#test_distance_constraint()

@@ -249,7 +249,7 @@ class ArterialTree:
 
 	
 
-	def model_network(self, radius_model = True, criterion="AIC", akaike=False):
+	def model_network(self, radius_model = True, criterion="AIC", akaike=False, max_distance = np.inf):
 
 		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
@@ -280,15 +280,13 @@ class ArterialTree:
 				if n in [nds for nds in self._topo_graph.nodes()]:
 					n = original_label[n]
 					if self._topo_graph.nodes[n]['type'] == "bif":
-						print("Model bifurcation")
-						original_label = self.__model_furcation(n, original_label)
+						original_label = self.__model_furcation(n, original_label, criterion, akaike, max_distance)
 
 		# Spline models
-		#for e in self._model_graph.edges():
+		for e in self._model_graph.edges():
 
-		#	if self._model_graph.nodes[e[1]]['type'] == "end":
-		#		print("Model Vessel")
-		#		self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model)
+			if self._model_graph.nodes[e[0]]['type'] == "end" and  self._model_graph.nodes[e[1]]['type'] :
+				self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
 
 		# Add rotation attributes
 		nx.set_edge_attributes(self._model_graph, None, name='alpha')
@@ -299,7 +297,7 @@ class ArterialTree:
 			self.__compute_rotations(e)
 
 
-	def __model_furcation(self, n, original_label):
+	def __model_furcation(self, n, original_label, criterion, akaike, max_distance):
 
 		""" Extract bifurcation parameters from the data and modify the model graph to add the bifurcation object and edges.
 
@@ -369,7 +367,7 @@ class ArterialTree:
 
 
 				spl = Spline()
-				spl.approximation(data, constraint, values, False, criterion = "AIC", max_distance = 2) 
+				spl.approximation(data, constraint, values, False, criterion = criterion, max_distance = max_distance) 
 
 				#spl.show(data=data)
 				splines.append(spl)
@@ -406,29 +404,7 @@ class ArterialTree:
 				tAP[i+1].append(t[1])
 
 
-		# Show splines
-		"""
-		with plt.style.context(('ggplot')):
-			
-			fig = plt.figure(figsize=(10,7))
-			ax = Axes3D(fig)
-			ax.set_facecolor('white')
-			col = {0 : "red", 1 : "orange", 2 : "yellow", 3: "green"}
-
-			for i in range(len(splines)):
-
-				pts = splines[i].get_points()
-				ax.plot(pts[:,0], pts[:,1], pts[:,2],  c=col[i])
-
-			for i in range(len(AP)):
-				ax.scatter(AP[i][0], AP[i][1], AP[i][2],  c='red', s = 40, depthshade=False)
-
-			ax.set_axis_off()
-			plt.show()
-			"""
-			
-	
-
+		
 		self._topo_graph = nx.relabel_nodes(self._topo_graph, label_dict_topo)
 		self._model_graph = nx.relabel_nodes(self._model_graph, label_dict_model)
 
@@ -464,6 +440,7 @@ class ArterialTree:
 
 		
 			if t_cut < 10**(-2):
+
 				pt_cut = splines[ind].point(t_cut)
 				spline_cut, tmp_spl = splines[ind].split_time(0.1)
 				new_t_cut = spline_cut.project_point_to_centerline(pt_cut)
@@ -471,12 +448,12 @@ class ArterialTree:
 			else:
 				spline_in, tmp_spl = splines[ind].split_time(t_cut)
 
-			model =  splines[ind].get_model()
+			model = splines[ind].get_model()
 			T = model[0].get_t()
 			thres = np.argmax(T>t_cut)
-			thres = thres + 1
+			thres = thres - 1
 			data = self._model_graph.edges[e_in[0]]['coords']
-			D_in = data[1:thres,:]
+			D_in = data[:thres,:]
 
 			C0 = [splines[ind].point(t_cut, True), splines[ind].tangent(t_cut, True)]
 
@@ -491,7 +468,6 @@ class ArterialTree:
 
 			C0 = bifprec.get_apexsec()[branch][0] # If merged bifurcations, C0 is the apex section of the previous bifurcation
 			
-
 
 		if not merge_next: # Keep on building the model
 
@@ -515,8 +491,16 @@ class ArterialTree:
 					break
 
 				else:
+					if t_cut > 1.0 - 10**(-2):
+						pt_cut = splines[i].point(t_cut)
+						tmp_spl, spline_cut = splines[i].split_time(0.9)
+						new_t_cut = spline_cut.project_point_to_centerline(pt_cut)
+						tmp_spl, spl = spline_cut.split_time(new_t_cut)
+	
+					else:
+						tmp_spl, spl = splines[i].split_time(t_cut)
+
 					# Cut spline_out
-					tmp_spl, spl = splines[i].split_time(t_cut)
 					spl_out.append(spl)
 
 					# Separate data points 
@@ -530,8 +514,11 @@ class ArterialTree:
 
 					if thres >= len(data):
 						D_out.append(np.array([]).reshape(0,4))
+					elif thres < 0:
+						D_out.append(data)
 					else:
-						D_out.append(data[thres:-1,:])
+						D_out.append(data[thres:,:])
+
 
 					C.append([splines[i].point(t_cut, True), splines[i].tangent(t_cut, True)])
 					AC.append([])
@@ -543,13 +530,45 @@ class ArterialTree:
 					for t_ap in tap_ordered:
 						AC[i].append([splines[i].point(t_ap, True), splines[i].tangent(t_ap, True)])
 
+
+		# Show splines
+		"""
+		if not merge_next:
+			with plt.style.context(('ggplot')):
+				
+				fig = plt.figure(figsize=(10,7))
+				ax = Axes3D(fig)
+				ax.set_facecolor('white')
+				col = {0 : "red", 1 : "orange", 2 : "yellow", 3: "green"}
+
+				for i in range(len(splines)):
+
+					pts = splines[i].get_points()
+					ax.plot(pts[:,0], pts[:,1], pts[:,2],  c=col[i])
+					ax.scatter(D_in[:, 0], D_in[:, 1], D_in[:, 2],  c='blue', s = 40, depthshade=False)
+					ax.scatter(D_out[i][:, 0], D_out[i][:, 1], D_out[i][:, 2],  c='red', s = 40, depthshade=False)
+
+					data = splines[i].get_data()
+					ax.scatter(data[:, 0],data[:, 1], data[:, 2],  c='black', s = 20, depthshade=False)
+
+
+				for i in range(len(AP)):
+					ax.scatter(AP[i][0], AP[i][1], AP[i][2],  c='red', s = 40, depthshade=False)
+
+
+				ax.set_axis_off()
+				plt.show()
+				"""
+			
+
+
 		if merge_next:
 			self.merge_branch(n_next) # Merge in topo graph and recompute
 			self.merge_branch(n_next, mode = "model")
 			
 		
 			# Re-model furcation 
-			original_label = self.__model_furcation(n, original_label)
+			original_label = self.__model_furcation(n, original_label, criterion, akaike, max_distance)
 
 
 		else: # Build bifurction and include it in graph
@@ -696,7 +715,7 @@ class ArterialTree:
 
 
 
-	def __model_vessel(self, e, criterion="AIC", akaike=False, radius_model=True):
+	def __model_vessel(self, e, criterion, akaike, radius_model, max_distance):
 
 		""" Compute vessel spline model with end tangent constraint and add it to model graph
 
@@ -725,7 +744,7 @@ class ArterialTree:
 			constraint[-2] = True
 
 		spl = Spline()
-		spl.approximation(pts, constraint, values, False, criterion=criterion, akaike=akaike, radius_model=radius_model)
+		spl.approximation(pts, constraint, values, False, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
 		
 		self._model_graph.edges[e]['spline'] = spl
 		self._model_graph.nodes[e[1]]['coords'] = spl.point(1.0, True)
@@ -1188,7 +1207,6 @@ class ArterialTree:
 			print('Meshing bifurcations.')
 			for  n in self._model_graph.nodes():
 				if self._model_graph.nodes[n]['type'] == "bif":
-					print("Meshing bifurcation")
 					self.__furcation_cross_sections(n)
 					
 
@@ -1196,7 +1214,6 @@ class ArterialTree:
 			print('Meshing edges.')
 			for e in self._model_graph.edges():
 				if self._model_graph.nodes[e[0]]['type'] != "bif" and self._model_graph.nodes[e[1]]['type'] != "bif":
-					print("Meshing vessels")
 					self.__vessel_cross_sections(e)
 
 		#self.show(False, False, False)
@@ -1269,18 +1286,23 @@ class ArterialTree:
 
 
 
-	def __add_node_id_surface(self):
+	def __add_node_id_surface(self, nds = [], edg = []):
 
 		""" Add id attribute to the nodes for surface meshing"""
 
+		if len(nds) == 0:
+			nds = [n for n in self._crsec_graph.nodes()]
+		if len(edg) == 0:
+			edg = [e for e in self._crsec_graph.edges()]
+
 		count = 0
 
-		for n in self._crsec_graph.nodes():
+		for n in nds:
 			self._crsec_graph.nodes[n]['id'] = count
 			count += self._crsec_graph.nodes[n]['crsec'].shape[0]
 
 
-		for e in self._crsec_graph.edges():
+		for e in edg:
 			self._crsec_graph.edges[e]['id'] = count
 			count += self._crsec_graph.edges[e]['crsec'].shape[0] * self._crsec_graph.edges[e]['crsec'].shape[1] 
 
@@ -1288,15 +1310,21 @@ class ArterialTree:
 
 
 
-	def __add_node_id_volume(self, num_a, num_b):
+	def __add_node_id_volume(self, num_a, num_b, nds = [], edg = []):
 
 		""" Add id attribute to the nodes for volume meshing"""
+
+		if len(nds) == 0:
+			nds = [n for n in self._crsec_graph.nodes()]
+		if len(edg) == 0:
+			edg = [e for e in self._crsec_graph.edges()]
+
 
 		count = 0
 		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
 	
 
-		for n in self._crsec_graph.nodes():
+		for n in nds:
 			self._crsec_graph.nodes[n]['id'] = count
 			if self._crsec_graph.nodes[n]['type'] == "bif":
 
@@ -1307,7 +1335,7 @@ class ArterialTree:
 			else: 
 				count += nb_nds_ogrid
 
-		for e in self._crsec_graph.edges():
+		for e in edg:
 			self._crsec_graph.edges[e]['id'] = count
 			count += self._crsec_graph.edges[e]['crsec'].shape[0] * nb_nds_ogrid
 
@@ -1386,7 +1414,7 @@ class ArterialTree:
 
 
 
-	def mesh_surface(self):
+	def mesh_surface(self, edg = []):
 
 		""" Meshes the surface of the arterial tree."""
 
@@ -1398,15 +1426,25 @@ class ArterialTree:
 
 		print('Meshing surface...')
 
+		nds = []
+		for e in edg:
+			if e[0] not in nds:
+				nds.append(e[0])
+			if e[1] not in nds:
+				nds.append(e[1])
+
 		# Add node id
-		self.__add_node_id_surface()
+		self.__add_node_id_surface(nds, edg)
 		G = self._crsec_graph
+
+		if len(edg) == 0:
+			edg = [e for e in G.edges()]
 
 		vertices = np.zeros((self._nb_nodes, 3))
 		faces = np.zeros((self._nb_nodes, 5), dtype =int)
 		nb_faces = 0
 
-		for e in G.edges():		
+		for e in edg:		
 
 			flip_norm = False
 
@@ -1480,7 +1518,7 @@ class ArterialTree:
 
 
 
-	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10):
+	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10, edg = []):
 
 		""" Meshes the volume of the arterial tree with O-grid pattern.
 
@@ -1502,6 +1540,14 @@ class ArterialTree:
 
 		print('Meshing volume...')
 
+		nds = []
+		for e in edg:
+			if e[0] not in nds:
+				nds.append(e[0])
+			if e[1] not in nds:
+				nds.append(e[1])
+
+
 		# Keep parameters as attributes
 		self._layer_ratio = layer_ratio
 		self._num_a = num_a
@@ -1510,7 +1556,10 @@ class ArterialTree:
 		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
 
 		# Compute node ids
-		self.__add_node_id_volume(num_a, num_b)
+		self.__add_node_id_volume(num_a, num_b, nds, edg)
+
+		if len(edg) == 0:
+			edg = [e for e in G.edges()]
 
 		# Compute faces
 		f_ogrid = self.ogrid_pattern_faces(self._N, num_a, num_b)
@@ -1521,8 +1570,7 @@ class ArterialTree:
 		cells = np.zeros((self._nb_nodes,9), dtype=int)
 		nb_cells = 0
 
-		for e in G.edges():
-
+		for e in edg:
 
 			flip_norm = False
 
@@ -2955,67 +3003,6 @@ class ArterialTree:
 			self.topo_to_full()
 
 
-	def evaluate_mesh_quality(self, volume = True, display = False):
-
-		""" Compute quality metrics and statistics from surface or volume meshes
-		"""
-
-		# Whole mesh
-
-		#mesh = self.get_volume_mesh()
-		#quality = mesh.compute_cell_quality('scaled_jacobian')
-		#quality.plot(show_edges = True, scalars = 'CellQuality')
-
-		# Separate parts
-		G = self._model_graph
-
-		valid_furcations = 0
-		nb_furcations = 0
-
-		stats_furcations = {}
-		
-		for n in G.nodes():
-			if G.nodes[n]["type"] == "bif":
-				print("Bifurcation evaluation")
-				m, tmp = self.extract_furcation_mesh(n, volume)
-				m = m.compute_cell_quality('scaled_jacobian')	
-				tab = m['CellQuality']
-				if np.min(tab) > 0:
-					valid_furcations+=1
-					stats_furcations[n] = [np.min(tab), np.mean(tab), np.max(tab)]
-				else: 
-					stats_furcations[n] = []
-					print("not ok")
-				nb_furcations += 1
-				if display:
-					m.plot(show_edges=True,  scalars = 'CellQuality')
-				
-
-		valid_vessels = 0
-		nb_vessels = 0
-
-		stats_vessels = {}
-		for e in G.edges():
-			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
-				print("Vessel evaluation")
-				m, tmp = self.extract_vessel_mesh(e, volume)
-				m = m.compute_cell_quality('scaled_jacobian')	
-				tab = m['CellQuality']
-				if np.min(tab) > 0:
-					valid_vessels+=1
-					stats_vessels[e] = [np.min(tab), np.mean(tab), np.max(tab)]
-				else: 
-					stats_vessels[e] = [np.min(tab), np.mean(tab), np.max(tab)]
-					print("not ok")
-				nb_vessels += 1
-				if display:
-					m.plot(show_edges=True, scalars = 'CellQuality')
-
-		ratio_furcation = valid_furcations/nb_furcations
-		ratio_vessels = valid_vessels/nb_vessels
-
-		return ratio_furcation, ratio_vessels, stats_furcations, stats_vessels
-
 
 	def check_mesh(self):
 		""" Compute quality metrics and statistics from surface or volume meshes
@@ -3354,6 +3341,7 @@ class ArterialTree:
 			file.write(str(mapping[p]) + '\t' + str(i) + '\t' + str(c[0]) + '\t' + str(c[1]) + '\t' + str(c[2]) + '\t' + str(c[3]) + '\t' + str(n) + '\n')
 
 		file.close()
+
 
 
 	def write_data_as_circles(self):

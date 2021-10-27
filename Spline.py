@@ -359,6 +359,7 @@ class Spline:
 		if radius_model: 
 
 			# Spatial model
+			max_distance = np.mean(D[:, -1])*max_distance
 			spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], derivatives, lbd, knot= knot)
 			spatial_model = self.__optimize_model(spatial_model, criterion, max_distance)
 
@@ -366,7 +367,7 @@ class Spline:
 			t = spatial_model.get_t()
 			data = np.transpose(np.vstack((t, D[:,-1])))
 			radius_model = Model(data, n, 3, end_constraint, np.vstack((data[0], [1,0], [1,0], data[-1])), False, lbd, knot = spatial_model.get_knot(), t = spatial_model.get_t())
-			radius_model = self.__optimize_model(radius_model, criterion, max_distance)
+			radius_model = self.__optimize_model(radius_model, criterion, max_distance = np.inf)
 
 			
 			if min_tangent:
@@ -393,7 +394,7 @@ class Spline:
 
 
 					spatial_model = Model(D[:,:-1], n, 3, end_constraint, end_values[:,:-1], True, lbd)
-					spatial_model = self.__optimize_model(spatial_model, criterion)
+					spatial_model = self.__optimize_model(spatial_model, criterion, max_distance)
 					#print(spatial_model.get_magnitude())
 
 			# Curvature optimization 
@@ -499,7 +500,6 @@ class Spline:
 
 
 
-
 	def __optimize_model(self, model, criterion, max_distance):
 
 		""" Optimise the value of smoothing parameter lambda 
@@ -510,13 +510,13 @@ class Spline:
 			# Smoothing criterion
 			gr = (math.sqrt(5) + 1) / 2
 			a = 10**(-6)
-			b = 100000
+			b = 10**(6)
 
 			# Golden-section search to find the minimum
 
 			c = b - (b - a) / gr
 			d = a + (b - a) / gr
-			while abs(b - a) > 10**(-2):
+			while abs(b - a) > 10**(-5):
 
 				model.set_lambda(c)
 				fc = model.quality(criterion)
@@ -525,7 +525,7 @@ class Spline:
 				fd = model.quality(criterion)
 				#dd = model.quality("max_dist")[0]
 			
-				if fc < fd or dc > max_distance :
+				if fc < fd or dc > max_distance:
 					b = d
 				else:
 					a = c
@@ -536,7 +536,6 @@ class Spline:
 
 			opt_lbd = (b + a) / 2
 			model.set_lambda(opt_lbd)
-			#print("optimized lambda : ", opt_lbd)
 
 		return model
 

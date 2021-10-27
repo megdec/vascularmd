@@ -812,7 +812,8 @@ def quality(mesh, display=False, metric='scaled_jacobian'):
 
 	tab = np.absolute(quality['CellQuality'])
 	return np.mean(tab), np.min(tab), np.max(tab)
-	
+
+
 
 def split_tubes(path_in, file_in, path_out, bifurcations = True):
 	""" Take vmtk file, split the network in tubes and write swc files """
