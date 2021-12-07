@@ -964,14 +964,11 @@ class Spline:
 		if self._spl.dimension != 3:
 			pts = pts[:, :-1]
 	
-		"""
-		# Distance table
-		dist = np.array([norm(pt - pt2) for pt2 in pts]) 
-	
-		# Minimum distance point
-		i1 = np.argmin(dist) 
-		"""
+
 		d, i1 = self._kdtree.query(pt)
+
+		if i1 < 0 or i1 > len(pts)-1:
+			print("Error, the number of points is ", len(pts), " and the indice found is ", i1)
 
 		# Find the closest segment
 		if i1 == 0:
@@ -979,7 +976,7 @@ class Spline:
 		elif i1 == len(pts) - 1:
 			i2 = len(pts) - 2
 		else:
-			if norm(pt - pts[i1 - 1]) > norm(pt - pts[i1 + 1]): #dist[i1 - 1] > dist[i1 + 1]:
+			if norm(pt - pts[i1 - 1]) > norm(pt - pts[i1 + 1]): 
 				i2 = i1 + 1
 			else: 
 				i2 = i1 - 1

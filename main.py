@@ -20,6 +20,7 @@ import vtk
 import copy
 
 import os
+import gc
 
 
 
@@ -27,17 +28,9 @@ def test_editor(patient):
 
 
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
-	#file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P9.swc"
-	#file = "/home/decroocq/Documents/Thesis/Teaching/Projects/Shiraishi/data.swc"
-
-	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1-part.swc"
-	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk//Vessels/Healthy/centerline_BA.vtp"
-	#file =  "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations" + patient +".vtp"
-
 	tree = ArterialTree("TestPatient", "BraVa", file)
-	#file = open("Results/BraVa/network/P9.obj", 'rb')
+	#file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/P4.obj", 'rb')
 	#tree = pickle.load(file)
-	
 	
 	#file = open("tmp/tree_model.obj", 'rb') 
 	#tree = pickle.load(file)
@@ -48,8 +41,7 @@ def test_editor(patient):
 
 def test_aneurisk(patient):
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/" + patient +".vtp"
-	#file="/home/decroocq/Documents/Thesis/Data/Aneurisk/C0078/morphology/aneurysm/centerline_branches.vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
 	
@@ -78,31 +70,10 @@ def test_aneurisk(patient):
 	mesh = tree.mesh_surface()
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
+	field, fv, fb = tree.check_mesh()
+	mesh["check"] = field
+	mesh.plot(show_edges = True, scalars = "check")
 
-	print("plot mesh")
-	pv.set_plot_theme("document")
-	mesh.plot(show_edges=True)
-	mesh.save("Results/Aneurisk/" + patient + "_mesh_surface.vtk")
-
-	"""
-	bifurcations = tree.get_bifurcations()
-
-	for i in range(len(bifurcations)):
-
-		# Mesh bifurcations
-		mesh = bifurcations[i].mesh_surface()
-		#bifurcations[i].show(True)
-		mesh.plot(show_edges = True)
-		#file = open(patient + "_bif_" + str(i) + ".obj", 'wb') 
-		#pickle.dump(bifurcations[i], file)
-	"""
-
-
-	mesh = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10)
-	mesh = mesh.compute_cell_quality()
-	mesh['CellQuality'] = np.absolute(mesh['CellQuality'])
-	mesh.plot(show_edges=True, scalars= 'CellQuality')
-	mesh.save("Results/Aneurisk/" + patient + "_volume_mesh.vtk")
 	
 
 def test_remove_branch():
@@ -278,6 +249,13 @@ def test_part_meshing():
 			m = tree.mesh_volume([0.2, 0.3, 0.5], 10, 10, edg = [e])
 			m.plot(show_edges = True)
 
+def test_txt_file():
+
+	file = "/home/decroocq/Documents/Thesis/Data/Test/ideal.txt"
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	tree.show(True, False, False)
+	e = Editor(tree)
+
 def show_edges_data():
 
 	file = open("Results/BraVa/network/P1.obj", 'rb')
@@ -291,7 +269,6 @@ def show_edges_data():
 	for e in G.edges():
 		if G.nodes[e[0]]["type"]!= "bif" and G.nodes[e[1]]["type"]!= "bif":
 			spl = G.edges[e]["spline"]
-
 				
 			#fig = plt.figure(figsize=(10,7))
 			#ax = Axes3D(fig)
@@ -334,12 +311,16 @@ def test_brava(filename, patient):
 
 
 	t1 = time.time()
-	tree.compute_cross_sections(24, 0.2, False)
+	tree.compute_cross_sections(24, 0.2, True)   
 	t2 = time.time()
 	print("The process took ", t2 - t1, "seconds." )
 
 	t1 = time.time()
 	mesh = tree.mesh_surface()
+	mesh = mesh.compute_cell_quality('scaled_jacobian')	
+	color_field, failed_edges, failed_bifs = tree.check_mesh()
+	mesh['check'] = color_field
+
 	t2 = time.time()
 	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
 	#mesh.plot(show_edges = True)
@@ -355,12 +336,17 @@ def test_brava(filename, patient):
 	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
 	pickle.dump(tree, file)
 
+	del mesh
+	del tree
+	gc.collect()
+
 
 
 def launch_brava_meshing():
 
+	#root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
 	root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
-	for i in range(54,59):
+	for i in range(55, 59):
 		patient = "P" + str(i)
 
 		print(root+patient+".swc", patient)
@@ -370,8 +356,70 @@ def launch_brava_meshing():
 			print("Not found.")
 
 
+
+def add_quality_field(filename, output):
+
+	mesh = pv.read(filename)
+	mesh = mesh.compute_cell_quality('scaled_jacobian')	
+	mesh.save(output)
+
+def add_check_field(filename, output):
+
+	file = open(filename, 'rb')
+	tree = pickle.load(file)
+	mesh = tree.mesh_surface()
+
+	color_field, n_failed_edges, n_failed_bifs = tree.check_mesh()
+	m = tree.get_surface_mesh()
+	m["check"] = color_field
+	m = m.compute_cell_quality('scaled_jacobian')
+	m.save(output)
+
+
+def open_volume(path, scalars = "CellQuality"):
+
+	p = pv.Plotter()
+	for root, dirs, files in os.walk(path):
+		for file in files:
+			m = pv.read(path + file)
+			p.add_mesh(m, scalars = scalars, show_edges = True)
+			del m
+			gc.collect()
+
+	p.show()
+
+def rewrite_surface_meshes():
+
+	path = "/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/network/"
+
+	#list_of_files = ["P22.obj", "P23.obj", "P24.obj", "P25.obj", ]
+	for i in range(42, 60):
+		file = "P" + str(i) + ".obj"
+		try :
+			patient = file[:-4]
+			print(path+file)
+		
+			tf = open(path+file, 'rb')
+			tree = pickle.load(tf)
+
+			mesh = tree.mesh_surface()
+			field, fv, fb = tree.check_mesh()
+			mesh["check"] = field
+			mesh = mesh.compute_cell_quality('scaled_jacobian')
 			
-launch_brava_meshing()
+			mesh.save("Results/BraVa/surface/" + patient + ".vtk")
+
+			del mesh
+			del tree
+			gc.collect()
+		except:
+			print(patient + " could not be loaded.")
+
+
+	
+
+
+#launch_brava_meshing()
 #test_part_meshing()
 #show_edges_data()
 
@@ -380,6 +428,11 @@ launch_brava_meshing()
 #test_topo_correction()
 #test_editor("C0006")
 #test_brava("P14")
-#test_aneurisk("C0082")
+#test_aneurisk("C0006")
 #test_evaluation_mesh()
 #test_distance_constraint()
+#test_txt_file()
+#add_check_field("/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/network/P1.obj", "P1_with_fields.vtk")
+#open_volume("Results/Validation/Mesh/Volumes/P20/")
+#add_quality_field("/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/surface/P3.vtk", "P3_with_fields.vtk")
+rewrite_surface_meshes()

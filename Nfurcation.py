@@ -104,6 +104,9 @@ class Nfurcation:
 
 	def get_X(self):
 		return self._X
+		
+	def get_CT(self):
+		return self._CT 
 
 	def get_crsec(self):
 		if self._crsec != None:
@@ -968,11 +971,11 @@ class Nfurcation:
 		self._N = N
 		self._d = d
 
-		self.relaxation(2)
+		self.relaxation(5)
 
 		if self.R > 0:
 			self.smooth_apex(self.R)
-		self.relaxation(3)
+		
 
 
 		return self._crsec

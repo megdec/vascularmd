@@ -667,13 +667,15 @@ class Editor:
 			faces.astype('int32')
 
 			v_obj = []
-			for v in vertices:
-				v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75)))
+			for i in range(len(vertices)):
+				v = vertices[i]
+				v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75), id = i))
 
 			
 			quads = []
-			for f in faces:
-				q = quad(v0=v_obj[f[1]], v1=v_obj[f[2]], v2=v_obj[f[3]], v3=v_obj[f[4]], mode = 'mesh', category = 'surface')
+			for i in range(len(faces)):
+				f = faces[i]
+				q = quad(v0=v_obj[f[1]], v1=v_obj[f[2]], v2=v_obj[f[3]], v3=v_obj[f[4]], mode = 'mesh', category = 'surface', id = i)
 				quads.append(q)
 
 			curves = {}
@@ -1366,7 +1368,7 @@ class Editor:
 					self.modified_elements["topo"]["move"].append(["edges", e, new_coords[1:-1, :]])
 
 				for n in nds_list:
-					new_coords = G.nodes[n]['coords']
+					new_coords = G.nodes[n]['coords'].copy()
 
 					coord = self.elements["topo"]["nodes"][n].pos 
 					coord = np.array([coord.x, coord.y, coord.z])
@@ -1519,7 +1521,7 @@ class Editor:
 			self.selected_node = obj
 			self.selected_node.color = color.yellow
 			self.drag = True
-			self.output_message("Node selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
+			self.output_message("Node "  + str(obj.id) + " selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
 
 		elif type(obj) == curve and obj.mode == "model" and self.edition_mode == "model":
 			
@@ -1532,7 +1534,7 @@ class Editor:
 			self.smooth_checkboxes['radius'].disabled = False
 			self.smooth_slider.disabled = False
 
-			self.output_message("Spline selected. Check a smoothing box and use the slider smooth or unsmooth.")
+			self.output_message("Spline " + str(obj.id) +  " selected. Check a smoothing box and use the slider smooth or unsmooth.")
 
 		elif type(obj) == curve and self.edition_mode == "topo":
 
@@ -1540,7 +1542,7 @@ class Editor:
 			self.selected_edge = obj
 			self.selected_edge.color = color.green
 
-			self.output_message("Edge selected. Press suppr. to cut the corresponding branch. Press r (resp. R) to rotate the branch clockwise (resp. counterclockwise).")
+			self.output_message("Edge " + str(obj.id) + " selected. Press suppr. to cut the corresponding branch. Press r (resp. R) to rotate the branch clockwise (resp. counterclockwise).")
 
 
 	def unselect(self, elt = "node", mode = None):
@@ -1716,15 +1718,21 @@ class Editor:
 
 		if self.check_state == False:
 
-			field = self.tree.check_mesh()
-			for i in range(len(self.elements["mesh"]["surface"])):
+			self.output_message("Checking mesh...")
+			field, failed_edges, failed_bifs = self.tree.check_mesh()
+			
+			for i in range(len(field)):
 				if field[i] == 1:
+
 					self.elements["mesh"]["surface"][i].v0.color = color.red
 					self.elements["mesh"]["surface"][i].v1.color = color.red
 					self.elements["mesh"]["surface"][i].v2.color = color.red
 					self.elements["mesh"]["surface"][i].v3.color = color.red
+
+
 			self.check_state = True
 			self.check_mesh_button.text = "Uncheck"
+			self.output_message(str(len(failed_edges)) +" vessels and " + str(len(failed_bifs)) + " furcations failed the test.")
 
 		else:
 			for i in range(len(self.elements["mesh"]["surface"])):

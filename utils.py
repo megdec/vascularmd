@@ -142,15 +142,15 @@ def directed_angle_negative(v1, v2, u):
 		return - acos(x)
 
 
-
+"""
 def linear_interpolation(nodes, num):
 
-	""" Linearly interpolate num nodes between each given 4D node.
+	Linearly interpolate num nodes between each given 4D node.
 
 	Keyword arguments:
 	nodes -- list of node coordinates
 	num -- number of interpolation points
-	"""
+	
 
 	interp_nodes = []
 	for i in range(len(nodes) - 1):
@@ -165,6 +165,22 @@ def linear_interpolation(nodes, num):
 			interp_nodes.append([x[j+1], y[j+1], z[j+1], r[j+1]])
 
 	interp_nodes.append(nodes[-1])
+
+	return interp_nodes
+"""
+
+def linear_interpolation(start_pt, end_pt, num):
+
+	""" Linearly interpolate num nodes between each given 4D node.
+
+	Keyword arguments:
+	nodes -- list of node coordinates
+	num -- number of interpolation points
+	"""
+
+	interp_nodes = np.zeros((num, len(start_pt)))
+	for i in range(len(start_pt)):
+		interp_nodes[:, i] = np.linspace(start_pt[i], end_pt[i], num)
 
 	return interp_nodes
 
@@ -213,7 +229,7 @@ def resample(D, num = 0):
 		num = len(D)
 
 	length = np.array(length_polyline(D))
-	spacing = np.linspace(0, length[-1], num)
+	spacing = np.linspace(0, length[-1], num) 
 
 	D_resamp = []
 	for l in spacing:
@@ -335,6 +351,7 @@ def order_points(points):
 	points = points[list(path.keys()), :]
 
 	return points
+
 
 
 #####################################

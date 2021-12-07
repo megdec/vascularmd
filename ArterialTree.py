@@ -14,6 +14,7 @@ from numpy import dot, cross
 # Plot
 import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
+import gc
 
 import networkx as nx
 
@@ -38,6 +39,7 @@ class ArterialTree:
 		self.patient_name = patient_name
 		self.database_name = database_name
 		self._surface_mesh = None
+		self._volume_mesh = None
 
 
 		if filename == None:
@@ -58,6 +60,7 @@ class ArterialTree:
 	#####################################
 	#############  GETTERS  #############
 	#####################################
+
 
 	def get_full_graph(self):
 		""" Return the full graph """
@@ -114,6 +117,42 @@ class ArterialTree:
 			cell_types = self._volume_mesh[1]
 			points = self._volume_mesh[2]
 			return pv.UnstructuredGrid(cells, cell_types, points)
+
+	def get_surface_link(self):
+
+		if self._surface_mesh is None:
+			warnings.warn("No surface mesh found.")
+		else:	
+			if len(self._surface_mesh) < 3:
+				warnings.warn("The surface mesh links were not computed.")
+			else:
+				return self._surface_mesh[2]
+
+	def get_volume_link(self):
+
+		if self._volume_mesh is None:
+			warnings.warn("No volume mesh found.")
+		else:	
+			if len(self._volume_mesh) < 4:
+				warnings.warn("The volume mesh links were not computed.")
+			else:
+				return self._volume_mesh[3]
+
+
+	def get_number_of_faces(self):
+
+		if self._surface_mesh is None:
+			warnings.warn("No surface mesh found.")
+		else:	
+			return self._surface_mesh[0].shape[0]
+
+	def get_number_of_cells(self):
+
+		if self._volume_mesh is None:
+			warnings.warn("No volume mesh found.")
+		else:	
+			return self._volume_mesh[0].shape[0]
+
 
 
 	def get_bifurcations(self):
@@ -188,6 +227,10 @@ class ArterialTree:
 		elif filename[-4:] == ".vtk" or filename[-4:] == ".vtp":
 			print('Loading ' + filename[-3:] + ' file...')
 			self._full_graph = self.__vtk_to_graph(filename)
+
+		elif filename[-4:] == ".txt":
+			print('Loading ' + filename[-3:] + ' file...')
+			self._full_graph = self.__txt_to_graph(filename)
 		else:
 			raise ValueError("The provided files must be in swc, vtp or vtk format.")
 
@@ -1414,7 +1457,7 @@ class ArterialTree:
 
 
 
-	def mesh_surface(self, edg = []):
+	def mesh_surface(self, edg = [], link = True):
 
 		""" Meshes the surface of the arterial tree."""
 
@@ -1440,12 +1483,17 @@ class ArterialTree:
 		if len(edg) == 0:
 			edg = [e for e in G.edges()]
 
+		if link:
+			link_graph = np.zeros((self._nb_nodes, 3), dtype =int)
+		
+
 		vertices = np.zeros((self._nb_nodes, 3))
 		faces = np.zeros((self._nb_nodes, 5), dtype =int)
 		nb_faces = 0
 
 		for e in edg:		
 
+		
 			flip_norm = False
 
 			if e not in [e for e in self._model_graph.edges()]:
@@ -1479,6 +1527,10 @@ class ArterialTree:
 				if flip_norm:
 					faces[nb_faces,:] = np.array([4, id_first + i, id_first + j, id_edge + j, id_edge + i])
 
+				if link:
+					link_graph[nb_faces, :] = [e[0], e[1], 0]
+
+
 				nb_faces += 1
 
 			for k in range(G.edges[e]['crsec'].shape[0] -1): # Edge sections
@@ -1492,13 +1544,17 @@ class ArterialTree:
 					faces[nb_faces,:] = np.array([4, id_edge + (k * self._N) + i, id_edge + ((k + 1) * self._N) + i, id_edge + ((k + 1) * self._N) + j, id_edge + (k * self._N) + j])
 					if flip_norm:
 						faces[nb_faces,:] = np.array([4, id_edge + (k * self._N) + i, id_edge + (k * self._N) + j , id_edge + ((k + 1) * self._N) + j, id_edge + ((k + 1) * self._N) + i])
+
+					if link:
+						link_graph[nb_faces, :] = [e[0], e[1], k+1]
+					
 					nb_faces += 1
 
 			id_last_edge = id_edge + ((G.edges[e]['crsec'].shape[0] -1) * self._N)
 			connect = G.edges[e]['connect']
 
 
-			for i in range(G.edges[e]['crsec'].shape[1]):
+			for i in range(G.edges[e]['crsec'].shape[1]): # Last section
 
 				if i == G.edges[e]['crsec'].shape[1] - 1:
 					j = 0
@@ -1509,16 +1565,27 @@ class ArterialTree:
 				if flip_norm:
 					faces[nb_faces,:] = np.array([4, id_last_edge + i, id_last_edge + j , id_last + connect[j], id_last + connect[i]])
 
+				if link:
+					link_graph[nb_faces, :] = [e[0], e[1], k+2]
+
 				nb_faces += 1
+
 		
 		faces = faces[:nb_faces]
-		self._surface_mesh = [vertices, faces]
-		
+		if link:
+			link_graph = link_graph[:nb_faces]
+
+		if link:
+			self._surface_mesh = [vertices, faces, link_graph]
+			
+		else:
+			self._surface_mesh = [vertices, faces]
+
 		return pv.PolyData(vertices, faces)
 
 
 
-	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10, edg = []):
+	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10, edg = [], link = True):
 
 		""" Meshes the volume of the arterial tree with O-grid pattern.
 
@@ -1553,6 +1620,7 @@ class ArterialTree:
 		self._num_a = num_a
 		self._num_b = num_b
 
+
 		nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
 
 		# Compute node ids
@@ -1564,6 +1632,10 @@ class ArterialTree:
 		# Compute faces
 		f_ogrid = self.ogrid_pattern_faces(self._N, num_a, num_b)
 		f_ogrid_flip = np.copy(f_ogrid[:,[0,1,4,3,2]])
+
+		if link:
+			link_graph = np.zeros((self._nb_nodes, 3), dtype =int)
+			
 
 		# Add vertices and cells to the mesh
 		vertices = np.zeros((self._nb_nodes,3))
@@ -1592,6 +1664,11 @@ class ArterialTree:
 			cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_first + f_ogrid[:,1:], id_edge + f_ogrid[:,1:]))
 			if flip_norm:
 				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid_flip.shape[0], 1)) + 8, id_first + f_ogrid_flip[:,1:], id_edge + f_ogrid_flip[:,1:]))
+
+			if link:
+				link_graph[nb_cells: nb_cells + f_ogrid.shape[0], :2] = np.repeat(np.array([e[0],e[1]]).reshape((1,2)), f_ogrid.shape[0], axis = 0)
+				link_graph[nb_cells: nb_cells + f_ogrid.shape[0], -1] = np.repeat(0, f_ogrid.shape[0])
+
 			nb_cells += f_ogrid.shape[0]
 
 			# Edge cross sections
@@ -1609,6 +1686,10 @@ class ArterialTree:
 				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * i) + f_ogrid[:,1:], id_edge + (nb_nds_ogrid * (i + 1)) + f_ogrid[:,1:]))
 				if flip_norm:
 					cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid_flip.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * i) + f_ogrid_flip[:,1:], id_edge + (nb_nds_ogrid * (i + 1)) + f_ogrid_flip[:,1:]))
+
+				if link:
+					link_graph[nb_cells: nb_cells + f_ogrid.shape[0], :2] = np.repeat(np.array([e[0],e[1]]).reshape((1,2)), f_ogrid.shape[0], axis = 0)
+					link_graph[nb_cells: nb_cells + f_ogrid.shape[0], -1] = np.repeat(i+1, f_ogrid.shape[0])
 				nb_cells += f_ogrid.shape[0]
 
 			# Last cross section
@@ -1619,6 +1700,7 @@ class ArterialTree:
 
 				crsec = G.nodes[e[1]]['crsec']
 				center = (np.array(crsec[0]) + crsec[1])/2.0
+
 
 				# Mesh of the 3 half-sections
 				v = self.bif_ogrid_pattern_vertices(center, crsec, self._N, nbif, layer_ratio, num_a, num_b)	
@@ -1670,6 +1752,10 @@ class ArterialTree:
 					f_ogrid_reorder_flip = np.copy(f_ogrid_reorder[:,[0,1,4,3,2]])
 					cells[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :] = np.hstack((np.zeros((f_ogrid_reorder.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid_flip)[:,1:], id_last + np.array(f_ogrid_reorder_flip)[:,1:]))
 
+				if link:
+					link_graph[nb_cells: nb_cells + f_ogrid_reorder.shape[0], :2] = np.repeat(np.array([e[0],e[1]]).reshape((1,2)), f_ogrid_reorder.shape[0], axis = 0)
+					link_graph[nb_cells: nb_cells + f_ogrid_reorder.shape[0], -1] = np.repeat(i+2, f_ogrid_reorder.shape[0])
+
 				nb_cells += f_ogrid_reorder.shape[0]
 
 
@@ -1690,18 +1776,27 @@ class ArterialTree:
 
 				vertices[id_last:id_last + nb_nds_ogrid, :] = v
 				cells[nb_cells: nb_cells + f_ogrid.shape[0], :] = np.hstack((np.zeros((f_ogrid.shape[0], 1)) + 8, id_edge + (nb_nds_ogrid * (G.edges[e]['crsec'].shape[0] - 1)) + np.array(f_ogrid)[:,1:], id_last + np.array(f_ogrid_rot)[:,1:]))
+
+				if link:
+					link_graph[nb_cells: nb_cells + f_ogrid.shape[0], :2] = np.repeat(np.array([e[0],e[1]]).reshape((1,2)), f_ogrid.shape[0], axis = 0)
+					link_graph[nb_cells: nb_cells + f_ogrid.shape[0], -1] = np.repeat(i+2, f_ogrid.shape[0])
+
 				nb_cells += f_ogrid.shape[0]
 
 
 		cells = cells[:nb_cells]
+		if link: 
+			link_graph = link_graph[:nb_cells]
+
 		cell_types = np.array([vtk.VTK_HEXAHEDRON] * cells.shape[0])
 
 		# Return volume mesh
-		self._volume_mesh = [cells, cell_types, vertices]
-
-		#mesh =  self.write_pyvista_mesh_from_vtk(vertices, cells)
 		mesh = pv.UnstructuredGrid(cells, cell_types, vertices) 
 
+		if link:
+			self._volume_mesh = [cells, cell_types, vertices, link_graph]
+		else:
+			self._volume_mesh = [cells, cell_types, vertices]
 		return mesh
 
 
@@ -2368,17 +2463,15 @@ class ArterialTree:
 		return inter
 
 
-	def extract_vessel_mesh(self, e, volume = True):
+	def extract_vessel(self, e, volume = False):
 
 		""" Create a submesh of vessel of edge e """
-
+	
 		if volume:
 			self.__add_node_id_volume(self._num_a, self._num_b)
 			nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
 		else:
 			self.__add_node_id_surface()
-
-
 		
 
 		start_id = self._crsec_graph.nodes[e[0]]['id']
@@ -2415,36 +2508,39 @@ class ArterialTree:
 			for i in node_id_list:
 				selected_point[i, :] = 1.0
 
-			mesh = self.get_volume_mesh()
-			mesh["SelectedPoints"] = selected_point
+			#mesh = self.get_volume_mesh()
+			#mesh["SelectedPoints"] = selected_point
 		
-			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
+			#inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
 
 		else:
 			v = self._surface_mesh[0]
 			selected_point = np.zeros((len(v), 1))
 			for i in node_id_list:
 				selected_point[i, :] = 1.0
-
+			"""
 			mesh = self.get_surface_mesh()
 			mesh["SelectedPoints"] = selected_point
 		
 			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
+			inside.plot(show_edges = True)
+			"""
 		
-		return inside, selected_point
+		return selected_point
 
 
 		
 
 
-	def extract_furcation_mesh(self, n , volume = True):
+	def extract_furcation(self, n, volume = False):
 		""" Create a submesh of furcation of node n"""
-
+		"""
 		if volume:
 			self.__add_node_id_volume(self._num_a, self._num_b)
 			nb_nds_ogrid = int(self._N * (self._num_a + self._num_b + 3) + ((self._N - 4)/4)**2)
 		else:
 			self.__add_node_id_surface()	
+		"""
 
 
 		start_id = self._crsec_graph.nodes[n]['id']
@@ -2484,10 +2580,10 @@ class ArterialTree:
 			for i in node_id_list:
 				selected_point[i, :] = 1.0
 
-			mesh = self.get_volume_mesh()
-			mesh["SelectedPoints"] = selected_point
+			#mesh = self.get_volume_mesh()
+			#mesh["SelectedPoints"] = selected_point
 		
-			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
+			#inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
 
 
 		else:
@@ -2495,13 +2591,15 @@ class ArterialTree:
 			selected_point = np.zeros((len(v), 1))
 			for i in node_id_list:
 				selected_point[i, :] = 1.0
-
+			
 			mesh = self.get_surface_mesh()
 			mesh["SelectedPoints"] = selected_point
 		
 			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
+			inside.plot(show_edges = True)
+			
 
-		return inside, selected_point
+		return selected_point
 
 
 	def subgraph(self, nodes):
@@ -3004,44 +3102,95 @@ class ArterialTree:
 
 
 
-	def check_mesh(self):
-		""" Compute quality metrics and statistics from surface or volume meshes
+	def check_mesh(self, thres = 0):
+		""" Compute quality metrics and statistics from the volume mesh
+
+		Keyword arguments:
+		thres -- scaled jacobian threshold for failure
+		mode -- representation mode in "segment", "crsec"
 		"""
 
+
 		# Separate parts
-		G = self._model_graph
-		color_field = None
+		G = self._crsec_graph
+
+		if self._surface_mesh is None:
+			raise ValueError('Mesh not found.')
+
+		failed_edges = []
+		failed_bifs = []
+
+		failed_crsec = []
+
+		color_field = np.zeros((len(self._surface_mesh[1]),), dtype = bool)
+
 		for n in G.nodes():
 			if G.nodes[n]["type"] == "bif":
-				print("Bifurcation evaluation")
-				mesh, field = self.extract_furcation_mesh(n, volume = False)
-				mesh = mesh.compute_cell_quality('scaled_jacobian')	
-				tab = mesh['CellQuality']
+			
+				edg = [e for e in G.in_edges(n)] + [e for e in G.out_edges(n)] 
 
-				if color_field  is None:
-					color_field = np.zeros(field.shape)
-				print(np.min(tab))
-				if np.min(tab) <= 0.5:
-					color_field = field + color_field
+				m = self.mesh_volume(edg=edg, link=True)
+				link_vol = self.get_volume_link()
+				m = m.compute_cell_quality('scaled_jacobian')	
+				
+				tab = m['CellQuality']
+				del m
+				gc.collect()
+
+				if np.min(tab) <= thres:
+
+					for e in edg:
+						failed_bifs.append(n) 
+						
+
 
 		for e in G.edges():
 			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
-				print("Vessel evaluation")
-				mesh, tmp = self.extract_vessel_mesh(e, volume = False)
-				mesh = mesh.compute_cell_quality('scaled_jacobian')	
-				tab = mesh['CellQuality']
-				print(np.min(tab))
-				if np.min(tab) <= 0.5:
-					color_field = field + color_field
+				
+				m = self.mesh_volume(edg = [e], link=True)
+				link_vol = self.get_volume_link()
+				m = m.compute_cell_quality('scaled_jacobian')	
+				tab = m['CellQuality']
+				del m
+				gc.collect()
 
-		return color_field
+				
+				if np.min(tab) <= thres:
+					failed_edges.append(e)
+					tab = tab <= thres
+					crsec = []
+					for i in range(len(tab)):
+						if tab[i]:
+							if link_vol[i, -1] not in crsec:
+								crsec.append(link_vol[i, -1])
+					failed_crsec.append(crsec)
+
+
+		link_surf = self.get_surface_link()
+
+		for n in failed_bifs:
+			for e in [e for e in G.in_edges(n)] + [e for e in G.out_edges(n)]:
+
+				add_field = (link_surf[:,0] == e[0]) & (link_surf[:,1] == e[1])
+				color_field = color_field | add_field
+
+
+		for i in range(len(failed_edges)):
+			e = failed_edges[i]
+
+			for cr in failed_crsec[i]:
+
+				add_field = (link_surf[:,0] == e[0]) & (link_surf[:,1] == e[1]) & (link_surf[:,2] == cr)
+				color_field = color_field | add_field
+
+
+		return color_field.astype(int), failed_edges, failed_bifs
 
 
 
 	#####################################
 	##########  VISUALIZATION  ##########
 	#####################################
-
 
 
 	def show(self, points = True, centerline = True, control_points = False):
@@ -3159,6 +3308,76 @@ class ArterialTree:
 
 			if file[i, 6] >= 0:
 				G.add_edge(int(file[i, 6]), int(file[i, 0]), coords = np.array([]).reshape(0,4))
+
+		return G
+
+	def __txt_to_graph(self, filename):
+
+		"""Converts a txt centerline file to a graph and set full_graph attribute.
+
+		Keyword arguments:
+		filename -- path to centerline file
+		"""
+
+		file = np.loadtxt(filename, skiprows=0)
+		G = nx.DiGraph()
+
+		k = 1
+		end_pts = {}
+		for j in range(0, file.shape[0]):
+
+			edg_id = int(file[j, 0])
+			length = int(file[j, 1])
+			radius = float(file[j, 2])
+			nb_pts = int(file[j, 3])
+			angle = (float(file[j, 4])* pi) / 180
+			prec = int(file[j, 5])
+
+
+			if prec == -1:
+				start_pt = np.array([0,0,0])
+				act_dir = np.array([1,0,0])
+			else:
+				prec_start_pts = G.nodes[end_pts[prec][0]]['coords'][:-1]
+				prec_end_pts = G.nodes[end_pts[prec][1]]['coords'][:-1]
+
+				start_pt = prec_end_pts
+
+				prec_dir = prec_end_pts - prec_start_pts
+				prec_dir = prec_dir / norm(prec_dir)
+
+				act_dir = rotate_vector(prec_dir, np.array([0,0,1]), angle)
+				
+
+			end_pt = start_pt + length * act_dir
+			pts = linear_interpolation(start_pt, end_pt, nb_pts)
+			
+
+			for i in range(len(pts)):
+				pt = np.array([pts[i, 0], pts[i, 1], pts[i, 2], radius])
+				if i == 0:
+					if prec == -1:
+						G.add_node(k, coords = pt)
+						start_id = k
+						k += 1
+				elif i == 1:
+					if prec != -1:
+						G.add_node(k, coords = pt)
+						G.add_edge(end_pts[prec][1], k, coords = np.array([]).reshape(0,4))
+						start_id = end_pts[prec][1]
+						k+=1
+					else:
+						G.add_node(k, coords = pt)
+						G.add_edge(k-1, k, coords = np.array([]).reshape(0,4))
+						k += 1
+				else:
+					G.add_node(k, coords = pt)
+					G.add_edge(k-1, k, coords = np.array([]).reshape(0,4))
+					k += 1
+
+
+			end_pts[j] = (start_id, k-1)
+		
 
 		return G
 
@@ -3301,7 +3520,7 @@ class ArterialTree:
 		poly.lines = np.array(f)
 
 		# Add radius information
-		poly["radius"] = v[:,-1]
+		#poly["radius"] = v[:,-1]
 		#poly["id"] = np.array(list(iD.keys()))
 		#poly_tube = poly.tube(radius = 0.6)
 
