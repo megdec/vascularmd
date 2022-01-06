@@ -2983,6 +2983,71 @@ class ArterialTree:
 	#############  ANALYSIS  ############
 	#####################################
 
+	def angle(self, dist, mode="topo"):
+
+		""" Compute the angles between branches and displays the centerline network in 3D viewer"""
+
+		if mode == "topo":
+
+			G = self._topo_graph
+
+			# Compute angles
+			angles = []
+
+			for n in G.nodes():
+				if G.nodes[n]['type'] == "bif":
+					bif_coord = G.nodes[n]['coords'][:-1]
+					out_coord = []
+
+					for e in G.out_edges(n):
+						l = length_polyline(G.edges[e]['coords'])
+						i2 = np.argmax(l>dist)
+						if i2 == 0:
+							i2 = len(l)-1
+						i1 = i2-1
+						out_coord.append(G.edges[e]['coords'][i2])
+
+
+		else:
+
+			G = self._model_graph
+
+			# Compute angles
+			angles = []
+
+			for n in G.nodes():
+				if G.nodes[n]['type'] == "bif":
+					bif_coord = G.nodes[n]['coords'][:-1]
+					out_coord = []
+
+					for e in G.out_edges(n):
+						spl = G.edges[e]['spline']
+						l = spl.length() 
+						if l < dist:
+							for e2 in G.out_edges(e[1]):
+								spl2 = G.edges[e]['spline']
+								l2 = spl2.length() 
+								if l + l2 < dist:
+									t = 1.0
+								else:
+									t = spl2.length_to_time(dist - l)
+								out_coord.append(spl2.point(t))
+						else:
+							t = spl.length_to_time(dist)
+							out_coord.append(spl2.point(t))
+
+		for i in range(len(out_coord)-1):
+
+			v1 = out_coord[i][:-1] - bif_coord
+			v2 =  out_coord[i+1][:-1] - bif_coord
+			pos = bif_coord + ((v1/norm(v1) + v2/norm(v2)) / 2)*5
+
+			a = angle(v1, v2) # Compute angle
+			a = int(180 * a / pi)
+
+			angles.append((n, pos, a))
+
+		return angles
 
 
 	def count_nodes(self):

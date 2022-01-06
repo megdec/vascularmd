@@ -121,154 +121,197 @@ class Model:
 		"""
 
 		m, x = self._D.shape
-
 		De = np.zeros((m, x))
 
 		for i in range(m):
 			De[i, :] = self.spl.point(self._t[i], True)
 
 		# Hat matrix H
-		M = np.linalg.pinv(np.dot(self._N.transpose(), self._N) + self._lbd * self._Delta)
-		H = np.dot(np.dot(self._N, M), self._N.transpose())
-		t = np.trace(H)
+		try:
+			M = np.linalg.pinv(np.dot(self._N.transpose(), self._N) + self._lbd * self._Delta)
+			H = np.dot(np.dot(self._N, M), self._N.transpose())
+			t = np.trace(H)
 
 
-		if criterion == "CV":
-			res = 0
-			for i in range(m):
-				res += (norm((self._D[i] - De[i])) / (1 - H[i, i]))**2
+			if criterion == "CV":
+				res = 0
+				for i in range(m):
+					res += (norm((self._D[i] - De[i])) / (1 - H[i, i]))**2
 
-		elif criterion == "GCV":
-			res = 0
-			for i in range(m):
-				res += (norm(self._D[i] - De[i]) / (m - t))**2
+			elif criterion == "GCV":
+				res = 0
+				for i in range(m):
+					res += (norm(self._D[i] - De[i]) / (m - t))**2
 
-		elif criterion == "AIC":
-			sse = 0
-			for i in range(m):
-				sse += norm(self._D[i] - De[i])**2
-			if self._lbd != 0.0:
-				res = m * math.log(sse/m) + 2 * t
-			else:
-				res = m * math.log(sse) + 2*(4*self._n + self._p)
-
-		elif criterion == "AICC":
-			sse = 0
-			for i in range(m):
-				sse += norm(self._D[i] - De[i])**2
-			if self._lbd != 0.0:
-				res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
-			else:
-				K = self._D.shape[1]*self._n + self._p
-				if m == K + 1:
-					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / 1)
+			elif criterion == "AIC":
+				sse = 0
+				for i in range(m):
+					sse += norm(self._D[i] - De[i])**2
+				if self._lbd != 0.0:
+					res = m * math.log(sse/m) + 2 * t
 				else:
-					res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / (m-K-1))
+					res = m * math.log(sse) + 2*(4*self._n + self._p)
 
-		elif criterion == "SBC":
+			elif criterion == "AICC":
+				sse = 0
+				for i in range(m):
+					sse += norm(self._D[i] - De[i])**2
+				if self._lbd != 0.0:
+					res = 1 + math.log(sse/m) + (2*(t+1))/(m - t - 2)
+				else:
+					K = self._D.shape[1]*self._n + self._p
+					if m == K + 1:
+						res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / 1)
+					else:
+						res = m * math.log(sse) + 2*K + ((2*K*(K+1)) / (m-K-1))
 
-			sse = 0
-			for i in range(m):
-				sse += norm(self._D[i] - De[i])**2
-			res = m * math.log(sse/m) + math.log(m)*t
+			elif criterion == "SBC":
 
-		elif criterion == "SSE":
-			res = 0
-			for i in range(m):
-				res += norm(self._D[i] - De[i])**2
+				sse = 0
+				for i in range(m):
+					sse += norm(self._D[i] - De[i])**2
+				res = m * math.log(sse/m) + math.log(m)*t
 
-		elif criterion == "RMSE":
+			elif criterion == "SSE":
+				res = 0
+				for i in range(m):
+					res += norm(self._D[i] - De[i])**2
 
-			MSE_spatial = np.sum(norm(self._D[:, :-1] - De[:, :-1], axis=1)**2) / len(self._D)
-			RMSE_spatial = np.sqrt(MSE_spatial)
+			elif criterion == "RMSE":
+
+				if self._D.shape[1] == 4:
+					MSE_spatial = np.sum(norm(self._D[:, :-1] - De[:, :-1], axis=1)**2) / len(self._D)
+					RMSE_spatial = np.sqrt(MSE_spatial)
+					
+					MSE_radius = np.sum((self._D[:, -1] - De[:, -1])**2) / len(self._D)
+					RMSE_radius = np.sqrt(MSE_radius)
+
+					res = [RMSE_spatial, RMSE_radius]
+				else:
+					res = np.sqrt(np.sum(norm(self._D - De, axis=1)**2) / len(self._D))
+
+			elif criterion == "max_dist":
+				if self._D.shape[1] == 4:
+					res = [0.0, 0.0]
+					for i in range(m):
+						dist = [norm(self._D[i, :-1] - De[i, :-1]), self._D[i,-1] - De[i,-1]]
+						if dist[0] > res[0]:
+							res[0] = dist[0]
+						if dist[1] > res[1]:
+							res[1] = dist[1]
+				else:
+					res = 0.0
+					for i in range(m):
+						dist = norm(self._D - De)
+						if dist > res:
+							res = dist
+					return res
+				
+					
+			elif criterion == "RMSEder":
+				# Estimation of the first derivative
+				if self._D.shape[1] == 4:
+
+					length = length_polyline(self._D)
+					data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
+
+					for i in range(1, len(self._D)-1):
+						data_der[i-1] = (self._D[i+1] - self._D[i-1]) / (length[i+1] - length[i-1])
+
+
+					# RMSEder computation
+					estim = self.spl.tangent(self._t, True)
+
+					MSEder_spatial = np.sum(norm(data_der[:, :-1] - estim[:, :-1], axis=1)**2) / len(data)
+					RMSEder_spatial = np.sqrt(MSEder_spatial)
+					
+					MSEder_radius = np.sum((data_der[:, -1] - estim[:, -1])**2) / len(data)
+					RMSEder_radius = np.sqrt(MSEder_radius)
+
+					res = [RMSEder_spatial, RMSEder_radius]
+				else:
+				
+					length = length_polyline(self._D)
+					data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
+
+					for i in range(1, len(self._D)-1):
+						data_der[i-1] = (self._D[i+1] - self._D[i-1]) / (length[i+1] - length[i-1])
+
+					# RMSEder computation
+					estim = self.spl.tangent(self._t, True)
+					res = np.sqrt(np.sum(norm(data_der - estim, axis=1)**2) / len(data))
+
+			else: 
+				raise ValueError('Invalid criterion name')
+
+			return res
 		
-			MSE_radius = np.sum((self._D[:, -1] - De[:, -1])**2) / len(self._D)
-			RMSE_radius = np.sqrt(MSE_radius)
+		except:
 
-			res = [RMSE_spatial, RMSE_radius]
-
-		elif criterion == "max_dist":
-
-			res = [0.0, 0.0]
-			for i in range(m):
-				dist = [norm(self._D[i, :-1] - De[i, :-1]), self._D[i,-1] - De[i,-1]]
-				if dist[0] > res[0]:
-					res[0] = dist[0]
-				if dist[1] > res[1]:
-					res[1] = dist[1]
-			
-		elif criterion == "RMSEder":
-			# Estimation of the first derivative
-			length = length_polyline(self._D)
-			data_der = np.zeros((self._D.shape[0]-2, self._D.shape[1]))
-
-			for i in range(1, len(self._D)-1):
-				data_der[i-1] = (self._D[i+1] - self._D[i-1]) / (length[i+1] - length[i-1])
-
-
-			# RMSEder computation
-			estim = self.spl.tangent(self._t, True)
-
-			MSEder_spatial = np.sum(norm(data_der[:, :-1] - estim[:, :-1], axis=1)**2) / len(data)
-			RMSEder_spatial = np.sqrt(MSEder_spatial)
+			print("Error")
+			if (criterion == "RMSE" or criterion == "max_dist" or criterion == "RMSEder") and (self._D.shape[1] == 4):
+				return [np.inf, np.inf]
+			else:
+				return np.inf
 		
-			MSEder_radius = np.sum((data_der[:, -1] - estim[:, -1])**2) / len(data)
-			RMSEder_radius = np.sqrt(MSEder_radius)
-
-			res = [RMSEder_spatial, RMSEder_radius]
-
-
-		else: 
-			raise ValueError('Invalid criterion name')
-
-		return res
 
 
 	def __solve_system(self):
 
-		# Write matrix M1 = NtN + lbd * Delta
-		#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
+		try :
 
-		M1 = np.dot(self._N.transpose(), self._N) + self._lbd * self._Delta
-		D = self._D
-		if not self._derivatives: 
+			# Write matrix M1 = NtN + lbd * Delta
+			#M1 = (1-lbd) * np.dot(N.transpose(), N) + lbd * Delta
 
-			m, x = self._D.shape
-			D = self._D.reshape((m * x, 1))
+			M1 = np.dot(self._N.transpose(), self._N) + self._lbd * self._Delta
+			D = self._D
+			if not self._derivatives: 
 
+				m, x = self._D.shape
+				D = self._D.reshape((m * x, 1))
+
+			
+			# Write matrix M2 
+			#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
+			M2 = np.dot(self._N.transpose(), D - self._Q1) - self._lbd * self._Q2
+
+
+			# Solve the system
+			P = np.dot(np.linalg.pinv(M1), M2)
+			Pt = np.copy(self._Pt)
+
+			if not self._derivatives: 
+
+				if self._end_constraint[1]:
+					Pt[1, :] = self._Pt[0, :] + P[0] * self._Pt[1, :]
+					P = P[1:]
+
+				if self._end_constraint[-2]:
+					Pt[2, :] = self._Pt[3, :] + P[-1] * self._Pt[2, :]
+					P = P[:-1]
+
+				P = P.reshape((int(len(P) / x), x))	
 		
-		# Write matrix M2 
-		#M2 = (1-lbd) * np.dot(N.transpose(), D - Q1) - lbd * Q2
-		M2 = np.dot(self._N.transpose(), D - self._Q1) - self._lbd * self._Q2
-
-
-		# Solve the system
-		P = np.dot(np.linalg.pinv(M1), M2)
-		Pt = np.copy(self._Pt)
-
-		if not self._derivatives: 
-
+		
 			if self._end_constraint[1]:
-				Pt[1, :] = self._Pt[0, :] + P[0] * self._Pt[1, :]
-				P = P[1:]
-
+				P = np.concatenate([np.transpose(np.expand_dims(Pt[1,:], axis=1)), P])
+			if self._end_constraint[0]:
+				P = np.concatenate([np.transpose(np.expand_dims(Pt[0,:], axis=1)), P])
 			if self._end_constraint[-2]:
-				Pt[2, :] = self._Pt[3, :] + P[-1] * self._Pt[2, :]
-				P = P[:-1]
+				P = np.concatenate([P, np.transpose(np.expand_dims(Pt[2,:], axis=1))])
+			if self._end_constraint[-1]:
+				P = np.concatenate([P, np.transpose(np.expand_dims(Pt[3,:], axis=1))])
 
-			P = P.reshape((int(len(P) / x), x))	
-	
-	
-		if self._end_constraint[1]:
-			P = np.concatenate([np.transpose(np.expand_dims(Pt[1,:], axis=1)), P])
-		if self._end_constraint[0]:
-			P = np.concatenate([np.transpose(np.expand_dims(Pt[0,:], axis=1)), P])
-		if self._end_constraint[-2]:
-			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[2,:], axis=1))])
-		if self._end_constraint[-1]:
-			P = np.concatenate([P, np.transpose(np.expand_dims(Pt[3,:], axis=1))])
+			return P
 
-		return P
+		except:
+			print("LinalgError")
+
+			P = resample(self._D, num=self._n)
+			return P
+			#print(self._n, self._lbd, len(self._D), self._end_constraint, self._end_values, self._derivatives)
+
+
 
 
 	def __compute_matrices(self):

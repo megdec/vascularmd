@@ -286,8 +286,12 @@ class Spline:
 			if self._spl.dimension > 3 and not radius:
 				pt = pt[:,:-1]
 
-
 		else:
+
+			if t > 1.0:
+				t = 1.0
+			if t < 0.0:
+				t = 0.0
 
 			pt = self._spl.evaluate_single(t)
 
@@ -520,7 +524,7 @@ class Spline:
 
 				model.set_lambda(c)
 				fc = model.quality(criterion)
-				dc = model.quality("max_dist")[0]
+				dc = model.quality("max_dist")
 				model.set_lambda(d)
 				fd = model.quality(criterion)
 				#dd = model.quality("max_dist")[0]
@@ -967,8 +971,11 @@ class Spline:
 
 		d, i1 = self._kdtree.query(pt)
 
-		if i1 < 0 or i1 > len(pts)-1:
-			print("Error, the number of points is ", len(pts), " and the indice found is ", i1)
+
+		if i1 < 0:
+			i1 = 0
+		if i1 > len(pts)-1:	
+			i1 = len(pts)-1
 
 		# Find the closest segment
 		if i1 == 0:

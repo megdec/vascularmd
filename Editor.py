@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.image as imt
 from mpl_toolkits.mplot3d import Axes3D  # 3D display
 import pickle
 import pyvista as pv
@@ -8,6 +9,7 @@ from vpython import *
 import os
 from numpy.linalg import norm
 import copy
+import nibabel as nib
 
 from Nfurcation import Nfurcation
 from ArterialTree import ArterialTree
@@ -59,13 +61,18 @@ class Editor:
 		scene.append_to_caption('\t')
 
 		self.save_button = button(text = "Save", bind=self.save)
-		self.save_menu = menu(choices = ['model', 'mesh'], selected = 'model', index=0, bind = self.do_nothing)
+		self.save_menu = menu(choices = ['centerline', 'model', 'mesh'], selected = 'centerline', index=0, bind = self.do_nothing)
 
 		
 		self.save_directory = None
 		scene.append_to_caption('\tOutput directory  ')
 		self.save_winput = winput(text="", bind = self.update_save_directory, width=200)
 
+		self.cursor_checkbox = checkbox(text= "Image overlap" , bind=self.update_visibility_image, checked = False)
+		self.cursor = sphere(pos=scene.center, color=color.yellow, radius=2, mode = "cursor", visible = False)
+		self.slice_button = button(text= "Cut slice" , bind=self.compute_slice)
+		self.slice = []
+		self.image_file_winput = winput(text="", bind = self.load_image, width=50)
 
 		scene.append_to_caption('\n\n')
 
@@ -90,10 +97,14 @@ class Editor:
 		self.check_mesh_button = button(text=" Check ", bind=self.check_mesh)
 		self.check_state = False
 
-		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t")
+		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t")
+
+		self.angle_checkbox_topo = checkbox(text="Angles", bind=self.update_visibility_angle, checked=False, mode = "topo")
+		scene.append_to_caption("\t\t\t\t\t\t\t\t")
 
 		# Display bifurcations and control points
-		self.control_pts_checkbox = checkbox(text="Control points", bind=self.update_visibility_control_pts, checked=False)
+		self.angle_checkbox_model = checkbox(text="Angles", bind=self.update_visibility_angle, checked=False, mode = "topo")
+		scene.append_to_caption("\t\t")
 		self.furcation_checkbox = checkbox(text="Furcations", bind=self.update_visibility_furcations, checked=False)
 
 		scene.append_to_caption('\t\t\t\tDisplay ')
@@ -108,6 +119,8 @@ class Editor:
 		scene.append_to_caption('\t\t\t\t\t\t\t\t\t\t')
 		self.opacity_value = {'full' : 1}
 
+		self.control_pts_checkbox = checkbox(text="Control points", bind=self.update_visibility_control_pts, checked=False)
+		scene.append_to_caption("\t")
 		self.control_radius_checkbox = checkbox(text="Control radius", bind=self.update_visibility_control_radius, checked=False)
 
 		# Size sliders
@@ -146,7 +159,7 @@ class Editor:
 		self.target_mesh = None
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tSmoothing value') 
 		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
-		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 100, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
+		self.smooth_slider = slider(bind = self.smooth_spline, value = 0, min=0, max = 10, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10)
 
 
 		self.N = 24
@@ -199,6 +212,8 @@ class Editor:
 
 		if mode == 'model':
 			categories = ['edges', 'nodes']
+		elif mode == 'topo':
+			categories = ['edges', 'nodes']
 		else:
 			categories = []
 
@@ -208,6 +223,184 @@ class Editor:
 		else:
 			self.hide(mode)
 			self.disable(True, [mode], checkboxes = False)
+
+	def update_visibility_image(self):
+	
+		self.cursor.visible = self.cursor_checkbox.checked
+
+		for q in self.slice:
+			q.visible = self.cursor_checkbox.checked
+
+	def load_image(self):
+
+		filename = self.image_file_winput.text
+		try:
+			if len(filename) == 0: 
+				self.output_message("No output directory found. Please write the path in the text box and hit enter.", "warning")
+			else:
+				# Load image
+				self.image  = nib.load(filename)
+				self.output_message("Image loaded from " + filename + ".")
+
+		except FileNotFoundError:
+			self.output_message("The output directory does not exist.", "error")
+
+
+	def compute_slice(self):
+
+		""" Return a MRA image patch oriented normally to the artery tangent.
+
+		Keyword arguments:
+		img -- image volume as np array
+		pix_dim -- dimension of img (mm)
+		pt -- origin coordinates (mm)
+		tg -- unit tangent vector
+		dim -- patch dimension (vx)
+		dist -- patch dimension (mm)
+		"""
+
+		self.output_message("Cutting slice in the medical image.")
+		self.disable(True)
+
+		img = np.array(self.image.dataobj)
+		pix_dim = self.image.header['pixdim'][1:4]
+		dim = 20
+		dist = 20
+
+		vec_norm = scene.mouse.ray
+		center = self.cursor.pos
+
+		pt = np.array([center.x, center.y, center.z])
+		tg = np.array([vec_norm.x, vec_norm.x, vec_norm.z])
+		tg = tg/norm(tg)
+		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
+		bnr = cross(tg, nr) # Binormal vector
+
+		nr = nr / norm(nr) # Normalize
+		bnr = bnr / norm(bnr)
+
+		# Coord conversion 
+		patch_pix = np.array([float(dist) / float(dim)]*2)
+		step = np.linspace(0, dist, dim + 1)[1:]
+
+		patch = np.zeros((dim * 2 + 1, dim * 2 + 1))
+
+		ct = (pt / pix_dim).astype(int)
+		patch[dim, dim] = img[ct[0], ct[1], ct[2]]
+
+		# Fill patch
+		for j in range(dim):
+			# Fill cross
+			c1 = ((pt - nr * step[::-1][j]) / pix_dim).astype(int)
+			c2 = ((pt + nr * step[j]) / pix_dim).astype(int)
+
+			c3 = ((pt - bnr * step[::-1][j]) / pix_dim).astype(int)
+			c4 = ((pt + bnr * step[j]) / pix_dim).astype(int)
+
+			patch[dim, j] = img[c1[0], c1[1], c1[2]]
+			patch[dim, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
+			patch[j, dim] = img[c3[0], c3[1], c3[2]]
+			patch[dim + 1 + j, dim] = img[c4[0], c4[1], c4[2]]
+
+
+		for j in range(dim):
+
+			c1mm = (pt - nr * step[::-1][j])
+			c2mm = (pt + nr * step[j])
+				
+			c1 = (c1mm / pix_dim).astype(int)
+			c2 = (c2mm / pix_dim).astype(int)
+				
+
+			patch[dim + 1, j] = img[c1[0], c1[1], c1[2]]
+			patch[dim + 1, dim + 1 + j] = img[c2[0], c2[1], c2[2]]
+
+			for k in range(dim):
+
+				c3 = ((c1mm - bnr * step[::-1][k]) / pix_dim).astype(int)
+				c4 = ((c1mm + bnr * step[k]) / pix_dim).astype(int)
+
+				c5 = ((c2mm - bnr * step[::-1][k]) / pix_dim).astype(int)
+				c6 = ((c2mm + bnr * step[k]) / pix_dim).astype(int)
+
+				patch[k, j] = img[c3[0], c3[1], c3[2]]
+				patch[dim + 1 + k, j] = img[c4[0], c4[1], c4[2]]
+
+				patch[k, dim + 1 + j] = img[c5[0], c5[1], c5[2]]
+				patch[dim + 1 + k, dim + 1 + j] = img[c6[0], c6[1], c6[2]]
+
+		# Write the image
+		imt.imsave('image.jpg', patch, cmap='gray')
+
+		pos1 = pt - bnr * dist - nr * dist
+		pos2 = pt + bnr * dist - nr * dist
+		pos3 = pt + bnr * dist + nr * dist
+		pos4 = pt - bnr * dist + nr * dist
+
+
+		v1 = vertex(pos=vector(pos1[0],pos1[1],pos1[2]), normal=vector(0,0,1), texpos=vector(0,1,0), shininess= 0)
+		v2 = vertex(pos=vector(pos2[0],pos2[1],pos2[2]), normal=vector(0,0,1), texpos=vector(0,0,0), shininess= 0)
+		v3 = vertex(pos=vector(pos3[0],pos3[1],pos4[2]), normal=vector(0,0,1), texpos=vector(1,0,0), shininess= 0)
+		v4 = vertex(pos=vector(pos4[0],pos4[1],pos4[2]), normal=vector(0,0,1), texpos=vector(1,1,0), shininess= 0)
+		
+		quad(vs=[v1, v2, v3, v4], texture="image.jpg")
+
+
+		"""
+		# Display the image 
+		H = 100
+		W = 100
+		w = 1
+		h = 1
+		dx = W/w
+		dy = H/h
+
+		# Create a grid of vertex objects covering the rug
+		verts = []
+		for y in range(h+1): # from 0 to h inclusive, to include both bottom and top edges
+			verts.append([])
+			for x in range(w+1): # from 0 to w inclusive, to include both left and right edges
+				verts[y].append(vertex(pos=vector(-0.5+x*dx,-0.5+y*dy,0), normal=vector(0,0,1), texpos=vector(x/w,y/h,0), shininess= 0))
+
+		quads = []
+		for y in range(h): # from 0 to h, not including h
+			for x in range(w): # from 0 to w, not including w
+				quads.append(quad(vs=[verts[y][x], verts[y][x+1], verts[y+1][x+1], verts[y+1][x]], texture="image.jpg"))
+
+		#self.slice = quads
+		"""
+
+	
+
+	def update_visibility_angle(self, checkbox):
+
+
+		if checkbox.checked: # Create angles labels
+			angles = self.tree.angle(1.0, mode=checkbox.mode)
+
+			if "angles" not in self.elements["model"].keys():
+				self.elements[checkbox.mode]["angles"] = []
+
+				for a in angles:
+					L = label(pos=vec(a[1][0], a[1][1], a[1][2]), text=str(a[2])+ "°", box = False)
+					self.elements[checkbox.mode]["angles"].append(L)
+
+			else:
+				for i in range(len(angles)):
+					a = angles[i]
+					if i < len(self.elements["model"]["angles"]):
+						self.elements[checkbox.mode]["angles"][i].visible = True
+						self.elements[checkbox.mode]["angles"][i].pos = vec(a[1][0], a[1][1], a[1][2])
+						self.elements[checkbox.mode]["angles"][i].text = str(a[2])
+					else:
+
+						L = label(pos=vec(a[1][0], a[1][1], a[1][2]), text=str(a[2])+ "°", box = False)
+						self.elements[checkbox.mode]["angles"].append(L)
+
+		else: # Hide angle labels
+			for elt in self.elements[checkbox.mode]["angles"]:
+				elt.visible = False
+
 
 
 	def update_visibility_control_pts(self):
@@ -255,6 +448,7 @@ class Editor:
 			self.show('model', ['furcation_edges', 'furcation_nodes'])
 		else:
 			self.hide('model', ['furcation_edges', 'furcation_nodes'])
+
 
 
 
@@ -353,6 +547,10 @@ class Editor:
 			if m in self.node_size_sliders:
 				self.node_size_sliders[m].disabled = disabled
 
+			if m == "topo":
+				self.angle_checkbox_topo.disabled = disabled
+				self.angle_checkbox_topo.checked = False
+
 			if m == "model":
 				self.control_pts_checkbox.disabled = disabled
 				self.control_pts_checkbox.checked = False 
@@ -361,6 +559,10 @@ class Editor:
 					self.control_radius_checkbox.checked = False
 				self.furcation_checkbox.disabled = disabled
 				self.furcation_checkbox.checked = False
+
+				self.angle_checkbox_model.disabled = disabled
+				self.angle_checkbox_model.checked = False
+
 
 				if disabled:
 					for k in self.smooth_checkboxes.keys():
@@ -396,17 +598,23 @@ class Editor:
 
 		try:
 			if self.save_directory is None: 
-				self.output_message("No output directory found. Please write the path in the text box.", "warning")
+				self.output_message("No output directory found. Please write the path in the text box and hit enter.", "warning")
 			else:
 				if self.save_menu.selected == "model":
 					file = open(self.save_directory + "tree_model.obj", 'wb') 
 					pickle.dump(self.tree, file)
 					self.output_message("Vessel model saved in " + self.save_directory + ".")
 
+				elif self.save_menu.selected == "centerline":
+					file = self.save_directory + "tree_centerline.swc"
+					self.tree.write_swc(file)
+					self.output_message("Vessel centerline saved in " + self.save_directory + ".")
+
+
 				else:
 					mesh = self.tree.get_surface_mesh()
 					if mesh is None:
-						self.output_message("No mesh found. Please compute AND update the mesh first.")
+						self.output_message("No mesh found. Please compute and/or update the mesh first.")
 					else:
 						mesh.save(self.save_directory + "surface_mesh.vtk")
 						self.output_message("Surface mesh saved in " + self.save_directory  + ".")
@@ -441,20 +649,20 @@ class Editor:
 			categories = list(self.elements[mode].keys())
 
 		for category in categories:
-			obj_cat = self.elements[mode][category]
+			if category in list(self.elements[mode].keys()):
+				obj_cat = self.elements[mode][category]
 	
+				if type(obj_cat) == dict:
+					for elt in obj_cat.values():
+						if type(elt) == list:
+							for e in elt:
+								func(e, args)
+						else:
+							func(elt, args)
 
-			if type(obj_cat) == dict:
-				for elt in obj_cat.values():
-					if type(elt) == list:
-						for e in elt:
-							func(e, args)
-					else:
+				else:
+					for elt in obj_cat:
 						func(elt, args)
-
-			else:
-				for elt in obj_cat:
-					func(elt, args)
 
 
 
@@ -794,6 +1002,7 @@ class Editor:
 				self.modified_elements[mode]['delete'] = []
 				self.tree.set_full_graph(self.tree.get_full_graph())
 				self.refresh_display("full")
+				self.node_size_sliders['full'].value = 1
 
 
 			# Empty the model and mesh objects and make it invisible
@@ -870,6 +1079,7 @@ class Editor:
 
 				if len(self.elements["mesh"]) > 0:
 					self.refresh_display("mesh")
+				
 
 			self.output_message("Topo graph updated.")
 
@@ -1276,6 +1486,8 @@ class Editor:
 		else:
 			self.output_message("Reset " + mode + " graph.")
 
+		self.node_size_sliders['full'].value = 1
+
 	
 		self.unselect("node", mode)
 		self.unselect("edge", mode)
@@ -1309,7 +1521,7 @@ class Editor:
 
 		""" Handle user keyboard input """
 
-		if self.edition_mode == "topo" and self.selected_edge is not None:
+		if self.edition_mode == "topo" and self.selected_edge is not None and self.selected_edge.mode != "cursor":
 
 			if evt.key == "i":
 
@@ -1404,7 +1616,8 @@ class Editor:
 				
 
 
-		if self.edition_mode != "mesh" and self.selected_node is not None:
+		if self.edition_mode != "mesh" and self.selected_node is not None and self.selected_edge.mode != "cursor":
+
 			ids = self.selected_node.id
 		
 			if evt.key == "d":
@@ -1483,9 +1696,9 @@ class Editor:
 	def move(self, evt):
 
 		""" Move the selected node with mouse cursor """
-
-		if (self.edition_mode == "full" or self.edition_mode == "model") and self.selected_node is not None and self.drag:
-			self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
+		if self.selected_node is not None and self.drag:
+			if self.edition_mode == "full" or self.edition_mode == "model" or self.selected_node.mode == "cursor":
+				self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
 
 
 
@@ -1496,16 +1709,22 @@ class Editor:
 
 		# Save new position in changes
 		if self.selected_node is not None:
-			already_moved = False
-			for elt in self.modified_elements[self.edition_mode]['move']:
-				if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
-					already_moved = True
-					elt[2] = self.selected_node.pos
-			if not already_moved:
-				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, None])
 
-			self.unselect("node")
-			self.drag = False
+			if self.selected_node.mode == "cursor":
+				self.unselect("node")
+				self.drag = False
+
+			else:
+				already_moved = False
+				for elt in self.modified_elements[self.edition_mode]['move']:
+					if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
+						already_moved = True
+						elt[2] = self.selected_node.pos
+				if not already_moved:
+					self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, None])
+
+				self.unselect("node")
+				self.drag = False
 
 
 	def select(self):
@@ -1543,6 +1762,13 @@ class Editor:
 			self.selected_edge.color = color.green
 
 			self.output_message("Edge " + str(obj.id) + " selected. Press suppr. to cut the corresponding branch. Press r (resp. R) to rotate the branch clockwise (resp. counterclockwise).")
+
+		elif type(obj) == sphere and obj.mode == "cursor":
+			self.selected_node = obj
+			self.drag = True
+			self.output_message("Origin cursor selected. Move it to the center of the image cut.")
+
+
 
 
 	def unselect(self, elt = "node", mode = None):
@@ -1605,6 +1831,7 @@ class Editor:
 			else:
 				self.smooth_checkboxes["radius"].checked = False
 				self.smooth_slider.value = lbd[0]
+				print(lbd[0])
 
 		else:
 
@@ -1614,6 +1841,7 @@ class Editor:
 			else:
 				self.smooth_checkboxes["spatial"].checked = False
 				self.smooth_slider.value = lbd[1]
+				print(lbd[1])
 
 
 	def smooth_spline(self):

@@ -28,11 +28,13 @@ def test_editor(patient):
 
 
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/C0091.vtp"
+	file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
+
 	tree = ArterialTree("TestPatient", "BraVa", file)
-	#file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/P4.obj", 'rb')
-	#tree = pickle.load(file)
+
 	
-	#file = open("tmp/tree_model.obj", 'rb') 
+	#file = open("/home/decroocq/Documents/Thesis/Communications/Images/Editor/basilar/tree.model_org", 'rb') 
 	#tree = pickle.load(file)
 	
 	e = Editor(tree, 1500, 600)
@@ -345,16 +347,15 @@ def test_brava(filename, patient):
 def launch_brava_meshing():
 
 	#root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
-	root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/"
-	for i in range(55, 59):
+	root = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/"
+	for i in [55, 58]:#range(55, 59):
 		patient = "P" + str(i)
 
 		print(root+patient+".swc", patient)
-		try:
-			test_brava(root+patient+".swc", patient)
-		except:
-			print("Not found.")
-
+		
+		test_brava(root+patient+".swc", patient)
+	
+			
 
 
 def add_quality_field(filename, output):
@@ -426,7 +427,7 @@ def rewrite_surface_meshes():
 #test_brava("P" + str(i))
 
 #test_topo_correction()
-#test_editor("C0006")
+test_editor("C0006")
 #test_brava("P14")
 #test_aneurisk("C0006")
 #test_evaluation_mesh()
@@ -435,4 +436,4 @@ def rewrite_surface_meshes():
 #add_check_field("/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/network/P1.obj", "P1_with_fields.vtk")
 #open_volume("Results/Validation/Mesh/Volumes/P20/")
 #add_quality_field("/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/surface/P3.vtk", "P3_with_fields.vtk")
-rewrite_surface_meshes()
+#rewrite_surface_meshes()
