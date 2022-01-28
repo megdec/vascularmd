@@ -10,7 +10,6 @@ from mpl_toolkits.mplot3d import Axes3D # 3D display
 import math
 
 from utils import *
-from termcolor import colored
 
 
 class Spline:

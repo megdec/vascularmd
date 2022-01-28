@@ -27,9 +27,10 @@ import gc
 def test_editor(patient):
 
 
-	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/C0091.vtp"
-	file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
+	#file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
+	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1_basilar.swc"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
 
@@ -37,7 +38,7 @@ def test_editor(patient):
 	#file = open("/home/decroocq/Documents/Thesis/Communications/Images/Editor/basilar/tree.model_org", 'rb') 
 	#tree = pickle.load(file)
 	
-	e = Editor(tree, 1500, 600)
+	e = Editor(tree, 1500, 800)
 
 
 

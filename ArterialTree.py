@@ -3604,7 +3604,7 @@ class ArterialTree:
 
 		file = open(filename, 'w') 
 
-		keys = list(nx.dfs_preorder_nodes(self._full_graph , 0))
+		keys = list(nx.dfs_preorder_nodes(self._full_graph , 1))
 		values = range(1, len(keys) + 1)
 
 		mapping = dict(zip(keys, values))
@@ -3614,7 +3614,6 @@ class ArterialTree:
 			c = self._full_graph.nodes[p]['coords']
 
 			if self._full_graph.in_degree(p) == 1:
-				print(list(self._full_graph.predecessors(p)))
 				n = mapping[list(self._full_graph.predecessors(p))[0]]
 				i = 3
 

@@ -1,12 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as imt
-from mpl_toolkits.mplot3d import Axes3D  # 3D display
+
 import pickle
 import pyvista as pv
-from scipy.spatial import ckdtree
+
 from vpython import *
-import os
 from numpy.linalg import norm
 import copy
 import nibabel as nib
@@ -341,13 +340,14 @@ class Editor:
 		dim = 20
 		dist = 20
 
-		vec_norm = scene.camera.axis
 		center = self.cursor.pos
+		vec_norm = scene.camera.axis
 
 		pt = np.array([center.x, center.y, center.z])
-		tg = np.array([vec_norm.x, vec_norm.x, vec_norm.z])
+		tg = np.array([vec_norm.x, vec_norm.y, vec_norm.z])
 		tg = tg/norm(tg)
-		nr = cross(np.array([0, 0, 1]), tg) # Normal vector
+		
+		nr = cross(np.array([0, 0.1, 0.9]), tg) # Normal vector
 		bnr = cross(tg, nr) # Binormal vector
 
 		nr = nr / norm(nr) # Normalize
@@ -835,9 +835,9 @@ class Editor:
 				self.disable(True)
 				self.tree.model_network()
 				G = self.tree.get_model_graph()
-				self.disable(False)
-
+				
 				self.output_message("Model complete!")
+				self.disable(False)
 
 			nodes = {}
 			furcation_nodes = {}
@@ -1451,7 +1451,6 @@ class Editor:
 							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
 
 						self.elements[mode]["edges"][e] = c
-
 			else:
 
 				mesh = self.tree.get_surface_mesh()
@@ -1726,8 +1725,8 @@ class Editor:
 
 				self.running = False
 
-
-		if (self.edition_mode == "data" or self.edition_mode == "model") and self.selected_node is not None and self.selected_node.mode != "cursor":
+		
+		if (self.edition_mode == "full" or self.edition_mode == "model") and self.selected_node is not None and self.selected_node.mode != "cursor":
 
 			ids = self.selected_node.id
 		
@@ -1826,6 +1825,7 @@ class Editor:
 				self.drag = False
 
 			else:
+				self.drag = False
 				already_moved = False
 				for elt in self.modified_elements[self.edition_mode]['move']:
 					if elt[0] == self.selected_node.category and elt[1] == self.selected_node.id:
@@ -1835,7 +1835,7 @@ class Editor:
 					self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, None])
 
 				self.unselect("node")
-				self.drag = False
+				
 
 
 	def select(self):
