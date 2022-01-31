@@ -118,6 +118,7 @@ class ArterialTree:
 			points = self._volume_mesh[2]
 			return pv.UnstructuredGrid(cells, cell_types, points)
 
+
 	def get_surface_link(self):
 
 		if self._surface_mesh is None:
@@ -1159,7 +1160,7 @@ class ArterialTree:
 
 		for e in self._model_graph.edges():
 
-			if self._model_graph.nodes[e[0]]['type'] == "bif": #or self._model_graph.nodes[e[0]]['type'] == "end":
+			if self._model_graph.nodes[e[0]]['type'] == "bif": 
 				self._crsec_graph.add_edge(e[1], e[0], crsec = None, connect = None)
 			else:
 				self._crsec_graph.add_edge(e[0], e[1], crsec = None, connect = None)
@@ -2373,6 +2374,33 @@ class ArterialTree:
 	#####################################
 	######### POST PROCESSING  ##########
 	#####################################
+
+	def close_surface(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10):
+
+		""" Close the open ends of the surface mesh with a ogrid pattern """
+
+		for n in self._crsec_graph.nodes():
+			if self._crsec_graph.nodes[n]['type'] == "end":
+				# Compute O-grid
+				nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
+				f_ogrid = self.ogrid_pattern_faces(self._N, num_a, num_b)
+
+				crsec = self._crsec_graph.nodes[n]['crsec']
+				center = self._crsec_graph.nodes[n]['coords'][:-1]
+				v_ogrid = self.ogrid_pattern_vertices(center, crsec, layer_ratio, num_a, num_b)
+
+				id_first = self._surface_mesh[0].shape[0]
+				f_ogrid[:,1:] = f_ogrid[:,1:] + id_first
+
+				self._surface_mesh[0] = np.vstack((self._surface_mesh[0], v_ogrid)) 
+				self._surface_mesh[1] = np.vstack((self._surface_mesh[1], f_ogrid))
+
+
+
+	def open_surface(self):
+
+		""" Reopens the surface """
+		self.mesh_surface()
 
 
 	def add_extensions(self, size=6):
@@ -3631,6 +3659,24 @@ class ArterialTree:
 	#####################################
 	##############  WRITE  ##############
 	#####################################
+
+	def write_volume_mesh(self, output = "volume_mesh.vtk"):
+
+		import meshio
+
+		points = self._volume_mesh[2]
+		cells = [("hexahedron", self._volume_mesh[0][:,1:])]
+		mesh = meshio.Mesh(points, cells)
+		mesh.write(output)
+
+	def write_surface_mesh(self, output = "surface_mesh.vtk"):
+
+		import meshio
+
+		points = self._surface_mesh[0]
+		cells = [("quad", self._surface_mesh[1][:,1:])]
+		mesh = meshio.Mesh(points, cells)
+		mesh.write(output)
 
 
 	def write_vtk(self, type, filename):

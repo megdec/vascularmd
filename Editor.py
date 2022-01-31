@@ -75,7 +75,7 @@ class Editor:
 		scene.append_to_caption('\nExport  ')
 
 		self.save_button = button(text = "Save", bind=self.save)
-		self.save_menu = menu(choices = ['centerline', 'model', 'mesh'], selected = 'centerline', index=0, bind = self.do_nothing)
+		self.save_menu = menu(choices = ['centerline', 'model', 'surface mesh', 'volume mesh'], selected = 'centerline', index=0, bind = self.do_nothing)
 		self.save_directory = ""
 		scene.append_to_caption('\tOutput directory ')
 		self.save_winput = winput(text="", bind = self.update_save_directory, width=200)
@@ -106,8 +106,11 @@ class Editor:
 		self.reset_buttons['mesh'] = button(text="Reset", bind=self.reset_graph, mode = 'mesh')
 
 		self.deform_mesh_button = button(text="Deform", bind=self.deform_mesh)
-		self.check_mesh_button = button(text=" Check ", bind=self.check_mesh)
+		self.check_mesh_button = button(text="Check", bind=self.check_mesh)
 		self.check_state = False
+		self.close_mesh_button = button(text="Close", bind=self.close_mesh)
+		self.closing_state = False
+		self.volume_button = button(text="Discretize", bind=self.mesh_volume)
 		
 
 		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t")
@@ -689,13 +692,21 @@ class Editor:
 					self.tree.write_swc(file)
 					self.output_message("Vessel centerline saved in " + self.save_directory + self.save_filename + ".swc" + ".")
 
-				else:
+				elif self.save_menu.selected == "surface mesh":
 					mesh = self.tree.get_surface_mesh()
 					if mesh is None:
 						self.output_message("No mesh found. Please compute and/or update the mesh first.")
 					else:
 						mesh.save(self.save_directory + self.save_filename + ".vtk")
 						self.output_message("Surface mesh saved in " + self.save_directory + self.save_filename + ".vtk" + ".")
+
+				else:
+					mesh = self.tree.get_volume_mesh()
+					if mesh is None:
+						self.output_message("No volume mesh found. Please compute and/or update the mesh first.")
+					else:
+						mesh.save(self.save_directory + self.save_filename + ".vtk")
+						self.output_message("Volume mesh saved in " + self.save_directory + self.save_filename + ".vtk" + ".")
 
 
 		except FileNotFoundError:
@@ -945,7 +956,9 @@ class Editor:
 
 				self.output_message("Mesh complete!")
 
-			mesh = self.tree.mesh_surface()
+			mesh = self.tree.get_surface_mesh()
+			if mesh is None: 
+				mesh = self.tree.mesh_surface()
 
 			vertices = mesh.points
 			faces = mesh.faces.reshape((-1, 5))
@@ -2100,6 +2113,29 @@ class Editor:
 
 		self.disable(False)
 
+	def close_mesh(self):
+		""" Checks the mesh quality and display the mesh segments not compatible with simulation in red """
+
+		self.disable(True)
+
+		if self.closing_state == False:
+
+			self.output_message("Closing surface inlets and outlets...")
+			self.tree.close_surface()
+			self.refresh_display("mesh")
+			self.closing_state = True
+			self.close_mesh_button.text = "Unclose"
+			self.output_message("Surface closed.")
+
+		else:
+			self.tree.open_surface()
+			self.refresh_display("mesh")
+			self.closing_state = False
+			self.close_mesh_button.text = "Close"
+			self.output_message("Surface opened.")
+
+		self.disable(False)
+
 
 	def manage_extensions(self):
 
@@ -2114,6 +2150,7 @@ class Editor:
 			self.refresh_display("mesh")
 			self.extension_state = True
 			self.extension_button.text = "Unextend"
+			self.output_message("Extensions added.")
 
 		else:
 
@@ -2124,8 +2161,19 @@ class Editor:
 			self.refresh_display("mesh")
 			self.extension_state = False
 			self.extension_button.text = "Extend"
+			self.output_message("Extensions removed.")
+
 
 		self.disable(False)
+
+	def mesh_volume(self):
+
+		self.disable(True)
+		self.output_message("Meshing the volume...")
+		self.tree.mesh_volume()
+		self.output_message("Volume meshed.")
+		self.disable(False)
+
 
 
 
