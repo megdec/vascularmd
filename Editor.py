@@ -98,7 +98,9 @@ class Editor:
 		self.checkboxes['model'] = checkbox(text= "Model  ", bind=self.update_visibility_state, mode = "model", checked = False)
 		self.update_buttons['model'] = button(text = "Update", bind=self.update_graph, mode = 'model')
 		self.reset_buttons['model'] = button(text = "Reset", bind=self.reset_graph, mode = 'model')
-		scene.append_to_caption('\t\t\t\t\t')
+		self.extension_button = button(text="Extend", bind=self.manage_extensions)
+		self.extension_state = False
+		scene.append_to_caption('\t\t\t')
 		self.checkboxes['mesh'] = checkbox(text= "Mesh  " , bind=self.update_visibility_state, mode="mesh", checked = False)
 		self.update_buttons['mesh'] = button(text="Update", bind=self.update_graph, mode = 'mesh')
 		self.reset_buttons['mesh'] = button(text="Reset", bind=self.reset_graph, mode = 'mesh')
@@ -106,6 +108,7 @@ class Editor:
 		self.deform_mesh_button = button(text="Deform", bind=self.deform_mesh)
 		self.check_mesh_button = button(text=" Check ", bind=self.check_mesh)
 		self.check_state = False
+		
 
 		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t")
 
@@ -848,9 +851,8 @@ class Editor:
 				pos = vector((G.nodes[n]['coords'][0]), (G.nodes[n]['coords'][1]), (G.nodes[n]['coords'][2]))
 				pt_type = G.nodes[n]['type']
 
-				if pt_type != "sep":
-					ball = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'model', category = 'nodes', id = n)
-					nodes[n] = ball
+				ball = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'model', category = 'nodes', id = n)
+				nodes[n] = ball
 
 				if pt_type == "bif":
 					n_list = []
@@ -2064,6 +2066,7 @@ class Editor:
 
 	def check_mesh(self):
 		""" Checks the mesh quality and display the mesh segments not compatible with simulation in red """
+
 		self.disable(True)
 
 		if self.check_state == False:
@@ -2097,6 +2100,32 @@ class Editor:
 
 		self.disable(False)
 
+
+	def manage_extensions(self):
+
+		""" Add and remove inlet and outlet extensions """
+		self.disable(True)
+
+		if self.extension_state == False:
+			self.output_message("Adding inlet and outlet extensions...")
+			self.tree.add_extensions()
+
+			self.refresh_display("model")
+			self.refresh_display("mesh")
+			self.extension_state = True
+			self.extension_button.text = "Unextend"
+
+		else:
+
+			self.output_message("Removing inlet and outlet extensions...")
+			self.tree.add_extensions()
+
+			self.refresh_display("model")
+			self.refresh_display("mesh")
+			self.extension_state = False
+			self.extension_button.text = "Extend"
+
+		self.disable(False)
 
 
 

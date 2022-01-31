@@ -328,7 +328,7 @@ class ArterialTree:
 		# Spline models
 		for e in self._model_graph.edges():
 
-			if self._model_graph.nodes[e[0]]['type'] == "end" and  self._model_graph.nodes[e[1]]['type'] :
+			if self._model_graph.nodes[e[0]]['type'] == "end" and  self._model_graph.nodes[e[1]]['type'] == "end" :
 				self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
 
 		# Add rotation attributes
@@ -852,9 +852,9 @@ class ArterialTree:
 					self._model_graph.nodes[path[i+1]]['ref'] = ref1
 
 
-		if self._model_graph.nodes[e[0]]['type'] == "sep":
+		if self._model_graph.nodes[e[0]]['type'] == "sep" or self._model_graph.nodes[e[0]]['type'] == "reg":
 
-			# self._model_graph et path to the next sep node
+			# path to the next sep node
 			path = []
 			end_bif = False
 			for n in nx.dfs_successors(self._model_graph, source=e[0]):
@@ -939,7 +939,6 @@ class ArterialTree:
 							self._model_graph.nodes[path[i+1]]['ref'] = ref0
 
 
-	
 
 
 	def __combine_nfurcation(self, n):
@@ -1218,6 +1217,7 @@ class ArterialTree:
 
 					args.append((spl, num, N, v0, alpha))
 
+			print(args)
 			p = Pool(cpu_count())
 			crsec_list = p.starmap(segment_crsec, args)
 
@@ -2370,12 +2370,124 @@ class ArterialTree:
 
 
 
-
-
-
 	#####################################
 	######### POST PROCESSING  ##########
 	#####################################
+
+
+	def add_extensions(self, size=6):
+
+		""" Extend the inlet and outlet nodes 
+
+		Keywords arguments: 
+		size -- relative size of the extensions (proportionally to the radius)"""
+
+		if self._model_graph is None:
+			warnings.warn("No model found.")
+		else:
+			edg_list = list(self._model_graph.edges())[:]
+			for e in edg_list: 
+				if self._model_graph.nodes[e[1]]['type'] == "end":
+					spl = self._model_graph.edges[e]['spline']
+					tg = spl.tangent(1.0)
+					r = spl.radius(1.0)
+
+					P = np.zeros((4,4))
+					P[:, 3] = [r,r,r,r]
+					P[0,:3] = spl.point(1.0)
+					P[1,:3] = P[0,:3] + tg*size*r/3
+					P[2,:3] = P[0,:3] + tg*size*r*2/3
+					P[3,:3] = P[0,:3] + tg*size*r
+
+					ext_spl = Spline(P)
+
+					# Add new edge
+					nmax = max(list(self._model_graph.nodes())) + 1
+					self._model_graph.nodes[e[1]]['type'] = "reg"
+					self._model_graph.add_node(nmax, type = "end", coords = P[-1,:], bifurcation = None, combine = False, tangent = [], ref = [])
+					self._model_graph.add_edge(e[1], nmax, spline = ext_spl, connect = 0, alpha = None)
+					self.__compute_rotations(e)
+					self.__compute_rotations((e[1], nmax))
+
+					if self._crsec_graph is not None:
+						# Add the cross section of the extensions
+						self._crsec_graph.nodes[e[1]]['type'] = "reg"
+
+						self._crsec_graph.add_node(nmax, type = "end", crsec = None)
+						self._crsec_graph.add_edge(e[1], nmax, crsec = None, connect = None)
+						self.__vessel_cross_sections((e[1], nmax))
+
+
+				if self._model_graph.nodes[e[0]]['type'] == "end":
+
+					spl = self._model_graph.edges[e]['spline']
+					tg = spl.tangent(0.0)
+					r = spl.radius(0.0)
+
+					P = np.zeros((4,4))
+					P[:, 3] = [r,r,r,r]
+					P[3,:3] = spl.point(0.0)
+					P[2,:3] = P[3,:3] - tg*size*r/3
+					P[1,:3] = P[3,:3] - tg*size*r*2/3
+					P[0,:3] = P[3,:3] - tg*size*r
+
+					ext_spl = Spline(P)
+
+					# Add new edge
+					nmax = max(list(self._model_graph.nodes())) + 1
+					self._model_graph.nodes[e[0]]['type'] = "reg"
+					self._model_graph.add_node(nmax, type = "end", coords = P[0,:], bifurcation = None, combine = False, tangent = [], ref = [])
+					self._model_graph.add_edge(nmax, e[0], spline = ext_spl, connect = 0, alpha = None)
+					self.__compute_rotations((nmax, e[0]))
+
+					if self._crsec_graph is not None:
+						# Add the cross section of the extensions
+						self._crsec_graph.nodes[e[0]]['type'] = "reg"
+						self._crsec_graph.add_node(nmax, type = "end", crsec = None)
+						self._crsec_graph.add_edge(nmax, e[0], crsec = None, connect = None)
+						self.__vessel_cross_sections((nmax, e[0]))
+
+			if self._surface_mesh is not None:
+				# Replace the mesh by the mesh with extensions
+				self.mesh_surface()
+
+			
+					 
+
+	def remove_extensions(self, prop=3):
+
+		""" Extend the inlet and outlet nodes 
+
+		Keywords arguments: 
+		prop -- relative size of the extensions (proportionally to the radius)"""
+
+		if self._model_graph is None:
+			warnings.warn("No model found.")
+		else:
+			for e in self._model_graph.edges(): 
+				if self._model_graph.nodes[e[1]]['type'] == "end":
+					
+					# Remove extension edges
+					self._model_graph.remove_node(e[1])
+					self._model_graph.remove_edge(e)
+
+					if self._crsec_graph is not None:
+						self._crsec_graph.remove_node(e[1])
+						self._crsec_graph.remove_edge(e)
+
+				if self._model_graph.nodes[e[0]]['type'] == "end":
+
+			
+					self._model_graph.remove_node(e[0])
+					self._model_graph.add_edge(e)
+
+					if self._crsec_graph is not None:
+						self._crsec_graph.remove_node(e[0])
+						self._crsec_graph.add_edge(e)
+
+			if self._surface_mesh is not None:
+				# Replace the mesh by the mesh with extensions
+				self.mesh_surface()
 
 
 
@@ -2592,13 +2704,12 @@ class ArterialTree:
 			for i in node_id_list:
 				selected_point[i, :] = 1.0
 			
-			mesh = self.get_surface_mesh()
-			mesh["SelectedPoints"] = selected_point
+			#mesh = self.get_surface_mesh()
+			#mesh["SelectedPoints"] = selected_point
 		
-			inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
-			inside.plot(show_edges = True)
+			#inside = mesh.threshold(value = 0.5, scalars="SelectedPoints", preference = "point")
+			#inside.plot(show_edges = True)
 			
-
 		return selected_point
 
 
@@ -2617,27 +2728,6 @@ class ArterialTree:
 			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
 			self.__set_topo_graph()
 
-
-	def topo_correction(self, threshold):
-
-		""" Correct the topology by merging close branches to form (n+1)-furcations
-
-		Keywork arguments:
-		threshold -- distance threshold for merging """
-
-		complete = False
-
-		while not complete:
-			complete = True
-			for e in self._topo_graph.edges():
-				D = np.vstack((self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords']))
-				l =  length_polyline(D[:,:-1])[-1]
-
-				if l < threshold and self._topo_graph.nodes[e[0]]["type"] != "end":
-					self.merge_branch(e[1])
-					print("merging branch ", e[1])
-					complete = False
-					break
 
 
 	def merge_branch(self, n, mode = "topo"):
