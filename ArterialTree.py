@@ -106,17 +106,30 @@ class ArterialTree:
 			return pv.PolyData(self._surface_mesh[0], self._surface_mesh[1])
 
 
-	def get_volume_mesh(self):
+	def get_volume_mesh(self, formt = "pyvista"):
 		""" Return the volume mesh """
 
 		if self._volume_mesh is None:
 			warnings.warn("No volume mesh found.")
 		else:	
-			#return self.write_pyvista_mesh_from_vtk(self._volume_mesh[2], self._volume_mesh[0])
-			cells = self._volume_mesh[0]
-			cell_types = self._volume_mesh[1]
-			points = self._volume_mesh[2]
-			return pv.UnstructuredGrid(cells, cell_types, points)
+
+			if formt == "pyvista":
+				#return self.write_pyvista_mesh_from_vtk(self._volume_mesh[2], self._volume_mesh[0])
+				cells = self._volume_mesh[0]
+				cell_types = self._volume_mesh[1]
+				points = self._volume_mesh[2]
+				return pv.UnstructuredGrid(cells, cell_types, points)
+
+			elif formt == "meshio":
+				import meshio
+		
+				points = self._volume_mesh[2]
+				cells = [("hexahedron", self._volume_mesh[0][:,1:])]
+				return meshio.Mesh(points, cells)
+			else:
+				warnings.warn("Wrong format argument given. The accepted formats are 'pyvista' and 'meshio'.")
+
+					
 
 
 	def get_surface_link(self):
@@ -2375,11 +2388,20 @@ class ArterialTree:
 	######### POST PROCESSING  ##########
 	#####################################
 
-	def close_surface(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10):
+	def close_surface(self, edg = [], layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10):
 
 		""" Close the open ends of the surface mesh with a ogrid pattern """
+		if len(edg) == 0:
+			nds = list(self._crsec_graph.nodes())
+		else:
+			nds = []
+			for e in edg:
+				if e[0] not in nds:
+					nds.append(e[0])
+				if e[1] not in nds:
+					nds.append(e[1])
 
-		for n in self._crsec_graph.nodes():
+		for n in nds:
 			if self._crsec_graph.nodes[n]['type'] == "end":
 				# Compute O-grid
 				nb_nds_ogrid = int(self._N * (num_a + num_b + 3) + ((self._N - 4)/4)**2)
@@ -2397,13 +2419,16 @@ class ArterialTree:
 
 
 
-	def open_surface(self):
+	def open_surface(self, edg = []):
 
 		""" Reopens the surface """
-		self.mesh_surface()
+		if len(edg) == 0:
+			edg = list(self._crsec_graph.edges())
+
+		self.mesh_surface(edg=edg)
 
 
-	def add_extensions(self, size=6):
+	def add_extensions(self, edg = [], size=6):
 
 		""" Extend the inlet and outlet nodes 
 
@@ -2413,7 +2438,9 @@ class ArterialTree:
 		if self._model_graph is None:
 			warnings.warn("No model found.")
 		else:
+			
 			edg_list = list(self._model_graph.edges())[:]
+
 			for e in edg_list: 
 				if self._model_graph.nodes[e[1]]['type'] == "end":
 					spl = self._model_graph.edges[e]['spline']
@@ -2441,7 +2468,7 @@ class ArterialTree:
 						# Add the cross section of the extensions
 						self._crsec_graph.nodes[e[1]]['type'] = "reg"
 
-						self._crsec_graph.add_node(nmax, type = "end", crsec = None)
+						self._crsec_graph.add_node(nmax, type = "end", crsec = None, coords = P[-1,:])
 						self._crsec_graph.add_edge(e[1], nmax, crsec = None, connect = None)
 						self.__vessel_cross_sections((e[1], nmax))
 
@@ -2471,18 +2498,21 @@ class ArterialTree:
 					if self._crsec_graph is not None:
 						# Add the cross section of the extensions
 						self._crsec_graph.nodes[e[0]]['type'] = "reg"
-						self._crsec_graph.add_node(nmax, type = "end", crsec = None)
+						self._crsec_graph.add_node(nmax, type = "end", crsec = None, coords = P[0,:])
 						self._crsec_graph.add_edge(nmax, e[0], crsec = None, connect = None)
 						self.__vessel_cross_sections((nmax, e[0]))
 
 			if self._surface_mesh is not None:
 				# Replace the mesh by the mesh with extensions
-				self.mesh_surface()
+				if len(edg) == 0:
+					edg = list(self._crsec_graph.edges())
+				
+				self.mesh_surface(edg = edg)
 
 			
 					 
 
-	def remove_extensions(self, prop=3):
+	def remove_extensions(self, edg = [], prop=3):
 
 		""" Extend the inlet and outlet nodes 
 
@@ -2492,31 +2522,53 @@ class ArterialTree:
 		if self._model_graph is None:
 			warnings.warn("No model found.")
 		else:
+			edg_list_inlet = []
+			edg_list_outlet = []
+
 			for e in self._model_graph.edges(): 
 				if self._model_graph.nodes[e[1]]['type'] == "end":
-					
-					# Remove extension edges
-					self._model_graph.remove_node(e[1])
-					self._model_graph.remove_edge(e)
-
-					if self._crsec_graph is not None:
-						self._crsec_graph.remove_node(e[1])
-						self._crsec_graph.remove_edge(e)
+					edg_list_outlet.append(e)
 
 				if self._model_graph.nodes[e[0]]['type'] == "end":
+					edg_list_inlet.append(e)
 
-			
-					self._model_graph.remove_node(e[0])
-					self._model_graph.add_edge(e)
+			for e in edg_list_outlet: 
+					
+				# Remove extension edges
+					
+				self._model_graph.remove_edge(e[0], e[1])
+				self._model_graph.remove_node(e[1])
+				self._model_graph.nodes[e[0]]['type'] = "end"
 
-					if self._crsec_graph is not None:
-						self._crsec_graph.remove_node(e[0])
-						self._crsec_graph.add_edge(e)
+				if self._crsec_graph is not None:
+						
+					self._crsec_graph.remove_edge(e[0], e[1])
+					if e in edg:
+						edg.remove(e)
+					self._crsec_graph.remove_node(e[1])
+					self._crsec_graph.nodes[e[0]]['type'] = "end"
+
+			for e in edg_list_inlet: 
+
+				self._model_graph.remove_edge(e[0], e[1])
+				self._model_graph.remove_node(e[0])
+				self._model_graph.nodes[e[1]]['type'] = "end"
+
+				if self._crsec_graph is not None:
+						
+					self._crsec_graph.remove_edge(e[0], e[1])
+					if e in edg:
+						edg.remove(e)
+					self._crsec_graph.remove_node(e[0])
+					self._crsec_graph.nodes[e[1]]['type'] = "end"
 
 			if self._surface_mesh is not None:
-				# Replace the mesh by the mesh with extensions
-				self.mesh_surface()
-
+				# Replace the mesh by the mesh without extensions
+				if len(edg) == 0:
+					edg = list(self._crsec_graph.edges())[:]
+				
+				self.mesh_surface(edg = edg)
+				
 
 
 	def deform_surface_to_mesh(self, mesh, edges=[], search_dist = 40):
@@ -3324,8 +3376,6 @@ class ArterialTree:
 
 					for e in edg:
 						failed_bifs.append(n) 
-						
-
 
 		for e in G.edges():
 			if G.nodes[e[1]]["type"] == "end" or G.nodes[e[0]]["type"] == "end":
@@ -3663,20 +3713,23 @@ class ArterialTree:
 	def write_volume_mesh(self, output = "volume_mesh.vtk"):
 
 		import meshio
+		if self._volume_mesh is None:
+			warnings.warn("Please compute the volume mesh first.")
+		else:
 
-		points = self._volume_mesh[2]
-		cells = [("hexahedron", self._volume_mesh[0][:,1:])]
-		mesh = meshio.Mesh(points, cells)
-		mesh.write(output)
+			points = self._volume_mesh[2]
+			cells = [("hexahedron", self._volume_mesh[0][:,1:])]
+			mesh = meshio.Mesh(points, cells)
+			mesh.write(output)
 
 	def write_surface_mesh(self, output = "surface_mesh.vtk"):
 
-		import meshio
+		if self._surface_mesh is None:
+			warnings.warn("Please compute the surface mesh first.")
+		else:
+			mesh = self.get_surface_mesh()
+			mesh.save(output)
 
-		points = self._surface_mesh[0]
-		cells = [("quad", self._surface_mesh[1][:,1:])]
-		mesh = meshio.Mesh(points, cells)
-		mesh.write(output)
 
 
 	def write_vtk(self, type, filename):
@@ -3734,13 +3787,17 @@ class ArterialTree:
 		""" Write swc Neurite Tracer file using depth fist search."""
 
 		print('Writing swc file...')
+		# Find inlet
+		for n in self._full_graph.nodes():
+			if self._full_graph.in_degree(n) == 0:
+				source = n
 
 		if filename[-4:] != ".swc":
 			filename = filename + "swc"		
 
 		file = open(filename, 'w') 
 
-		keys = list(nx.dfs_preorder_nodes(self._full_graph , 1))
+		keys = list(nx.dfs_preorder_nodes(self._full_graph, source))
 		values = range(1, len(keys) + 1)
 
 		mapping = dict(zip(keys, values))

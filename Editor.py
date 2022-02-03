@@ -31,7 +31,6 @@ class Editor:
 		"""
 
 		self.tree = tree
-
 		self.barycenter = self.barycenter_finder()
 
 		# Scene set up
@@ -56,6 +55,7 @@ class Editor:
 		scene.append_to_caption('\n\nEdit  ')
 		self.edition_menu = menu(choices = ['off', 'data', 'topo', 'model', 'mesh'], selected = 'off', index=0, bind = self.update_edition_mode)
 		self.edition_mode = 'off'
+		self.mesh_selection = []
 
 		scene.append_to_caption('\nImport centerline  ')
 
@@ -71,6 +71,9 @@ class Editor:
 
 		scene.append_to_caption('\tPath ')
 		self.image_file_winput = winput(text="", bind = self.load_image, width=200)
+		scene.append_to_caption('\tOpacity ')
+		self.slice_opacity_slider = slider(bind = self.slice_opacity, value = 1, length = 150, width = slider_width)
+
 
 		scene.append_to_caption('\nExport  ')
 
@@ -88,21 +91,21 @@ class Editor:
 
 		# Check boxes
 		self.checkboxes = {'full' : checkbox(text= "Data  ", bind=self.update_visibility_state, checked=True, mode = "full")}
-		self.update_buttons = {'full' : button(text = "Update", bind=self.update_graph, mode = 'full')}
+		self.update_buttons = {'full' : button(text = "Apply", bind=self.update_graph, mode = 'full')}
 		self.reset_buttons = {'full' : button(text = "Reset", bind=self.reset_graph, mode = 'full')}
 		scene.append_to_caption('\t\t\t\t\t')
 		self.checkboxes['topo'] = checkbox(text= "Topology  ", bind=self.update_visibility_state, checked = False, mode = "topo")
-		self.update_buttons['topo'] = button(text = "Update", bind=self.update_graph, mode = 'topo')
+		self.update_buttons['topo'] = button(text = "Apply", bind=self.update_graph, mode = 'topo')
 		self.reset_buttons['topo'] = button(text = "Reset", bind=self.reset_graph, mode = 'topo')
-		scene.append_to_caption('\t\t\t\t')
+		scene.append_to_caption('\t\t\t\t\t')
 		self.checkboxes['model'] = checkbox(text= "Model  ", bind=self.update_visibility_state, mode = "model", checked = False)
-		self.update_buttons['model'] = button(text = "Update", bind=self.update_graph, mode = 'model')
+		self.update_buttons['model'] = button(text = "Apply", bind=self.update_graph, mode = 'model')
 		self.reset_buttons['model'] = button(text = "Reset", bind=self.reset_graph, mode = 'model')
 		self.extension_button = button(text="Extend", bind=self.manage_extensions)
 		self.extension_state = False
-		scene.append_to_caption('\t\t\t')
+		scene.append_to_caption('\t\t\t\t')
 		self.checkboxes['mesh'] = checkbox(text= "Mesh  " , bind=self.update_visibility_state, mode="mesh", checked = False)
-		self.update_buttons['mesh'] = button(text="Update", bind=self.update_graph, mode = 'mesh')
+		self.update_buttons['mesh'] = button(text="Apply", bind=self.update_graph, mode = 'mesh')
 		self.reset_buttons['mesh'] = button(text="Reset", bind=self.reset_graph, mode = 'mesh')
 
 		self.deform_mesh_button = button(text="Deform", bind=self.deform_mesh)
@@ -110,7 +113,7 @@ class Editor:
 		self.check_state = False
 		self.close_mesh_button = button(text="Close", bind=self.close_mesh)
 		self.closing_state = False
-		self.volume_button = button(text="Discretize", bind=self.mesh_volume)
+		self.volume_button = button(text="Volume", bind=self.mesh_volume)
 		
 
 		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t")
@@ -189,7 +192,6 @@ class Editor:
 		self.d = 0.2
 		self.display_spline_step = 10
 		self.search_dist = 40
-		scene.bind('click', self.select)
 		scene.bind('mousedown', self.select)
 		scene.bind('mousemove', self.move)
 		scene.bind('mouseup', self.drop)
@@ -199,8 +201,9 @@ class Editor:
 		self.selected_edge = None
 		self.drag = False
 		self.running = False
-		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : [], 'move' : [], 'merge' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'move' : [], 'parameter' : [], 'deform' : [], 'crsec' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
+		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : [], 'move' : [], 'merge' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'parameter' : False, 'deform' : [], 'selection' : False, 'vessels' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
 
+		#self.mesh_pool = {'curves' : [], 'quads' : []}
 		# Disable elements
 		self.disable(True, checkboxes = False)
 		# Generate full graph
@@ -293,6 +296,18 @@ class Editor:
 		else:
 			self.hide(mode)
 			self.disable(True, [mode], checkboxes = False)
+
+
+	def show_mesh_selection(self, show):
+
+		""" Show / hide the edges selected for meshing. """
+
+		for e in self.mesh_selection:
+			if show:
+				self.elements['model']['edges'][e].color = color.red
+			else:
+				self.elements['model']['edges'][e].color = color.black
+
 
 	def update_visibility_cursor(self):
 	
@@ -419,10 +434,10 @@ class Editor:
 		if self.slice is None:
 			imt.imsave('image.jpg', patch, cmap='gray')
 
-			v1 = vertex(pos=vector(pos1[0],pos1[1],pos1[2]), normal=vector(0,0,1), texpos=vector(0,1,0), shininess= 0)
-			v2 = vertex(pos=vector(pos2[0],pos2[1],pos2[2]), normal=vector(0,0,1), texpos=vector(0,0,0), shininess= 0)
-			v3 = vertex(pos=vector(pos3[0],pos3[1],pos3[2]), normal=vector(0,0,1), texpos=vector(1,0,0), shininess= 0)
-			v4 = vertex(pos=vector(pos4[0],pos4[1],pos4[2]), normal=vector(0,0,1), texpos=vector(1,1,0), shininess= 0)
+			v1 = vertex(pos=vector(pos1[0],pos1[1],pos1[2]), normal=vector(0,0,1), texpos=vector(0,1,0), shininess= 0, opacity = self.slice_opacity_slider.value)
+			v2 = vertex(pos=vector(pos2[0],pos2[1],pos2[2]), normal=vector(0,0,1), texpos=vector(0,0,0), shininess= 0, opacity = self.slice_opacity_slider.value)
+			v3 = vertex(pos=vector(pos3[0],pos3[1],pos3[2]), normal=vector(0,0,1), texpos=vector(1,0,0), shininess= 0, opacity = self.slice_opacity_slider.value)
+			v4 = vertex(pos=vector(pos4[0],pos4[1],pos4[2]), normal=vector(0,0,1), texpos=vector(1,1,0), shininess= 0, opacity = self.slice_opacity_slider.value)
 				
 			Q = quad(vs=[v1, v2, v3, v4], texture='image.jpg')
 			self.slice = Q
@@ -444,6 +459,17 @@ class Editor:
 		self.disable(False)
 		self.slice_checkbox.disabled = False
 		self.slice_checkbox.checked = True
+
+	def slice_opacity(self):
+
+		alpha = self.slice_opacity_slider.value
+		self.slice.vs[0].opacity = alpha
+		self.slice.vs[1].opacity = alpha
+		self.slice.vs[2].opacity = alpha
+		self.slice.vs[3].opacity = alpha
+
+
+
 
 
 
@@ -599,7 +625,6 @@ class Editor:
 		checkboxes -- if true, disable also the mode checkbox 
 		"""
 
-		
 		if not disabled:
 			for m in mode:
 				self.checkboxes[m].disabled = disabled
@@ -627,6 +652,7 @@ class Editor:
 				self.angle_checkbox_topo.checked = False
 
 			if m == "model":
+				self.extension_button.disabled = disabled
 				self.control_pts_checkbox.disabled = disabled
 				self.control_pts_checkbox.checked = False 
 				if disabled:
@@ -643,11 +669,12 @@ class Editor:
 					for k in self.smooth_checkboxes.keys():
 						self.smooth_checkboxes[k].disabled = disabled
 
-
 			if m == "mesh":
 				self.deform_mesh_button.disabled = disabled
 				self.check_mesh_button.disabled = disabled
 				self.mesh_representation_menu.disabled = disabled
+				self.close_mesh_button.disabled = disabled
+				self.volume_button.disabled = disabled
 
 
 
@@ -683,30 +710,52 @@ class Editor:
 				self.output_message("No output directory found. Please write the path in the text box and hit enter.", "warning")
 			else:
 				if self.save_menu.selected == "model":
-					file = open(self.save_directory + self.save_filename + ".obj", 'wb') 
-					pickle.dump(self.tree, file)
-					self.output_message("Vessel model saved in " + self.save_directory + self.save_filename + ".obj" + ".")
+
+					if self.save_filename[-4:] != ".obj":
+						file = self.save_directory + self.save_filename + ".obj"
+					else:
+						file = self.save_directory + self.save_filename
+
+					f = open(file, 'wb') 
+					pickle.dump(self.tree, f)
+					self.output_message("Vessel model saved in " + file + ".")
 
 				elif self.save_menu.selected == "centerline":
-					file = self.save_directory + self.save_filename + ".swc"
+
+					if self.save_filename[-4:] != ".swc":
+						file = self.save_directory + self.save_filename + ".swc"
+					else:
+						file = self.save_directory + self.save_filename
+
 					self.tree.write_swc(file)
-					self.output_message("Vessel centerline saved in " + self.save_directory + self.save_filename + ".swc" + ".")
+					self.output_message("Vessel centerline saved in " + file + ".")
 
 				elif self.save_menu.selected == "surface mesh":
+
+					if self.save_filename[-4:] not in [".vtk", ".stl", ".ply"]:
+						file = self.save_directory + self.save_filename + ".vtk"
+					else:
+						file = self.save_directory + self.save_filename
+
 					mesh = self.tree.get_surface_mesh()
 					if mesh is None:
 						self.output_message("No mesh found. Please compute and/or update the mesh first.")
 					else:
-						mesh.save(self.save_directory + self.save_filename + ".vtk")
-						self.output_message("Surface mesh saved in " + self.save_directory + self.save_filename + ".vtk" + ".")
+						self.tree.write_surface_mesh(file)
+						self.output_message("Surface mesh saved in " + file + ".")
 
 				else:
+					if self.save_filename[-4:] not in [".vtk", ".vtu", ".msh"]:
+						file = self.save_directory + self.save_filename + ".vtk"
+					else:
+						file = self.save_directory + self.save_filename
+
 					mesh = self.tree.get_volume_mesh()
 					if mesh is None:
 						self.output_message("No volume mesh found. Please compute and/or update the mesh first.")
 					else:
-						mesh.save(self.save_directory + self.save_filename + ".vtk")
-						self.output_message("Volume mesh saved in " + self.save_directory + self.save_filename + ".vtk" + ".")
+						self.tree.write_volume_mesh(file)
+						self.output_message("Volume mesh saved in " + file + ".")
 
 
 		except FileNotFoundError:
@@ -820,6 +869,8 @@ class Editor:
 
 		elif mode == 'model':
 
+			self.mesh_selection = [] # Reset the list of edges selected for meshing
+
 			def create_crsec_coords(coord, normal):
 
 	
@@ -925,6 +976,8 @@ class Editor:
 					n_list.append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
 				control_edges[e] = c2
 				control_nodes[e] = n_list
+
+				self.mesh_selection.append(e) # Add all the edges to the default meshing selection
 				
 
 			self.elements['model']['nodes'] = nodes
@@ -958,7 +1011,8 @@ class Editor:
 
 			mesh = self.tree.get_surface_mesh()
 			if mesh is None: 
-				mesh = self.tree.mesh_surface()
+				# Convert mesh selection from model graph to crsec graph
+				mesh = self.tree.mesh_surface(edg = self.converted_selection())
 
 			vertices = mesh.points
 			faces = mesh.faces.reshape((-1, 5))
@@ -979,7 +1033,15 @@ class Editor:
 			curves = {}
 			lines = {}
 			G = self.tree.get_crsec_graph()
-			for n in G.nodes():
+			node_list = []
+
+			for e in self.converted_selection():
+				if e[0] not in node_list:
+					node_list.append(e[0])
+				if e[1] not in node_list:
+					node_list.append(e[1])
+
+			for n in node_list:
 				crsec = G.nodes[n]['crsec']
 				if G.nodes[n]['type'] == "bif":
 					N = (self.tree._N // 2) - 1
@@ -1002,7 +1064,7 @@ class Editor:
 					c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
 					curves[n] = [c]
 
-			for e in G.edges():
+			for e in self.converted_selection():
 				crsec_list = G.edges[e]['crsec']
 				# Longitudinal curves
 				lines_list = []
@@ -1213,14 +1275,20 @@ class Editor:
 		else:
 
 			# Parameter update
-			if len(self.modified_elements[mode]['parameter']) > 0:
+			if self.modified_elements[mode]['parameter']:
 				self.disable(True)
 				self.tree.compute_cross_sections(self.N, self.d)
-				self.tree.mesh_surface()
+				self.tree.mesh_surface(edg = self.converted_selection())
 				self.disable(False)
 				
-				self.modified_elements[mode]['parameter'] = []
+				self.modified_elements[mode]['parameter'] = False
 
+			elif self.modified_elements[mode]['selection']:
+				self.disable(True)
+				self.tree.mesh_surface(edg = self.converted_selection())
+				self.disable(False)
+				
+				self.modified_elements[mode]['selection'] = False
 
 			else:
 				# Deform update
@@ -1236,6 +1304,16 @@ class Editor:
 		self.unselect("edge", mode)
 
 
+	def converted_selection(self):
+
+		converted_selection = []
+		for e in self.mesh_selection:
+			if self.tree.get_model_graph().nodes[e[0]]['type'] == 'bif':
+				converted_selection.append((e[1], e[0]))
+			else:
+				converted_selection.append(e)
+		return converted_selection
+
 
 
 
@@ -1244,7 +1322,7 @@ class Editor:
 		""" Modify the edges and nodes position according to the tree object modified graph, for a given mode.
 
 		Keyword arguments:
-		mode -- newtwork mode (full, topo, model, mesh)
+		mode -- network mode (full, topo, model, mesh)
 		"""
 
 
@@ -1372,7 +1450,6 @@ class Editor:
 							for i in range(len(self.elements[mode]["furcation_nodes"][n])):
 								self.elements[mode]["furcation_nodes"][n][i].visible = False
 
-
 				# Modify or add node
 				for n in nds:
 					coords = G.nodes[n]['coords']
@@ -1386,8 +1463,10 @@ class Editor:
 					self.elements[mode]["nodes"][n].visible = visible
 
 
-				# Remove edge is if required
+				# Remove edge if required
 				edj = [e for e in G.edges()]
+				self.mesh_selection = edj[:] #Update the mesh selection
+
 				edj_elt = list(self.elements[mode]["edges"].keys())[:]
 				for e in edj_elt:
 					if e not in edj:
@@ -1407,7 +1486,6 @@ class Editor:
 				for e in G.edges(): 
 	
 					spl = G.edges[e]['spline']
-					
 					if e in edj_elt: # Modify existing edge
 						# Update the control points positions
 						coords = spl.get_control_points()
@@ -1425,9 +1503,8 @@ class Editor:
 
 							self.elements[mode]["control_nodes"][e] = []
 
-
 							for i in range(len(coords)):
-								c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
+								c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), radius=0.2)
 								self.elements[mode]["control_nodes"][e].append(sphere(pos = vector(coords[i][0], coords[i][1], coords[i][2]), color=color.gray(0.5), radius=0.5, visible=False, mode = 'model', category = 'control_nodes', id = (e, i)))
 
 
@@ -1438,7 +1515,7 @@ class Editor:
 
 						c.clear()
 						for i in range(len(coords)):
-							c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), color=color.black, radius=0.2)
+							c.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), radius=0.2)
 						self.elements[mode]["control_edges"][e].visible = self.control_pts_checkbox.checked
 
 					else: # Create new edge
@@ -1466,26 +1543,24 @@ class Editor:
 							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
 
 						self.elements[mode]["edges"][e] = c
+
+			if self.edition_mode == "mesh":
+				self.show_mesh_selection(True)
+
 			else:
 
 				mesh = self.tree.get_surface_mesh()
 				if mesh is None:
-					mesh = self.tree.mesh_surface()
+					self.disable_checkboxes(True)
+					mesh = self.tree.mesh_surface(edg = self.converted_selection())
+					self.disable_checkboxes(False)
 
 
 				if mesh.n_faces != len(self.elements["mesh"]["surface"]):
 					self.hide("mesh")
 					self.elements["mesh"] = {}
-
 					self.create_elements("mesh")
 				else:
-
-					mesh = self.tree.get_surface_mesh()
-					if mesh is None:
-						self.output_message("Computing mesh...")
-						self.disable_checkboxes(True)
-						mesh = self.tree.mesh_surface()
-						self.disable_checkboxes(False)
 
 					vertices = mesh.points
 					faces = mesh.faces.reshape((-1, 5))
@@ -1762,6 +1837,23 @@ class Editor:
 			if not already_moved:
 				self.modified_elements[self.edition_mode]['move'].append([self.selected_node.category, self.selected_node.id, self.selected_node.pos, self.selected_node.radius])
 
+		if self.edition_mode == "mesh":
+
+			if evt.key == "a":
+				# Select all edges for meshing
+				self.mesh_selection = []
+				for e in self.tree.get_model_graph().edges():
+					self.mesh_selection.append(e)
+					self.elements['model']['edges'][e].color = color.red
+
+			elif evt.key == "n":
+				# Deselect all edges for meshing
+				self.mesh_selection = []
+				for e in self.tree.get_model_graph().edges():
+					self.elements['model']['edges'][e].color = color.black
+
+
+
 
 	###########################################
 	############# NODE EDITION ################
@@ -1773,12 +1865,24 @@ class Editor:
 
 		self.unselect("node", self.edition_mode)
 		self.unselect("edge", self.edition_mode)
+		if self.edition_mode == "mesh":
+			self.show_mesh_selection(False)
 
 		self.edition_mode = self.edition_menu.selected
+		if self.edition_mode == "mesh":
+			if self.tree.get_model_graph() is None:
+				self.edition_menu.selected = "off"
+				self.edition_mode = "off"
+				self.output_message("No model found. The meshing selection mode is not available. Please compute the model first.", "warning")
+
+			else:
+				self.show_mesh_selection(True)
+				self.output_message("Edition mode switched to " + self.edition_mode + ". The edges to mesh (in red) can be selected from the model representation. Press 'a' to select all and 'n' to deselect all. Click on an edge to select/unselect it." )
+
 		if self.edition_mode == "data":
 			self.edition_mode = "full"
 
-		self.output_message("Edition mode switched to " + self.edition_mode + ".")
+		#self.output_message("Edition mode switched to " + self.edition_mode + ".")
 
 
 	def resample_nodes(self, b):
@@ -1810,7 +1914,6 @@ class Editor:
 				else:
 					show_id = show_id + [pts_id[int(len(pts_id)/2)]]
 					
-
 		for k in self.elements["full"]["nodes"].keys():
 			if k not in show_id:
 				self.elements["full"]["nodes"][k].visible = False
@@ -1894,8 +1997,17 @@ class Editor:
 			self.drag = True
 			self.output_message("Origin cursor selected. Move it to the center of the image cut.")
 
+		elif type(obj) == curve and self.edition_mode == "mesh":
 
+				self.modified_elements["mesh"]['selection'] = True
 
+				if obj.id not in self.mesh_selection:
+					self.mesh_selection.append(obj.id)
+					self.elements['model']['edges'][obj.id].color = color.red
+				else:
+					self.mesh_selection.remove(obj.id)
+					self.elements['model']['edges'][obj.id].color = color.black
+					
 
 	def unselect(self, elt = "node", mode = None):
 
@@ -2034,13 +2146,13 @@ class Editor:
 			self.N = int(self.parameters_winput['N'].text)
 			self.output_message("Number of cross section nodes set to " + str(self.N) + ".")
 			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
-				self.modified_elements['mesh']['parameter'].append(True)
+				self.modified_elements['mesh']['parameter'] = True
 
 		elif b.parameter == "d":
 			self.d = float(self.parameters_winput['d'].text)
 			self.output_message("Density of cross section set to " + str(self.d) + ".")
 			if len(self.elements['mesh']['surface']) > 0: # If mesh is already computed
-				self.modified_elements['mesh']['parameter'].append(True)
+				self.modified_elements['mesh']['parameter'] = True
 
 		elif b.parameter == "search_dist":
 			self.search_dist  = float(self.parameters_winput['search_dist'].text)
@@ -2121,14 +2233,14 @@ class Editor:
 		if self.closing_state == False:
 
 			self.output_message("Closing surface inlets and outlets...")
-			self.tree.close_surface()
+			self.tree.close_surface(edg = self.converted_selection())
 			self.refresh_display("mesh")
 			self.closing_state = True
 			self.close_mesh_button.text = "Unclose"
 			self.output_message("Surface closed.")
 
 		else:
-			self.tree.open_surface()
+			self.tree.open_surface(edg = self.converted_selection())
 			self.refresh_display("mesh")
 			self.closing_state = False
 			self.close_mesh_button.text = "Close"
@@ -2143,25 +2255,25 @@ class Editor:
 		self.disable(True)
 
 		if self.extension_state == False:
-			self.output_message("Adding inlet and outlet extensions...")
-			self.tree.add_extensions()
 
-			self.refresh_display("model")
-			self.refresh_display("mesh")
 			self.extension_state = True
+			self.output_message("Adding inlet and outlet extensions...")
+			self.tree.add_extensions(edg = self.converted_selection())
+			self.refresh_display("model")
+			#self.refresh_display("mesh")
 			self.extension_button.text = "Unextend"
 			self.output_message("Extensions added.")
+			self.modified_elements["mesh"]["selection"] = True
 
 		else:
-
-			self.output_message("Removing inlet and outlet extensions...")
-			self.tree.add_extensions()
-
-			self.refresh_display("model")
-			self.refresh_display("mesh")
 			self.extension_state = False
+			self.output_message("Removing inlet and outlet extensions...")
+			self.tree.remove_extensions(edg = self.converted_selection())
+			self.refresh_display("model")
+			#self.refresh_display("mesh")
 			self.extension_button.text = "Extend"
 			self.output_message("Extensions removed.")
+			self.modified_elements["mesh"]["selection"] = True
 
 
 		self.disable(False)
@@ -2170,11 +2282,9 @@ class Editor:
 
 		self.disable(True)
 		self.output_message("Meshing the volume...")
-		self.tree.mesh_volume()
+		self.tree.mesh_volume(edg = self.converted_selection())
 		self.output_message("Volume meshed.")
 		self.disable(False)
-
-
 
 
 
