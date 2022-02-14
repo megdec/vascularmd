@@ -22,7 +22,6 @@ from utils import *
 class Editor:
 
 	""" Class to edit vascular networks with a vpython GUI """
-
 	def __init__(self, tree, width=1200, height=600):
 
 		"""
@@ -192,7 +191,7 @@ class Editor:
 		self.d = 0.2
 		self.display_spline_step = 10
 		self.search_dist = 40
-		scene.bind('mousedown', self.select)
+		scene.bind('click', self.select)
 		scene.bind('mousemove', self.move)
 		scene.bind('mouseup', self.drop)
 		scene.bind('keydown', self.keyboard_control)
@@ -202,8 +201,8 @@ class Editor:
 		self.drag = False
 		self.running = False
 		self.modified_elements = {'full' : {'move' : [], 'add' : [], 'delete' : []}, 'topo' : {'delete' : [], 'move' : [], 'merge' : []}, 'model' : {'move' : [], 'add' : [], 'delete' : [], 'lambda' : []}, 'mesh' : {'parameter' : False, 'deform' : [], 'selection' : False, 'vessels' : []}} # [categories, id (id dict, if not index), new pos, new_radius]
+		self.trash_elements = {'curves' : [], 'quads' : []}
 
-		#self.mesh_pool = {'curves' : [], 'quads' : []}
 		# Disable elements
 		self.disable(True, checkboxes = False)
 		# Generate full graph
@@ -212,11 +211,14 @@ class Editor:
 
 
 
+
+
 	###########################################
 	################ VISIBILITY ###############
 	###########################################
 
 	def reset_scene(self):
+
 		# Import tree
 		file = self.centerline_file_winput.text 
 		if file[-4:] == ".swc" or file[-4:] == ".vtp" or file[-4:] == ".txt":
@@ -469,15 +471,11 @@ class Editor:
 		self.slice.vs[3].opacity = alpha
 
 
-
-
-
-
 	def update_visibility_angle(self, checkbox):
 
 
 		if checkbox.checked: # Create angles labels
-			angles = self.tree.angle(1.0, mode=checkbox.mode)
+			angles = self.tree.angle(2.0, mode=checkbox.mode)
 
 			if "angles" not in self.elements["model"].keys():
 				self.elements[checkbox.mode]["angles"] = []
@@ -649,20 +647,20 @@ class Editor:
 
 			if m == "topo":
 				self.angle_checkbox_topo.disabled = disabled
-				self.angle_checkbox_topo.checked = False
+				#self.angle_checkbox_topo.checked = False
 
 			if m == "model":
 				self.extension_button.disabled = disabled
 				self.control_pts_checkbox.disabled = disabled
-				self.control_pts_checkbox.checked = False 
+				#self.control_pts_checkbox.checked = False 
 				if disabled:
 					self.control_radius_checkbox.disabled = disabled
-					self.control_radius_checkbox.checked = False
+					#self.control_radius_checkbox.checked = False
 				self.furcation_checkbox.disabled = disabled
-				self.furcation_checkbox.checked = False
+				#self.furcation_checkbox.checked = False
 
 				self.angle_checkbox_model.disabled = disabled
-				self.angle_checkbox_model.checked = False
+				#self.angle_checkbox_model.checked = False
 
 
 				if disabled:
@@ -862,8 +860,6 @@ class Editor:
 
 				edges[e] = c
 
-	
-
 			self.elements['topo']['nodes'] = nodes
 			self.elements['topo']['edges'] = edges
 
@@ -873,9 +869,7 @@ class Editor:
 
 			def create_crsec_coords(coord, normal):
 
-	
 				num = 20
-
 				v = np.zeros((num, 3))
 
 				angle = 2 * pi / num
@@ -1013,6 +1007,7 @@ class Editor:
 			if mesh is None: 
 				# Convert mesh selection from model graph to crsec graph
 				mesh = self.tree.mesh_surface(edg = self.converted_selection())
+				self.disable_close_check()
 
 			vertices = mesh.points
 			faces = mesh.faces.reshape((-1, 5))
@@ -1029,6 +1024,7 @@ class Editor:
 				f = faces[i]
 				q = quad(v0=v_obj[f[1]], v1=v_obj[f[2]], v2=v_obj[f[3]], v3=v_obj[f[4]], mode = 'mesh', category = 'surface', id = i)
 				quads.append(q)
+				self.trash_elements['quads'].append(q)
 
 			curves = {}
 			lines = {}
@@ -1053,6 +1049,7 @@ class Editor:
 							c.append(vector(crsec[s+k, 0], crsec[s+k, 1], crsec[s+k, 2]))
 						s += k + 1
 						c.append(vector(crsec[1, 0], crsec[1, 1], crsec[1, 2]))
+						self.trash_elements['curves'].append(c)
 						curve_list.append(c)
 					curves[n] = curve_list
 
@@ -1062,6 +1059,7 @@ class Editor:
 					for i in range(len(crsec)):
 						c.append(vector(crsec[i, 0], crsec[i, 1], crsec[i, 2]))
 					c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+					self.trash_elements['curves'].append(c)
 					curves[n] = [c]
 
 			for e in self.converted_selection():
@@ -1079,6 +1077,7 @@ class Editor:
 					end_sec = G.nodes[e[1]]['crsec']
 					l = G.edges[e]['connect'][i]
 					c.append(vector(end_sec[l][0], end_sec[l][1], end_sec[l][2]))
+					self.trash_elements['curves'].append(c)
 
 					lines_list.append(c)
 				lines[e] = lines_list
@@ -1091,6 +1090,7 @@ class Editor:
 					for j in range(len(crsec)):
 						c.append(vector(crsec[j, 0], crsec[j, 1], crsec[j, 2]))
 					c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+					self.trash_elements['curves'].append(c)
 					curve_list.append(c)
 				curves[e] = curve_list
 
@@ -1110,8 +1110,6 @@ class Editor:
 			self.node_size_sliders[mode].disabled = False
 		if mode in self.opacity_sliders.keys():
 			self.opacity_sliders[mode].disabled = False
-
-
 
 
 	def update_graph(self, b):
@@ -1216,11 +1214,20 @@ class Editor:
 				self.elements["mesh"] = {}
 				self.checkboxes['mesh'].checked = False
 
-
-			for e in self.modified_elements["topo"]["delete"]:
-				self.tree.remove_branch(e)
-
 			if len(self.modified_elements["topo"]["delete"]) > 0:
+
+				for e in self.modified_elements["topo"]["delete"]:
+					from_node = True
+					for edge in self.tree.get_topo_graph().out_edges(e[0]):
+						if edge not in self.modified_elements["topo"]["delete"]:
+							from_node = False
+
+					if from_node:
+						for edge in self.tree.get_topo_graph().out_edges(e[0]):
+							self.modified_elements["topo"]["delete"].remove(edge)
+						self.tree.remove_branch(e, from_node = True)
+					else:
+						self.tree.remove_branch(e)
 
 				self.modified_elements["topo"]["delete"] = []
 				self.refresh_display("topo")
@@ -1230,6 +1237,8 @@ class Editor:
 					self.refresh_display("model")
 
 				if len(self.elements["mesh"]) > 0:
+					self.tree.mesh_surface(edg = self.converted_selection())
+					self.disable_close_check()
 					self.refresh_display("mesh")
 				
 
@@ -1247,6 +1256,9 @@ class Editor:
 
 				if category == "control_nodes":
 
+					if ids[0] not in self.modified_elements["mesh"]['vessels']:
+						self.modified_elements["mesh"]['vessels'].append(ids[0])
+
 					P = G.edges[ids[0]]['spline'].get_control_points()
 					P[ids[1], :3] = [new_pos.x, new_pos.y, new_pos.z]
 					if radius is not None:
@@ -1260,25 +1272,37 @@ class Editor:
 				G.edges[elt[0]]['spline'] = elt[1]
 
 
-			self.tree.set_model_graph(G, down_replace = False)
+			self.tree.set_model_graph(G, replace = False, down_replace = False)
 
 			for k in self.modified_elements[mode]:
 				self.modified_elements[mode][k] = []
 
 			self.refresh_display("model")
-			self.hide("mesh")
-			self.elements["mesh"] = {}
-			self.checkboxes['mesh'].checked = False
+			#self.hide("mesh")
+			#self.elements["mesh"] = {}
+			#self.checkboxes['mesh'].checked = False
 			self.output_message("Model graph updated.")
 			
 
 		else:
+			if len(self.modified_elements["mesh"]['vessels']) != 0:
+				self.disable(True)
+				for e in self.modified_elements["mesh"]['vessels']:
+					# Recompute vessel cross sections
+					self.tree.vessel_cross_sections(e)
+
+				self.tree.mesh_surface(edg = self.converted_selection())
+				self.disable_close_check()
+				self.disable(False)
+				self.modified_elements["mesh"]['vessels'] = []
+
 
 			# Parameter update
 			if self.modified_elements[mode]['parameter']:
 				self.disable(True)
 				self.tree.compute_cross_sections(self.N, self.d)
 				self.tree.mesh_surface(edg = self.converted_selection())
+				self.disable_close_check()
 				self.disable(False)
 				
 				self.modified_elements[mode]['parameter'] = False
@@ -1286,6 +1310,7 @@ class Editor:
 			elif self.modified_elements[mode]['selection']:
 				self.disable(True)
 				self.tree.mesh_surface(edg = self.converted_selection())
+				self.disable_close_check()
 				self.disable(False)
 				
 				self.modified_elements[mode]['selection'] = False
@@ -1399,6 +1424,8 @@ class Editor:
 						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'topo', category = 'nodes', id = n, visible = visible) # Create new point
 					else:
 						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2])
+						self.elements[mode]["nodes"][n].color  = col[G.nodes[n]['type']]
+
 						self.elements[mode]["nodes"][n].visible = visible
 
 
@@ -1460,6 +1487,8 @@ class Editor:
 						self.elements[mode]["nodes"][n] = sphere(pos=pos, color=col[pt_type], radius=0.5, mode = 'model', category = 'nodes', id = n, visible = visible) # Create new point
 					else:
 						self.elements[mode]["nodes"][n].pos = vector(coords[0], coords[1], coords[2]) # Change coordinates
+						self.elements[mode]["nodes"][n].color = col[G.nodes[n]['type']]
+
 					self.elements[mode]["nodes"][n].visible = visible
 
 
@@ -1544,95 +1573,155 @@ class Editor:
 
 						self.elements[mode]["edges"][e] = c
 
-			if self.edition_mode == "mesh":
-				self.show_mesh_selection(True)
+				if self.edition_mode == "mesh":
+					self.show_mesh_selection(True)
 
 			else:
 
 				mesh = self.tree.get_surface_mesh()
 				if mesh is None:
-					self.disable_checkboxes(True)
+					self.disable(True)
 					mesh = self.tree.mesh_surface(edg = self.converted_selection())
-					self.disable_checkboxes(False)
+					self.disable_close_check()
+					self.disable(False)
 
 
-				if mesh.n_faces != len(self.elements["mesh"]["surface"]):
-					self.hide("mesh")
-					self.elements["mesh"] = {}
-					self.create_elements("mesh")
-				else:
+				self.hide("mesh")
 
-					vertices = mesh.points
-					faces = mesh.faces.reshape((-1, 5))
-					faces.astype('int32')
+				vertices = mesh.points
+				faces = mesh.faces.reshape((-1, 5))
+				faces.astype('int32')
 
-					v_obj = []
-					for v in vertices:
-						v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75)))
+				qc = 0
+				cc = 0
 
-					i = 0
-					for f in faces:
-						self.elements["mesh"]["surface"][i].v0 = v_obj[f[1]]
-						self.elements["mesh"]["surface"][i].v1 = v_obj[f[2]]
-						self.elements["mesh"]["surface"][i].v2 = v_obj[f[3]]
-						self.elements["mesh"]["surface"][i].v3 = v_obj[f[4]]
-						i+=1
-
-					G = self.tree.get_crsec_graph()
-					for n in G.nodes():
-						crsec = G.nodes[n]['crsec']
-
-						if G.nodes[n]['type'] == "bif":
-
-							N = (self.tree._N // 2) - 1
-							s = 2
-							for i in range(len(crsec) // N):
-								self.elements["mesh"]["section_edges"][n][i].modify(0, vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
-								c = 1
-								for k in range(N):
-									self.elements["mesh"]["section_edges"][n][i].modify(c, vector(crsec[s+k, 0], crsec[s+k, 1], crsec[s+k, 2]))
-									c +=1
-								s += k + 1
-								self.elements["mesh"]["section_edges"][n][i].modify(c,vector(crsec[1, 0], crsec[1, 1], crsec[1, 2]))
-
-						else:
+				v_obj = []
+				for i in range(len(vertices)):
+					v = vertices[i]
+					v_obj.append(vertex(pos=vector(v[0], v[1], v[2]), color=color.gray(0.75), id = i))
 							
-							for i in range(len(crsec)):
-								self.elements["mesh"]["section_edges"][n][0].modify(i, vector(crsec[i, 0], crsec[i, 1], crsec[i, 2]))
+				quads = []
+				for i in range(len(faces)):
+					f = faces[i]
+					if qc > len(self.trash_elements['quads']) - 1:
+						new_v = [vertex(pos=vector(0, 0, 0), color=color.gray(0.75), id = 0), vertex(pos=vector(0, 0, 0), color=color.gray(0.75), id = 0), vertex(pos=vector(0, 0, 0), color=color.gray(0.75), id = 0), vertex(pos=vector(0, 0, 0), color=color.gray(0.75), id = 0)]
+						self.trash_elements['quads'].append(quad(v0 = new_v[0], v1 = new_v[1], v2 = new_v[2], v3 = new_v[3], mode = 'mesh', category = 'surface', id = 0))
+					self.trash_elements['quads'][qc].v0 = v_obj[f[1]]
+					self.trash_elements['quads'][qc].v1 = v_obj[f[2]]
+					self.trash_elements['quads'][qc].v2 = v_obj[f[3]]
+					self.trash_elements['quads'][qc].v3 = v_obj[f[4]]
+					self.trash_elements['quads'][qc].id = i
 
-							self.elements["mesh"]["section_edges"][n][0].modify(len(crsec), vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
-					
-					for e in G.edges():
+					"""
+					self.trash_elements['quads'][qc].v0.pos = vector(vertices[f[1]][0], vertices[f[1]][1], vertices[f[1]][2])
+					self.trash_elements['quads'][qc].v0.id = f[1]
+					self.trash_elements['quads'][qc].v1.pos = vector(vertices[f[2]][0], vertices[f[2]][1], vertices[f[2]][2])
+					self.trash_elements['quads'][qc].v1.id = f[2]
+					self.trash_elements['quads'][qc].v2.pos = vector(vertices[f[3]][0], vertices[f[3]][1], vertices[f[3]][2])
+					self.trash_elements['quads'][qc].v2.id = f[3]
+					self.trash_elements['quads'][qc].v3.pos = vector(vertices[f[4]][0], vertices[f[4]][1], vertices[f[4]][2])
+					self.trash_elements['quads'][qc].v3.id = f[4]
+					self.trash_elements['quads'][qc].id = i
+					"""
 
-						crsec_list = G.edges[e]['crsec']
-						
-						# Longitudinal curves
-						for i in range(crsec_list.shape[1]):
+					quads.append(self.trash_elements['quads'][qc])
+					qc += 1
+				
+
+				curves = {}
+				lines = {}
+				G = self.tree.get_crsec_graph()
+				node_list = []
+
+				for e in self.converted_selection():
+					if e[0] not in node_list:
+						node_list.append(e[0])
+					if e[1] not in node_list:
+						node_list.append(e[1])
+
+				for n in node_list:
+					crsec = G.nodes[n]['crsec']
+					if G.nodes[n]['type'] == "bif":
+						N = (self.tree._N // 2) - 1
+						curve_list = []
+						s = 2
+						for i in range(len(crsec) // N):
+							if cc > len(self.trash_elements['curves']) - 1:
+								self.trash_elements['curves'].append(curve(radius=0.05, color = color.black, mode = 'mesh', category = 'section_edges'))
+							c = self.trash_elements['curves'][cc]
+							c.clear()
+							c.category = 'section_edges'
+							c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+							for k in range(N):
+								c.append(vector(crsec[s+k, 0], crsec[s+k, 1], crsec[s+k, 2]))
+							s += k + 1
+							c.append(vector(crsec[1, 0], crsec[1, 1], crsec[1, 2]))
+							cc+=1
+							curve_list.append(c)
+						curves[n] = curve_list
+
+
+					else:
+						if cc > len(self.trash_elements['curves']) - 1:
+							self.trash_elements['curves'].append(curve(radius=0.05, color = color.black, mode = 'mesh', category = 'section_edges'))
+						c = self.trash_elements['curves'][cc]
+						c.clear()
+						c.category = 'section_edges'
+						for i in range(len(crsec)):
+							c.append(vector(crsec[i, 0], crsec[i, 1], crsec[i, 2]))
+						c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+						cc+=1
+						curves[n] = [c]
+
+				for e in self.converted_selection():
+					crsec_list = G.edges[e]['crsec']
+					# Longitudinal curves
+					lines_list = []
+					for i in range(crsec_list.shape[1]):
+						if cc > len(self.trash_elements['curves']) - 1:
+								self.trash_elements['curves'].append(curve(radius=0.05, color = color.black, mode = 'mesh', category = 'section_edges'))
+
+						c = self.trash_elements['curves'][cc]
+						c.clear()
+						c.category = 'connecting_edges'
 							
-							# Starting point
-							start_sec = G.nodes[e[0]]['crsec']
-							self.elements["mesh"]["connecting_edges"][e][i].modify(0, vector(start_sec[i, 0], start_sec[i, 1], start_sec[i, 2]))
-							c = 1
-							for j in range(crsec_list.shape[0]):
-								self.elements["mesh"]["connecting_edges"][e][i].modify(c, vector(crsec_list[j, i, 0], crsec_list[j, i, 1], crsec_list[j, i, 2]))
-								c+=1
-								
-							# Ending point
-							end_sec = G.nodes[e[1]]['crsec']
-							l = G.edges[e]['connect'][i]
-							self.elements["mesh"]["connecting_edges"][e][i].modify(c,vector(end_sec[l][0], end_sec[l][1], end_sec[l][2]))
+						# Starting point
+						start_sec = G.nodes[e[0]]['crsec']
+						c.append(vector(start_sec[i, 0], start_sec[i, 1], start_sec[i, 2]))
+						for j in range(crsec_list.shape[0]):
+							c.append(vector(crsec_list[j, i, 0], crsec_list[j, i, 1], crsec_list[j, i, 2]))
+						# Ending point
+						end_sec = G.nodes[e[1]]['crsec']
+						l = G.edges[e]['connect'][i]
+						c.append(vector(end_sec[l][0], end_sec[l][1], end_sec[l][2]))
+						cc+=1
+						lines_list.append(c)
+					lines[e] = lines_list
 
-
-						# Cross section curves
-						for i in range(len(crsec_list)):
-							crsec = crsec_list[i]
+					# Cross section curves
+					curve_list = []
+					for i in range(len(crsec_list)):
+						crsec = crsec_list[i]
+						if cc > len(self.trash_elements['curves']) - 1:
+								self.trash_elements['curves'].append(curve(radius=0.05, color = color.black, mode = 'mesh', category = 'section_edges'))
+						c = self.trash_elements['curves'][cc]
+						c.clear()
+						c.category = 'section_edges'
+						for j in range(len(crsec)):
+							c.append(vector(crsec[j, 0], crsec[j, 1], crsec[j, 2]))
+						c.append(vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+						cc+=1
 							
-							for j in range(len(crsec)):
-								self.elements["mesh"]["section_edges"][e][i].modify(j, vector(crsec[j, 0], crsec[j, 1], crsec[j, 2]))
-							self.elements["mesh"]["section_edges"][e][i].modify(len(crsec),vector(crsec[0, 0], crsec[0, 1], crsec[0, 2]))
+						curve_list.append(c)
+					curves[e] = curve_list
 
 
+				self.elements['mesh']['surface'] = quads
+				self.elements['mesh']['section_edges'] = curves
+				self.elements['mesh']['connecting_edges'] = lines
+				self.show("mesh")
 
+				self.update_mesh_representation(self.mesh_representation_menu)
 
 	def reset_graph(self, b):
 
@@ -1903,11 +1992,11 @@ class Editor:
 
 			if len(pts_id)!=0:
 
-				if p!=0:
+				if p!=0 and len(pts_id)!=0:
 					# Resampling
 					step = int(len(pts_id)/(p*len(pts_id)))
 					if step > 0 and len(pts_id[:-1:step]) > 0:
-						show_id = show_id +  pts_id[:-1:step]
+						show_id = show_id +  pts_id[:-1:step][1:]
 						
 					else:
 						show_id = show_id + [pts_id[int(len(pts_id)/2)]]
@@ -1926,9 +2015,54 @@ class Editor:
 		""" Move the selected node with mouse cursor """
 		if self.selected_node is not None and self.drag:
 			if self.edition_mode == "full" or self.edition_mode == "model" or self.selected_node.mode == "cursor":
-				self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
+				if self.running == False:
+					self.running = True
+					self.selected_node.pos = scene.mouse.project(normal = scene.mouse.ray, point = self.selected_node.pos)#scene.mouse.pos #evt.pos
+					self.move_edges(self.edition_mode, self.selected_node.id, self.selected_node.pos)
+					self.running = False
 
 
+
+	def move_edges(self, edition_mode, ids, new_pos):
+		""" Move the edges as the nodes are modified """
+		if edition_mode == "full":
+			# Move the associated edge
+			G = self.tree.get_full_graph()
+			in_edges = list(G.in_edges(ids))
+			out_edges = list(G.out_edges(ids))
+
+			for e in in_edges:
+				# Modify cylinder
+				axis = new_pos - self.elements["full"]["edges"][e].pos
+			
+				self.elements["full"]["edges"][e].axis = axis
+				self.elements["full"]["edges"][e].length = mag(axis)
+
+			for e in out_edges:
+				# Modify cylinder
+				e1 = self.elements["full"]["edges"][e].pos + self.elements["full"]["edges"][e].axis / mag(self.elements["full"]["edges"][e].axis)*self.elements["full"]["edges"][e].length
+				axis = e1 - new_pos
+				self.elements["full"]["edges"][e].pos = new_pos
+				self.elements["full"]["edges"][e].axis = axis
+				self.elements["full"]["edges"][e].length = mag(axis)
+
+		elif edition_mode == "model":
+			c = self.elements['model']['control_edges'][ids[0]]
+			c.modify(ids[1], pos = new_pos) # Move control polygon
+			# Move spline
+			spl = copy.deepcopy(self.tree.get_model_graph().edges[ids[0]]['spline'])
+			new_P = spl.get_control_points().copy()
+			for i in range(c.npoints):
+				new_P[i,0] = c.point(i)['pos'].x
+				new_P[i,1] = c.point(i)['pos'].y
+				new_P[i,2] = c.point(i)['pos'].z
+			spl.set_control_points(new_P.tolist())
+			coords = spl.get_points()
+			coords = np.vstack((coords[0, :], coords[::self.display_spline_step, :], coords[-1, :]))
+			cspl = self.elements['model']['edges'][ids[0]]
+			cspl.clear()
+			for i in range(len(coords)):
+				cspl.append(pos=vector(coords[i][0], coords[i][1], coords[i][2]), radius=0.2)
 
 		
 	def drop(self, evt):
@@ -1955,14 +2089,23 @@ class Editor:
 				self.unselect("node")
 				
 
-
 	def select(self):
 
 		""" Select a node or edge by mouse clicking """
 
 		obj = scene.mouse.pick
 
-		if type(obj) == sphere and obj.mode == self.edition_mode:
+		if type(obj) == sphere and obj.mode == "full" and self.edition_mode =="full":
+	
+			self.unselect("node")
+
+			self.selected_node = obj
+			self.selected_node.color = color.yellow
+			self.drag = True
+			self.output_message("Node " + str(obj.id) + " selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
+
+
+		if type(obj) == sphere and obj.mode == "model" and self.edition_mode == "model" and obj.category == "control_nodes":
 	
 			self.unselect("node")
 
@@ -1970,6 +2113,7 @@ class Editor:
 			self.selected_node.color = color.yellow
 			self.drag = True
 			self.output_message("Node "  + str(obj.id) + " selected. Move it using the mouse. Press 'u' or 'd' to increase or lower the radius.")
+
 
 		elif type(obj) == curve and obj.mode == "model" and self.edition_mode == "model":
 			
@@ -2197,7 +2341,7 @@ class Editor:
 		if self.check_state == False:
 
 			self.output_message("Checking mesh...")
-			field, failed_edges, failed_bifs = self.tree.check_mesh()
+			field, failed_edges, failed_bifs = self.tree.check_mesh(edg = self.converted_selection())
 			
 			for i in range(len(field)):
 				if field[i] == 1:
@@ -2247,6 +2391,18 @@ class Editor:
 			self.output_message("Surface opened.")
 
 		self.disable(False)
+
+	def disable_close_check(self):
+
+		if self.closing_state:
+			self.closing_state = False
+			self.close_mesh_button.text = "Close"
+
+		if self.check_state:
+			self.check_state = False
+			self.check_mesh_button.text = "Check"
+
+
 
 
 	def manage_extensions(self):
