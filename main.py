@@ -26,20 +26,47 @@ import gc
 
 def test_editor(patient):
 
-
-	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/" + patient +".vtp"
+	#file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Aneurism/C0078.vtp"
 	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/C0091.vtp"
-	#file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc"
+	#file = "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P10.swc"
 	#file = "/home/decroocq/Documents/Thesis/Data/Test/P1_basilar.swc"
+	#file = "/home/decroocq/Documents/Thesis/Data/ITKTubeTK/Data/Normal-008/AuxillaryData/VascularNetwork.tre"
 
 	tree = ArterialTree("TestPatient", "BraVa", file)
+	file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/edited/P1/P1v16_meshed_volume.obj", 'rb')
+	tree = pickle.load(file)
 
+	'''
+	tree.model_network()#max_distance = 8)
+	tree.compute_cross_sections(24, 0.2, True)  
+	mesh = tree.mesh_surface()
+
+	#file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/edited/P10/P10v5_meshed.obj", 'wb')
+	#pickle.dump(tree, file)
 	
-	#file = open("/home/decroocq/Documents/Thesis/Communications/Images/Editor/basilar/tree.model_org", 'rb') 
-	#tree = pickle.load(file)
+	mesh = mesh.compute_cell_quality('scaled_jacobian')	
+	color_field, failed_edges, failed_bifs = tree.check_mesh(thres = 0)
+	print("Failure :", failed_edges, failed_bifs)
+	mesh['check'] = color_field
+	mesh.save("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/edited/P10/P10v6.vtk")
 	
+	
+
+	# OPENFOAM MESH
+	volume_mesh = tree.mesh_volume()
+	volume_mesh.plot(show_edges=True)
+	#tree.write_volume_mesh("")
+	'''
+	
+	
+	# Write OpenFoam file
+	simu = Simulation(tree, "/home/decroocq/Documents/Thesis/Scripts/Simulation/OpenFoam/Cases/P1") #Basiliar/Hexa")
+	simu.write_mesh_files_numpy()
+	simu.write_pressure_boundary_condition_file()
+	simu.write_velocity_boundary_condition_file([0.2])
+	
+
 	e = Editor(tree, 1500, 800)
-
 
 
 def test_aneurisk(patient):
@@ -257,7 +284,15 @@ def test_txt_file():
 	file = "/home/decroocq/Documents/Thesis/Data/Test/ideal.txt"
 	tree = ArterialTree("TestPatient", "BraVa", file)
 	tree.show(True, False, False)
-	e = Editor(tree)
+	#e = Editor(tree)
+	import networkx as nx
+	G = tree.get_full_graph()
+	H = G.__class__()
+
+	H.add_nodes_from(G)
+
+	H.add_edges_from(G.edges)
+	nx.write_gml(H, "tree.gml")
 
 def show_edges_data():
 
@@ -325,7 +360,7 @@ def test_brava(filename, patient):
 	mesh['check'] = color_field
 
 	t2 = time.time()
-	mesh.save("Results/BraVa/surface/" + patient + ".vtk")
+	mesh.save("/home/decroocq/Documents/Thesis/Data/Output/BraVa/surface/" + patient + ".vtk")
 	#mesh.plot(show_edges = True)
 
 	"""
@@ -336,7 +371,7 @@ def test_brava(filename, patient):
 	"""
 
 	print("The process took ", t2 - t1, "seconds." )
-	file = open("Results/BraVa/network/" + patient + ".obj", 'wb') 
+	file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/" + patient + ".obj", 'wb') 
 	pickle.dump(tree, file)
 
 	del mesh
@@ -418,14 +453,98 @@ def rewrite_surface_meshes():
 			print(patient + " could not be loaded.")
 
 
+def test_meshio():
+	import meshio
+	#mesh = meshio.read("/home/decroocq/Documents/Thesis/Data/Test/volume.vtk")
+	#mesh.write("volume.msh")
+
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Vessels/Healthy/C0091.vtp"
+	tree = ArterialTree("TestPatient", "BraVa", file)
+	tree.low_sample(0.1)
+	tree.model_network()
+	tree.compute_cross_sections(24, 0.2, False)
+	mesh = tree.mesh_surface()
+	mesh = tree.mesh_volume()
+
+	mesh = tree.get_volume_mesh()
+	mesh.write("volume.msh")
+
+
+def test_ArterialTreeTet():
 	
+	from ArterialTreeTet import ArterialTreeTet
+
+	file = "/home/decroocq/Documents/Thesis/Data/Aneurisk/Bifurcations/C0099.vtp"
+
+	tree = ArterialTreeTet("TestPatient", "BraVa", file)
+	
+	tree.low_sample(0.3)
+	tree.model_network()
+	
+
+	tree.compute_cross_sections(24, 0.2, False)
+	mesh = tree.mesh_surface()
+	#mesh = tree.get_surface_mesh()
+	mesh.save("tet.vtm")
+
+
+def test_brava_volume():
+
+	tree = ArterialTree("P1", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc")
+
+	t1 = time.time()
+	tree.model_network(max_distance = 4)
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	tree.compute_cross_sections(24, 0.2, True)   
+	t2 = time.time()
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_surface()
+	t2 = time.time()
+
+	print("The process took ", t2 - t1, "seconds." )
+
+	t1 = time.time()
+	mesh = tree.mesh_volume()
+	t2 = time.time()
+
+	print("The process took ", t2 - t1, "seconds." )
+
+	file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/P1.obj", 'wb') 
+	pickle.dump(tree, file)
+
+	#tree.write_volume_mesh(output = "/home/decroocq/Documents/Thesis/Data/Output/BraVa/volume/P1.msh")
+
+
+
+def test_brava_volume_meshio():
+
+	file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/P1.obj", 'rb')
+	tree = pickle.load(file)
+
+	tree.write_volume_mesh(output = "/home/decroocq/Documents/Thesis/Data/Output/BraVa/volume/P1.vtk")
+
+
+
+def edit_brava():
+
+	file = open("/home/decroocq/Documents/Thesis/Data/Output/BraVa/network/P1.obj", 'rb')
+	tree = pickle.load(file)
+	#tree = ArterialTree("P1", "BraVa", "/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Renamed/P1.swc")
+	e = Editor(tree)
+
+
 
 
 #launch_brava_meshing()
 #test_part_meshing()
 #show_edges_data()
 
-#test_brava("P" + str(i))
+#test_brava("/home/decroocq/Documents/Thesis/Data/BraVa/Centerlines/Registered/P1.swc", "P1")
 
 #test_topo_correction()
 test_editor("C0006")
@@ -438,3 +557,8 @@ test_editor("C0006")
 #open_volume("Results/Validation/Mesh/Volumes/P20/")
 #add_quality_field("/home/decroocq/Documents/Thesis/Scripts/Meshing/Python/structured-meshing-arterial-tree/Results/BraVa/surface/P3.vtk", "P3_with_fields.vtk")
 #rewrite_surface_meshes()
+#test_meshio()
+#test_ArterialTreeTet()
+#test_brava_volume()
+#edit_brava()
+#test_fenics()

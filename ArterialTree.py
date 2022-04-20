@@ -185,6 +185,7 @@ class ArterialTree:
 	#############  SETTERS  #############
 	#####################################
 
+
 	def set_full_graph(self, G):
 
 		""" Set the full graph of the arterial tree."""
@@ -243,8 +244,13 @@ class ArterialTree:
 		elif filename[-4:] == ".txt":
 			print('Loading ' + filename[-3:] + ' file...')
 			self._full_graph = self.__txt_to_graph(filename)
+
+		elif filename[-4:] == ".tre":
+			print('Loading ' + filename[-3:] + ' file...')
+			self._full_graph = self.__tre_to_graph(filename)
+
 		else:
-			raise ValueError("The provided files must be in swc, vtp or vtk format.")
+			raise ValueError("The provided files must be in swc, vtp, tre or vtk format.")
 
 
 
@@ -260,6 +266,7 @@ class ArterialTree:
 		nx.set_node_attributes(self._topo_graph, None, name="full_id")
 		nx.set_edge_attributes(self._topo_graph, None, name="full_id")
 
+		#nx.set_node_attributes(self._full_graph, None, name="topo_id")
 
 		for n in self._full_graph.nodes():
 
@@ -285,11 +292,13 @@ class ArterialTree:
 		# Store the matching of full graph node numbers
 		for n in self._topo_graph.nodes():
 			self._topo_graph.nodes[n]["full_id"] = n
+			#self._full_graph.nodes[n]["topo_id"] = [n]
 		for e in self._topo_graph.edges():
 			path = list(nx.all_simple_paths(self._full_graph, source=e[0], target=e[1]))[0]
 			self._topo_graph.edges[e]["full_id"] = path[1:-1]
+			#for i in range(1, len(path)-1):
+				#self._full_graph.nodes[path[i]]["topo_id"] = [e, i-1]
 		
-
 		# Relabel nodes
 		self._topo_graph = nx.convert_node_labels_to_integers(self._topo_graph, first_label=1, ordering='default', label_attribute=None)
 
@@ -346,6 +355,7 @@ class ArterialTree:
 		# Add rotation information on bifs and edges
 		for e in self._model_graph.edges():
 			self.__compute_rotations(e)
+
 
 
 	def __model_furcation(self, n, original_label, criterion, akaike, max_distance):
@@ -2215,7 +2225,7 @@ class ArterialTree:
 
 		ndict = {}
 		for n in self._topo_graph.nodes():
-			G.add_node(k, coords = self._topo_graph.nodes[n]['coords'])
+			G.add_node(k, coords = self._topo_graph.nodes[n]['coords']) #, topo_id = [n])
 			self._topo_graph.nodes[n]["full_id"] = k
 			ndict[n] = k
 			k  = k + 1
@@ -2226,7 +2236,7 @@ class ArterialTree:
 			if len(pts) == 0:
 
 				G.add_edge(ndict[e[0]], ndict[e[1]], coords = np.array([]).reshape(0,4))
-				self._topo_graph.edges[e]["full_id"] = np.array([])
+				self._topo_graph.edges[e]["full_id"] = []
 
 			else: 
 
@@ -2238,7 +2248,7 @@ class ArterialTree:
 
 				for i in range(1, len(pts)):
 
-					G.add_node(k, coords = pts[i])
+					G.add_node(k, coords = pts[i]) #,topo_id = [e, i])
 					self._topo_graph.edges[e]["full_id"][i] = k
 
 					G.add_edge(k - 1, k, coords = np.array([]).reshape(0,4))
@@ -2779,7 +2789,6 @@ class ArterialTree:
 
 				for e in self._topo_graph.out_edges(n):
 					d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
-
 					full_id = self._topo_graph.edges[(pred, e[0])]['full_id'] + [self._topo_graph.nodes[e[0]]['full_id']] + self._topo_graph.edges[(e)]['full_id']
 					self._topo_graph.add_edge(pred, e[1], coords = d, full_id = full_id)
 
@@ -2847,7 +2856,7 @@ class ArterialTree:
 	 
 				# Create tables of regular nodes data
 				coords = np.vstack((self._topo_graph.edges[eprec]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[esucc]['coords']))
-				ids = np.hstack((self._topo_graph.edges[eprec]['full_id'], self._topo_graph.nodes[e[0]]['full_id'], self._topo_graph.edges[esucc]['full_id']))
+				ids = self._topo_graph.edges[eprec]['full_id'] + [self._topo_graph.nodes[e[0]]['full_id']] + self._topo_graph.edges[esucc]['full_id']
 				
 				# Create new edge by merging the 2 edges of regular point
 				self._topo_graph.add_edge(eprec[0], esucc[1], coords = coords, full_id = ids)
@@ -3069,7 +3078,6 @@ class ArterialTree:
 				for i in range(len(G.edges[e]['coords'])):
 					G.edges[e]['coords'][i] = G.edges[e]['coords'][i] + val
 
-
 		self.set_topo_graph(G)
 
 
@@ -3125,15 +3133,46 @@ class ArterialTree:
 		
 
 
-
-
 	#####################################
 	#############  ANALYSIS  ############
 	#####################################
 
-	def angle(self, dist, mode="topo"):
+	def convert_edge_mode(self, edg, mode1 = "crsec", mode2 = "topo"):
+		""" Find the correspondance between edges of mode1 and mode2. """
+		matching_edg = []
+		edg_list = [e for e in self._topo_graph.edges()]
+		if mode1 == "crsec" and mode2 == "topo":
+			for e in edg:
+				if self._crsec_graph.nodes[e[0]]["type"] == "sep" and (self._crsec_graph.nodes[e[1]]["type"] == "sep" or self._crsec_graph.nodes[e[1]]["type"] == "end"):
+				
+					e0 = list(self._model_graph.predecessors(list(self._model_graph.predecessors(e[0]))[0]))[0]
+					e1 = e[1]
+
+				elif self._crsec_graph.nodes[e[0]]["type"] == "sep" and self._crsec_graph.nodes[e[1]]["type"] == "bif":
+				
+					e1 = e[0]
+					connect = list(self._model_graph.in_edges(e[0])) + list(self._model_graph.out_edges(e[0]))
+					connect.remove(e[1])
+					e0 = connect[0]
+				else:
+
+					e0 = e[0]
+					e1 = e[1]
+				if (e0, e1) not in edg_list:
+					print("Matching error!")
+				matching_edg.append((e0, e1))
+		else:
+			print("The conversion you required is not supported yet.")
+		return matching_edg
+			
+
+
+	def angle(self, distance=None, mode="topo"):
 
 		""" Compute the angles between branches and displays the centerline network in 3D viewer"""
+
+		if distance is not None:
+				dist = distance
 
 		if mode == "topo":
 
@@ -3150,6 +3189,10 @@ class ArterialTree:
 					out_edg = list(G.out_edges(n))
 					out_edg.sort()
 					for e in out_edg:
+						if distance is None:
+							mean_radius = np.mean(G.edges[e]['coords'][:,-1])
+							dist = mean_radius * 2
+
 						l = length_polyline(G.edges[e]['coords'])
 						i2 = np.argmax(l>dist)
 						if i2 == 0:
@@ -3176,37 +3219,15 @@ class ArterialTree:
 
 			for n in G.nodes():
 				if G.nodes[n]['type'] == "bif":
-					bif_coord = G.nodes[n]['coords'][:-1]
-					out_coord = []
 
-					out_edg = list(G.out_edges(n))
-					out_edg.sort()
-					for e in out_edg:
-						spl = G.edges[e]['spline']
-						l = spl.length() 
-						if l < dist:
-							for e2 in G.out_edges(e[1]):
-								spl2 = G.edges[e]['spline']
-								l2 = spl2.length() 
-								if l + l2 < dist:
-									t = 1.0
-								else:
-									t = spl2.length_to_time(dist - l)
-								out_coord.append(spl2.point(t))
-						else:
-							t = spl.length_to_time(dist)
-							out_coord.append(spl2.point(t))
+					bif = G.nodes[n]['bifurcation']
+					angle_list, vectors = bif.get_angles()
+					
+					
+					for i in range(len(angle_list)):
 
-					for i in range(len(out_coord)-1):
-
-						v1 = out_coord[i][:-1] - bif_coord
-						v2 =  out_coord[i+1][:-1] - bif_coord
-						pos = bif_coord + ((v1/norm(v1) + v2/norm(v2)) / 2)*5
-
-						a = angle(v1, v2) # Compute angle
-						a = int(180 * a / pi)
-
-						angles.append((n, pos, a))
+						pos = G.nodes[n]['coords'] + ((vectors[i][0]/norm(vectors[i][0]) + vectors[i][1]/norm(vectors[i][1])) / 2)*5
+						angles.append((n, pos, angle_list[i]))
 
 		return angles
 
@@ -3365,14 +3386,14 @@ class ArterialTree:
 		failed_crsec = []
 
 		color_field = np.zeros((len(self._surface_mesh[1]),), dtype = bool)
-
+		
 		for n in nds:
 			if G.nodes[n]["type"] == "bif":
 				print("Checking bif", n)
 			
-				edg = [e for e in G.in_edges(n)] + [e for e in G.out_edges(n)] 
+				edg_list = [e for e in G.in_edges(n)] + [e for e in G.out_edges(n)] 
 
-				m = self.mesh_volume(edg=edg, link=True)
+				m = self.mesh_volume(edg=edg_list, link=True)
 				link_vol = self.get_volume_link()
 				m = m.compute_cell_quality('scaled_jacobian')	
 				
@@ -3384,9 +3405,10 @@ class ArterialTree:
 				if np.min(tab) <= thres:
 					failed_bifs.append(n) 
 
+
 		for e in edg:
-			if G.nodes[e[1]]["type"] != "bif" or G.nodes[e[0]]["type"] != "bif":
-				print("Checking edg", edg)
+			if G.nodes[e[1]]["type"] != "bif" and G.nodes[e[0]]["type"] != "bif":
+				print("Checking edg", e)
 				
 				m = self.mesh_volume(edg = [e], link=True)
 				link_vol = self.get_volume_link()
@@ -3631,7 +3653,6 @@ class ArterialTree:
 
 		Keyword arguments:
 		filename -- path to vmtk .vtk or .vtp centerline file with branch extracted
-		type -- vtk centerline data type, either branch or group
 		"""
 
 		G = nx.DiGraph() # Create graph
@@ -3711,6 +3732,45 @@ class ArterialTree:
 
 		return G
 
+
+	def __tre_to_graph(self, filename):
+
+		""" Converts vmtk centerline to a graph.
+
+		Keyword arguments:
+		filename -- path to vmtk .vtk or .vtp centerline file with branch extracted
+		"""
+
+		G = nx.DiGraph()
+
+		with open(filename) as fp:
+
+			line = fp.readline()
+			k = 1
+
+			while line:
+
+				l = line.split()
+
+				if l[0] == 'NPoints':
+					N = int(l[2])
+
+				if l[0] == 'Points':
+					for i in range(N):
+						line = fp.readline()
+						l = line.split()
+
+						c = np.array([float(l[0]), float(l[1]), float(l[2]), float(l[3])])
+						G.add_node(k, coords = c)
+
+						if i != 0:
+							G.add_edge(k-1, k, coords = np.array([]).reshape(0,4))
+
+						k = k + 1
+
+				line = fp.readline()
+		
+		return G
 
 
 

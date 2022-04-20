@@ -26,7 +26,6 @@ class Simulation:
 		self.arterial_tree = arterial_tree
 		self.output_dir = output_dir
 		
-
 		crsec_graph = self.arterial_tree.get_crsec_graph()
 
 		self.inlet_nodes = []
@@ -158,8 +157,13 @@ FoamFile
 
 		""" Writes the mesh openFoam files 
 		"""
-
+		print("Writing mesh")
 		output_dir = self.output_dir + "/constant/polyMesh/"
+		try:
+			os.makedirs(output_dir)
+		except OSError as error:
+			print("Overwriting the current case folder.")
+
 		volume = self.mesh
 		surfaces =  self.boundary_patches
 
@@ -194,7 +198,7 @@ FoamFile
 		iter.InitTraversal()
 		boundary_id = 0
 		while not iter.IsDoneWithTraversal():
-			polyData = iter.GetCurrentDataObject()
+			polyData = iter.GetCurrentDataObject() # Iterate over boundaries
 
 			if not polyData.IsA("vtkPolyData"):
 				print("ERROR: unexpected input (not vtkPolyData)")
@@ -202,7 +206,7 @@ FoamFile
 
 			nc = polyData.GetNumberOfCells()
 
-			for i in range(nc):
+			for i in range(nc): # Iterate of the boundary cells
 				cell = polyData.GetCell(i)
 				midpoint = get_midpoint(cell)
 				boundary_mid_points.InsertNextPoint(midpoint)
@@ -217,7 +221,10 @@ FoamFile
 		loc.SetDataSet(boundary_dataset)
 		loc.BuildLocator()
 
-		# map from boundaries to a list of tuples containing point ids and the cell id
+		print("Start to write cell lists.")
+		
+		# Map from boundaries to a list of tuples containing point ids and the cell id
+
 		boundary_faces = []
 		for i in range(num_boundaries):
 			boundary_faces.append([])
@@ -228,6 +235,7 @@ FoamFile
 		nc = volume.GetNumberOfCells()
 
 		for cell_id in range(nc):
+			
 
 			cell = volume.GetCell(cell_id)
 			nf = cell.GetNumberOfFaces()
@@ -264,8 +272,11 @@ FoamFile
 
 		for i in range(num_boundaries):
 			print(boundary_names[i] + ":", len(boundary_faces[i]),  "faces")
+		print('Internal cells : ', len(internal_faces))
 
 		# write files
+		print("Start to write files.")
+
 		points_file = open(os.path.join(output_dir, "points"), "w")
 		points_file.write(file_header)
 		points_file.write(self.file_description(2.0, "ascii", "vectorField", "points"))
@@ -345,13 +356,278 @@ FoamFile
 		boundary_file.write(")\n")
 		boundary_file.write(bottom_separator)
 		boundary_file.close()
+		print("Mesh written successfully.")
+
+
+
+	def write_mesh_files_numpy(self):
+
+		""" Writes the mesh openFoam files 
+		"""
+		print("Writing mesh")
+		output_dir = self.output_dir + "/constant/polyMesh/"
+		try:
+			os.makedirs(output_dir)
+		except OSError as error:
+			print("Overwriting the current case folder.")
+
+		volume = self.mesh
+		surfaces =  self.boundary_patches
+
+		file_header = self.file_header()
+		top_separator = self.top_separator()
+		bottom_separator = self.bottom_separator()
+
+
+		def get_midpoint(cell):
+
+			num_p = cell.GetNumberOfPoints()
+			pts = cell.GetPoints()
+			midpoint = np.array([0.0,0.0,0.0])
+
+			for i in range(num_p):
+				midpoint += pts.GetPoint(i)
+			midpoint /= num_p
+
+			return midpoint
+
+		def write_face(face_points):
+			return "%d(%s)\n" % (len(face_points), " ".join([str(p) for p in face_points]))
+
+
+		boundary_names = [name for name in surfaces.keys()]
+
+		boundary_mid_points = vtk.vtkPoints()
+		boundary_id_array = vtk.vtkIntArray()
+
+		iter = surfaces.NewIterator()
+		iter.UnRegister(None)
+		iter.InitTraversal()
+		boundary_id = 0
+		while not iter.IsDoneWithTraversal():
+			polyData = iter.GetCurrentDataObject() # Iterate over boundaries
+
+			if not polyData.IsA("vtkPolyData"):
+				print("ERROR: unexpected input (not vtkPolyData)")
+				exit(1)
+
+			nc = polyData.GetNumberOfCells()
+
+			for i in range(nc): # Iterate of the boundary cells
+				cell = polyData.GetCell(i)
+				midpoint = get_midpoint(cell)
+				boundary_mid_points.InsertNextPoint(midpoint)
+				boundary_id_array.InsertNextValue(boundary_id)
+			boundary_id += 1
+			iter.GoToNextItem()
+		num_boundaries = boundary_id
+
+		loc = vtk.vtkKdTreePointLocator()
+		boundary_dataset = vtk.vtkPolyData()
+		boundary_dataset.SetPoints(boundary_mid_points)
+		loc.SetDataSet(boundary_dataset)
+		loc.BuildLocator()
+
+
+		print("Computing the number of faces.")
+
+		nb_boundary_faces = []
+		for i in range(num_boundaries):
+			nb_boundary_faces.append(0)
+		nb_internal_faces = 0
+
+		volume.BuildLinks()
+		nc = volume.GetNumberOfCells()
+
+		for cell_id in range(nc):
+
+			cell = volume.GetCell(cell_id)
+			nf = cell.GetNumberOfFaces()
+			#cell_internal_faces = {}
+			for face_id in range(nf):
+				face = cell.GetFace(face_id)
+				neighbour_cell_ids = vtk.vtkIdList()
+				face_point_ids = face.GetPointIds()
+				volume.GetCellNeighbors(cell_id, face.GetPointIds(), neighbour_cell_ids)
+				nn = neighbour_cell_ids.GetNumberOfIds()
+				if nn == 0:
+					# boundary
+					face_midpoint = get_midpoint(face)
+					boundary_id = boundary_id_array.GetValue(loc.FindClosestPoint(face_midpoint))
+					nb_boundary_faces[boundary_id] += 1 
+
+				elif nn == 1:
+					# internal
+					neighbour_cell_id = neighbour_cell_ids.GetId(0)
+					if cell_id < neighbour_cell_id:
+						nb_internal_faces += 1 
+				else:
+					print("ERROR: face associated with more than 2 cells")
+					exit(1)
+
+		for i in range(num_boundaries):
+			print(boundary_names[i] + ":", nb_boundary_faces[i],  "faces")
+		print('Internal cells : ', nb_internal_faces)
+
+				# write files
+		print("Write point file.")
+
+		points_file = open(os.path.join(output_dir, "points"), "w")
+		points_file.write(file_header)
+		points_file.write(self.file_description(2.0, "ascii", "vectorField", "points"))
+		points_file.write(top_separator)
+		num_p = volume.GetNumberOfPoints()
+		pts = volume.GetPoints()
+		points_file.write("%d\n(\n" % num_p)
+
+		for i in range(num_p):
+			points_file.write("(%f %f %f)\n" % pts.GetPoint(i))
+
+		points_file.write(")\n")
+		points_file.write(bottom_separator)
+		points_file.close()
+		print("Point file written.")
+
+
+
+		print("Mapping faces.")
+		# Map from boundaries to a list of tuples containing point ids and the cell id
+		boundary_faces = []
+		boundary_counter = []
+		for i in range(num_boundaries):
+			boundary_faces.append(np.zeros((nb_boundary_faces[i], 5), dtype = int))
+			boundary_counter.append(0)
+		internal_counter = 0
+
+		volume.BuildLinks()
+		nc = volume.GetNumberOfCells()
+
+		internal_faces = np.zeros((nb_internal_faces, 6), dtype = int)
+
+		for cell_id in range(nc):
+			
+			cell = volume.GetCell(cell_id)
+			nf = cell.GetNumberOfFaces()
+			cell_internal_faces = {}
+			for face_id in range(nf):
+				face = cell.GetFace(face_id)
+				neighbour_cell_ids = vtk.vtkIdList()
+				face_point_ids = face.GetPointIds()
+				volume.GetCellNeighbors(cell_id, face.GetPointIds(), neighbour_cell_ids)
+				nn = neighbour_cell_ids.GetNumberOfIds()
+				if nn == 0:
+					# boundary
+					face_midpoint = get_midpoint(face)
+					boundary_id = boundary_id_array.GetValue(loc.FindClosestPoint(face_midpoint))
+					boundary_faces[boundary_id][boundary_counter[boundary_id], :] = np.array([face.GetPointId(p) for p in range(face.GetNumberOfPoints())]+[cell_id]) #np.vstack((boundary_faces[boundary_id], np.array([face.GetPointId(p) for p in range(face.GetNumberOfPoints())]+[cell_id])))
+					boundary_counter[boundary_id] +=1
+
+				elif nn == 1:
+					# internal
+					neighbour_cell_id = neighbour_cell_ids.GetId(0)
+					if cell_id < neighbour_cell_id:
+						cell_internal_faces[neighbour_cell_id] = np.array([face.GetPointId(p) for p in range(face.GetNumberOfPoints())] + [cell_id] + [neighbour_cell_id])
+
+						#internal_faces[neighbour_cell_id,:] =  #np.vstack((internal_faces, np.array([face.GetPointId(p) for p in range(face.GetNumberOfPoints())] + [cell_id] + [neighbour_cell_id])))
+				else:
+					print("ERROR: face associated with more than 2 cells")
+					exit(1)
+
+			ids = list(cell_internal_faces.keys())
+			ids.sort()
+			for f in ids:
+				internal_faces[internal_counter, :] = cell_internal_faces[f]
+				internal_counter += 1
+			
+
+			#internal_faces = internal_faces[internal_faces[:,5].argsort()]
+			#ids = list(cell_internal_faces.keys())
+			#ids.sort()
+			#for f in ids:
+				#internal_faces.append(cell_internal_faces[f])
+
+
+		print("Write face file.")
 		
+		faces_file = open(os.path.join(output_dir, "faces"), "w")
+		faces_file.write(file_header)
+		faces_file.write(self.file_description(2.0, "ascii", "faceList", "faces"))
+		faces_file.write(top_separator)
+		total_faces = len(internal_faces)
+		for i in range(num_boundaries):
+			total_faces += len(boundary_faces[i])
+
+		faces_file.write("%d\n(\n" % total_faces)
+		for i in range(len(internal_faces)):
+			faces_file.write(write_face(internal_faces[i,:4].tolist()))
+		for b in boundary_faces: 
+			for j in range(len(b)):
+				faces_file.write(write_face(b[j,:4].tolist()))
+		faces_file.write(")\n")
+		faces_file.write(bottom_separator)
+		faces_file.close()
+
+		print("Face file written.")
+
+		neighbour_file = open(os.path.join(output_dir, "neighbour"), "w")
+		neighbour_file.write(file_header)
+		neighbour_file.write(self.file_description(2.0, "ascii", "labelList", "neighbour"))
+		neighbour_file.write(top_separator)
+		neighbour_file.write("%d\n(\n" % len(internal_faces))
+		for i in range(len(internal_faces)):
+			neighbour_file.write("%d\n" % internal_faces[i, 5])
+		neighbour_file.write(")\n")
+		neighbour_file.write(bottom_separator)
+		neighbour_file.close()
+
+		owner_file = open(os.path.join(output_dir, "owner"), "w")
+		owner_file.write(file_header)
+		owner_file.write(self.file_description(2.0, "ascii", "labelList", "owner"))
+		owner_file.write(top_separator)
+		owner_file.write("%d\n(\n" % total_faces)
+		for i in range(len(internal_faces)):
+			owner_file.write("%d\n" % internal_faces[i,4])
+		for b in boundary_faces: 
+			for j in range(len(b)):
+				owner_file.write("%d\n" % b[j, 4])
+		owner_file.write(")\n")
+		owner_file.write(bottom_separator)
+		owner_file.close()
+
+		boundary_file = open(os.path.join(output_dir, "boundary"), "w")
+		boundary_file.write(file_header)
+		boundary_file.write(self.file_description(2.0, "ascii", "polyBoundaryMesh", "boundary"))
+		boundary_file.write(top_separator)
+		start_face = len(internal_faces)
+		boundary_file.write("%d\n(\n" % num_boundaries)
+
+		for i in range(num_boundaries):
+			boundary_file.write(boundary_names[i] + 
+		"""
+		{
+			type patch;
+			nFaces %d;
+			startFace %d;
+		}
+		""" % (len(boundary_faces[i]), start_face))
+			start_face += len(boundary_faces[i])
+
+		boundary_file.write(")\n")
+		boundary_file.write(bottom_separator)
+		boundary_file.close()
+		print("Mesh written successfully.")
+
 
 	def write_pressure_boundary_condition_file(self):
 
 		""" Writes the boundary condition files for pressure """
 
 		boundary_names = [name for name in self.boundary_patches.keys()]
+
+		try:
+			os.makedirs(self.output_dir + "/0/")
+		except OSError as error:
+			print("Overwriting the current case folder.")
 
 		file = open(self.output_dir + "/0/" + "p", "w")
 		file.write(self.file_header())
@@ -391,6 +667,10 @@ FoamFile
 		"""
 
 		boundary_names = [name for name in self.boundary_patches.keys()]
+		try:
+			os.makedirs(self.output_dir + "/0/")
+		except OSError as error:
+			print("Overwriting the current case folder.")
 
 		file = open(self.output_dir + "/0/" + "U", "w")
 		file.write(self.file_header())
@@ -402,7 +682,7 @@ FoamFile
 		file.write("boundaryField\n{\n\n")
 
 		U_inlet = []
-		spl_graph = self.arterial_tree.get_spline_graph()
+		spl_graph = self.arterial_tree.get_model_graph()
 
 		for i in range(len(self.inlet_nodes)):
 			succ = list(spl_graph.successors(self.inlet_nodes[i]))[0]

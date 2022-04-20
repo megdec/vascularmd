@@ -158,6 +158,38 @@ class Nfurcation:
 			
 		return ref_list
 	
+	def get_angles(self):
+		""" Compute and return furcation angles."""
+		
+		angles = []
+		vectors = []
+		for i in range(len(self._AP)):
+
+			# Project apex and transport
+			tS1 = self._spl[i].project_point_to_centerline(self._AP[i])
+			ptS1 = self._spl[i].point(tS1)
+			nS1 = self._spl[i].transport_vector(self._AP[i] - ptS1, tS1, 1.0)
+
+			P1 = self._endsec[i+1][0][:-1] + nS1 * self._endsec[i+1][0][-1]
+
+
+			tS2 = self._spl[i+1].project_point_to_centerline(self._AP[i])
+			ptS2 = self._spl[i+1].point(tS2)
+			nS2 = self._spl[i+1].transport_vector(self._AP[i] - ptS2, tS2, 1.0)
+
+			P2 = self._endsec[i+2][0][:-1] + nS2 * self._endsec[i+2][0][-1]
+
+
+			v1 = P1 - self._AP[i]
+			v2 = P2 - self._AP[i]
+			vectors.append((v1, v2))
+
+			a = angle(v1, v2) # Compute angle
+			a = int(180 * a / pi)
+			angles.append(a)
+
+		return angles, vectors
+
 
 	def get_crsec_normals(self):
 

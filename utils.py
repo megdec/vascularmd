@@ -205,9 +205,11 @@ def length_polyline(D):
 	Keyword arguments:
 	D -- list of node coordinates
 	"""
-
-	length = np.zeros((D.shape[0],))
-	length[0] = 0.0
+	if D.shape[0] == 0:
+		length = [0.0]
+	else:
+		length = np.zeros((D.shape[0],))
+		length[0] = 0.0
 
 	for i in range(1, len(D)):
 		length[i] = length[i-1] + norm(D[i] - D[i-1])
