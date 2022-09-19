@@ -1048,7 +1048,7 @@ class Editor:
 					for l in apexsec:
 						for sec in l:
 							coords = create_crsec_coords(sec[0], sec[1][:-1])
-							c = curve(color = color.black, radius = 0.1, visible=False, mode = 'model', category = 'furcation_edges')
+							c = curve(color = color.black, radius = 0.1, visible=False, mode = 'model', category = 'furcation_edges', locked = False)
 							for pt in coords:
 								c.append(vector(pt[0], pt[1], pt[2]))
 							c.append(vector(coords[0][0], coords[0][1], coords[0][2]))
@@ -1058,7 +1058,7 @@ class Editor:
 					endsec = bif.get_endsec()
 					for sec in endsec:
 						coords = create_crsec_coords(sec[0], sec[1][:-1])
-						c = curve(color = color.black, radius = 0.1, visible=False, mode = 'model', category = 'furcation_edges')
+						c = curve(color = color.black, radius = 0.1, visible=False, mode = 'model', category = 'furcation_edges', locked = False)
 						for pt in coords:
 							c.append(vector(pt[0], pt[1], pt[2]))
 						c.append(vector(coords[0][0], coords[0][1], coords[0][2]))

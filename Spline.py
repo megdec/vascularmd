@@ -457,22 +457,20 @@ class Spline:
 		from Model import Model
 
 		# Find the maximum number of control point in function of the spline length
-		max_n = 200
-		#n_opt = self.__nb_control_points_akaike(data)
-		#model = Model(data, n_opt, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-		#length_approx = model.spl.length()
-		#max_n = int(length_approx * 10)
+		MAX_N = 200
+		MAX_DENSITY = 0.5 # Maximum control point density in pt/mm
 
 		n = 4
 		model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
 		ev = model.quality(criterion)
 
-		while n < len(data) and n < max_n and (ev[0] > thres[0] or ev[1] > thres[1]): # Stability
+		while n < len(data) and n < MAX_N and (ev[0] > thres[0] or ev[1] > thres[1]): # Stability
 			n += 1
 			model = Model(data, n, 3, [0,0,0,0], np.zeros((4,4)), False, 0.0)
-
 			ev = model.quality(criterion)
-
+			#density = n / model.get_length()
+			#if density > MAX_DENSITY:
+			#	MAX_N = n
 		return n
 
 
@@ -970,7 +968,6 @@ class Spline:
 
 		d, i1 = self._kdtree.query(pt)
 
-
 		if i1 < 0:
 			i1 = 0
 		if i1 > len(pts)-1:	
@@ -1249,6 +1246,11 @@ class Spline:
 			pass
 			#print("t0 is not set correctly.")
 			'''
+		if abs(t1 - t0) < 10**(-6):
+			t = (t1 + t0) / 2.
+			v = self.transport_vector(v0, tinit, t)
+			pt = self.project_time_to_surface(v, t) 
+			t2 = spl.project_point_to_centerline(pt)
 
 		while abs(t1 - t0) > 10**(-6):
 

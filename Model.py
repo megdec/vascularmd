@@ -62,9 +62,12 @@ class Model:
 	
 		self.spl = Spline(self.P, self._knot, self._p)
 		#self.spl.show(True, True, data=self._D)
-	
+
 	def get_data(self):
 		return self._D
+
+	def get_length(self):
+		return self.spl.length()
 
 	def get_n(self):
 		return self._n

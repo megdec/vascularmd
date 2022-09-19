@@ -239,7 +239,10 @@ def resample(D, num = 0):
 		d = l - length[ind]
 
 		orient = D[ind + 1] - D[ind]
-		D_resamp.append((D[ind] + orient/norm(orient)*d).tolist())
+		if norm(orient) == 0.0:
+			D_resamp.append(D[ind].tolist())
+		else:
+			D_resamp.append((D[ind] + orient/norm(orient)*d).tolist())
 
 
 	return np.array(D_resamp)
@@ -330,8 +333,6 @@ def optimal_knot(nb_max, data):
 	print(spl.ASE(data))
 
 	return knot
-
-
 
 
 def order_points(points):

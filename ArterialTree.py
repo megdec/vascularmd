@@ -158,13 +158,13 @@ class ArterialTree:
 		else:	
 			return self._surface_mesh[0].shape[0]
 
+
 	def get_number_of_cells(self):
 
 		if self._volume_mesh is None:
 			warnings.warn("No volume mesh found.")
 		else:	
 			return self._volume_mesh[0].shape[0]
-
 
 
 	def get_bifurcations(self):
@@ -365,6 +365,13 @@ class ArterialTree:
 		Keyword arguments:
 		n -- bifurcation node (model graph)
 		"""
+
+		LEN_OUT = 1.5 # length of daughter branches = LEN_OUT x radius
+		LEN_IN = 4 # length of mother branch = LEN_IN x radius
+		R_BIF = 0.5 # smoothing magnitude for the bifurcations
+
+		MIN_LEN_IN = 3 # Minimum length to consider before merging
+
 		from Model import Model
 		original_label_modif = original_label
 
@@ -484,15 +491,17 @@ class ArterialTree:
 					min_t = t
 					ind = i
 
-
 		t_ap = min(tAP[ind])
 		l_ap = splines[ind].time_to_length(t_ap)
 
 
-		if l_ap - splines[ind].radius(t_ap)*3 > 0.2: # We can cut!
-			t_cut = splines[ind].length_to_time(l_ap - splines[ind].radius(t_ap)*3)
+		if l_ap - splines[ind].radius(t_ap)* MIN_LEN_IN > 0.2: # We can cut!
 
-		
+			if l_ap - splines[ind].radius(t_ap)* LEN_IN > 0.2:
+				t_cut = splines[ind].length_to_time(l_ap - splines[ind].radius(t_ap)*LEN_IN)
+			else:
+				t_cut = splines[ind].length_to_time(l_ap - splines[ind].radius(t_ap)*MIN_LEN_IN)
+
 			if t_cut < 10**(-2):
 
 				pt_cut = splines[ind].point(t_cut)
@@ -525,7 +534,7 @@ class ArterialTree:
 
 		if not merge_next: # Keep on building the model
 
-			# Compute apical and enc cross sections + new data
+			# Compute apical and end cross sections + new data
 			C = [C0]
 			AC = []
 
@@ -535,7 +544,7 @@ class ArterialTree:
 			for i in range(len(splines)):
 
 				t_ap = max(tAP[i])
-				t_cut = splines[i].length_to_time(splines[i].radius(t_ap)*1 + splines[i].time_to_length(t_ap))
+				t_cut = splines[i].length_to_time(splines[i].radius(t_ap)*LEN_OUT + splines[i].time_to_length(t_ap))
 
 				n_next = e_out[i][1]
 
@@ -595,7 +604,7 @@ class ArterialTree:
 
 		else: # Build bifurction and include it in graph
 			original_label = original_label_modif
-			bif = Nfurcation("crsec", [C, AC, AP, 0.6])
+			bif = Nfurcation("crsec", [C, AC, AP, R_BIF])
 			#bif.show(True)
 
 			ref = bif.get_reference_vectors()
@@ -937,20 +946,16 @@ class ArterialTree:
 
 		bif1 = self._model_graph.nodes[nbifprec]['bifurcation']
 
-		def connect_nodes(bif1, bif2, tspl, P0, P1, n):
-
+		def connect_nodes(bif1, bif2, tspl, P0, P1, n, tsep):
 
 			""" Compute the nodes connecting an end point to a separation point.
 
 			Keyword arguments: 
-			tind -- index of the trajectory spline
-			ind -- index of the shape spline of reference 
 			P0, P1 -- end points as np array
 			n -- number of nodes
 			"""
 
 			pts = np.zeros((n, 3))
-
 			# Initial trajectory approximation
 
 			# Method 1 using surface splines
@@ -983,16 +988,16 @@ class ArterialTree:
 				P = tspl.point(t)
 				n =  pts[i] - P
 				n = n / norm(n)
-					
-				pt = bif2.send_to_surface(P, n, 1)
-				pt = bif1.send_to_surface(pt, n, 0)
+				
+				if t >= tsep:
+					pt = bif2.send_to_surface(P, n, 1)
+				else:
+					pt = bif1.send_to_surface(P, n, 0)
 		
 
 				nds[i] = pt
 				
 			return nds
-
-
 
 		# Get separation nodes
 		end1, bifsec1, nds1, connect1 = bif1.get_crsec()
@@ -1009,6 +1014,18 @@ class ArterialTree:
 			sep2.append(bifsec2[c2[j]])
 
 		# Get trajectory spline
+		'''
+		P = np.zeros((5,4))
+
+		tspl2 = bif2.get_tspl()[0]
+
+		P[0, :3] = bif1.get_X()
+		P[1:, :3] = tspl2.point([0,0.3,0.6,1.0])
+
+		tspl = Spline()
+		tspl.approximation(P, [1,0,0,1], np.vstack((P[0], np.zeros((2,4)), P[-1])), False, n = 4, radius_model=False, criterion= "None")
+		
+		'''
 		relax = 0.15
 
 		tspl1 = bif1.get_tspl()
@@ -1035,7 +1052,13 @@ class ArterialTree:
 		P = spl.get_control_points()
 		P = np.hstack((P, np.zeros((4,1))))
 		tspl = Spline(P)
+		
 
+		# Get separation time tsep
+		C0_center = bif2.get_endsec()[0][0][:-1]
+		margin = 0.3
+		l1 = tspl.time_to_length(tspl.project_point_to_centerline(C0_center))
+		tsep = tspl.length_to_time(l1 + margin)
 
 		# Find closest symetric node
 		sym_nodes = [0, self._N//4, self._N//2, self._N//4 * 3] 
@@ -1066,11 +1089,10 @@ class ArterialTree:
 		if num//2 != 0:
 			num = num + 1
 		
-
 		# Connect nodes
 		nds = np.zeros((num, len(sep1), 3))
 		for j in range(len(sep1)):
-			nds[:,j,:] = connect_nodes(bif1, bif2, tspl, sep1[j], sep2[connect_sep[j]], num)
+			nds[:,j,:] = connect_nodes(bif1, bif2, tspl, sep1[j], sep2[connect_sep[j]], num, tsep)
 
 
 		new_nds1 = nds[:num//2 + 1][::-1].copy()
@@ -2771,6 +2793,51 @@ class ArterialTree:
 			self.__set_topo_graph()
 
 
+	def crop_branch_degree(self, max_deg):
+
+		""" Removes the extremity branches from the data and topo graphs
+		Keyword argments :
+		max_deg -- degree threshold (maximum) """
+		
+		# Find branching degree
+		remove_nodes = []
+
+		for n in self._topo_graph.nodes():
+			if self._topo_graph.in_degree(n) == 0:
+				origin = n
+		prec = list(self._topo_graph.out_edges(origin))
+
+		propagate = True
+		deg = 0
+		while propagate:
+			# Label the edges
+			suc = []
+			for e in prec:
+				if deg == max_deg:
+					
+					remove_nodes.append(e)
+					#self._topo_graph.nodes[e[0]]["type"] = "end"
+				
+				# Find the next edges
+				suc += list(self._topo_graph.out_edges(e[1]))
+	
+			deg+=1
+			prec = suc
+
+			if len(prec) == 0:
+				propagate = False 
+				if deg == max_deg:
+					
+					remove_nodes.append(e)
+					#self._topo_graph.nodes[e[0]]["type"] = "end"
+				
+
+		for e in remove_nodes:
+			self.remove_branch(e, preserve_shape = True, from_node = True)
+			#self._topo_graph.remove_node(n)
+
+		#self.topo_to_full(replace = True)
+
 
 	def merge_branch(self, n, mode = "topo"):
 
@@ -3055,10 +3122,9 @@ class ArterialTree:
 
 
 
-	def transpose(self, val):
+	def translate(self, val):
 
-		""" Cuts the original graph to a subgraph. 
-		Remove any spline approximation of cross section computation performed on the previous graph.
+		""" Translate the graph coordinates
 
 		Keywords arguments: 
 		val -- list of transposition values for every coordinates of the nodes
@@ -3081,14 +3147,73 @@ class ArterialTree:
 		self.set_topo_graph(G)
 
 
+	def set_minimim_radius(self, val):
+
+		""" Sets the minimum radius value and modify the data graph consequently 
+		val -- minimum radius value """
+
+		if self._topo_graph is None:
+			raise ValueError('Cannot scale because no network was found.')
+
+		else:
+
+			G = self._topo_graph
+
+			for n in G.nodes: 
+				if G.nodes[n]['coords'][3] < val:
+					G.nodes[n]['coords'][3] = val
+
+			for e in G.edges:
+				for i in range(len(G.edges[e]['coords'])):
+					if G.edges[e]['coords'][i][3] < val:
+						G.edges[e]['coords'][i][3] = val
+
+		self.set_topo_graph(G)
+
+	def transform_radius(self): # TMP
+
+		if self._topo_graph is None:
+			raise ValueError('Cannot scale because no network was found.')
+
+		else:
+			# Get minimum and maximum values
+			pos = nx.get_node_attributes(self._full_graph, 'coords')
+
+			min_rad = np.inf
+			max_rad = 0
+
+			for key, val in pos.items():
+				if val[3] < min_rad :
+					min_rad = val[3]
+				if val[3] > max_rad:
+					max_rad = val[3]
+
+			new_min = 0.5
+			a = (max_rad - new_min) / (max_rad - min_rad)
+			b = max_rad - max_rad*a
+
+			G = self._topo_graph
+
+			for n in G.nodes: 
+				G.nodes[n]['coords'][3] = a*G.nodes[n]['coords'][3] + b
+
+			for e in G.edges:
+				for i in range(len(G.edges[e]['coords'])):
+					G.edges[e]['coords'][i][3] = a * G.edges[e]['coords'][i][3] + b
+						
+
+		self.set_topo_graph(G)
+			
+
+
+
 
 	def scale(self, val):
 
-		""" Cuts the original graph to a subgraph. 
-		Remove any spline approximation of cross section computation performed on the previous graph.
+		""" Rescales the centerline data points
 
 		Keywords arguments: 
-		val -- list of transposition values for every coordinates of the nodes
+		val -- list of scaling values for every coordinates of the nodes
 		"""
 
 		if self._topo_graph is None:
@@ -3169,7 +3294,7 @@ class ArterialTree:
 
 	def angle(self, distance=None, mode="topo"):
 
-		""" Compute the angles between branches and displays the centerline network in 3D viewer"""
+		""" Compute the angles between branches """
 
 		if distance is not None:
 				dist = distance
@@ -3352,7 +3477,7 @@ class ArterialTree:
 
 
 
-	def check_mesh(self, thres = 0, edg = []):
+	def check_mesh(self, thres = 0, edg = [], mode = "crsec"):
 		""" Compute quality metrics and statistics from the volume mesh
 
 		Keyword arguments:
@@ -3377,8 +3502,6 @@ class ArterialTree:
 					nds.append(e[0])
 				if e[1] not in nds:
 					nds.append(e[1])
-		print(nds, edg)
-
 
 		failed_edges = []
 		failed_bifs = []
@@ -3441,9 +3564,14 @@ class ArterialTree:
 		for i in range(len(failed_edges)):
 			e = failed_edges[i]
 
-			for cr in failed_crsec[i]:
+			if mode == "crsec":
 
-				add_field = (link_surf[:,0] == e[0]) & (link_surf[:,1] == e[1]) & (link_surf[:,2] == cr)
+				for cr in failed_crsec[i]:
+
+					add_field = (link_surf[:,0] == e[0]) & (link_surf[:,1] == e[1]) & (link_surf[:,2] == cr)
+					color_field = color_field | add_field
+			else :
+				add_field = (link_surf[:,0] == e[0]) & (link_surf[:,1] == e[1])
 				color_field = color_field | add_field
 
 

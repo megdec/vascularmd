@@ -185,7 +185,7 @@ class Nfurcation:
 			vectors.append((v1, v2))
 
 			a = angle(v1, v2) # Compute angle
-			a = int(180 * a / pi)
+			a = int(180 * a / pi) # Convert to degree
 			angles.append(a)
 
 		return angles, vectors
@@ -1003,10 +1003,12 @@ class Nfurcation:
 		self._N = N
 		self._d = d
 
-		self.relaxation(5)
+		self.relaxation(3)
 
 		if self.R > 0:
 			self.smooth_apex(self.R)
+
+		self.relaxation(2)
 		
 
 
@@ -1215,8 +1217,23 @@ class Nfurcation:
 
 	def optimal_smooth_radius(self, param):
 		""" Return a smoothing radius proportional to the bifurcation angle """
+		
+		# Get the bifurcation angle
+		angles, vectors = self.get_angles()
 
-		# Get the vifurcation angle
+		rad_min = 0
+		rad_max = 0.5
+		ang_min = 0
+		ang_max = 180
+		a = (rad_max - rad_min) / (ang_max - ang_min)
+		b = rad_max - ang_max*a
+
+		R = a*angles[0] + b
+		print(angles[0], R)
+		return R
+
+		'''
+		# Old version
 		v1 = self._apexsec[0][0][1][:-1]
 		v2 = self._apexsec[1][0][1][:-1]
 		n = cross(v1, v2)
@@ -1233,7 +1250,7 @@ class Nfurcation:
 		
 		# Get 1/3 point position
 		pt = self._AP[0] + (r * mag) * rotate_vector(v1, n, ang/2) # apex + 1/3 is bisectrice direction rotate (v1, a/2)
-
+		
 		# Get segment equation
 		u = (self._AP[0] + r*v1) - self._AP[0]
 		A = self._AP[0]
@@ -1241,30 +1258,12 @@ class Nfurcation:
 		# Projet to line : the distance is the circle radius
 		k = (u[0]*(pt[0] - A[0]) + u[1]*(pt[1] - A[1]) + u[2]*(pt[2] -A[2])) / (u[0]**2 + u[1]**2 + u[2]**2)
 		P = np.array([k*u[0] + A[0], k*u[1] + A[1], k*u[2] + A[2]])
-
+		
 		R = norm(P - pt)
-		"""
-
-		with plt.style.context(('ggplot')):
-		
-			fig = plt.figure(figsize=(10,7))
-			ax = Axes3D(fig)
-			ax.set_facecolor('white')
-
-			ax.plot([self._AP[0][0], end1[0]], [self._AP[0][1], end1[1]], [self._AP[0][2], end1[2]])
-			ax.plot([self._AP[0][0], end2[0]], [self._AP[0][1], end2[1]], [self._AP[0][2], end2[2]])
-
-			ax.scatter(pt[0], pt[1], pt[2])
-			ax.scatter(P[0], P[1], P[2])
-			plt.show()
-			"""
-		
-
-		#R = (a * self.R) / (pi / 2)
-		if R > 0.5:
-			R = 0.5
 
 		return R
+		'''
+
 
 
 
