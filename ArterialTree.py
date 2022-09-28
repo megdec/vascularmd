@@ -59,7 +59,6 @@ class ArterialTree:
 			self._topo_graph = None
 			self._model_graph = None
 			self._crsec_graph = None
-
 		else:
 			self.__load_file(filename)
 			self.__set_topo_graph()
@@ -197,6 +196,24 @@ class ArterialTree:
 	#############  SETTERS  #############
 	#####################################
 
+	def check_full_graph(self):
+		""" Validity check for the full graph """
+		valid = True 
+
+		valid_degrees = [(0, 1), (1, 0), (0, 2), (2, 0), (1, 1), (1, 2), (1, 3), (1, 4)]
+		for n in self._full_graph.nodes():
+			degrees = (self._full_graph.in_degree(n), self._full_graph.out_degree(n))
+			if degrees not in valid_degrees:
+				valid = False
+
+		return valid
+
+	def reset_model_mesh(self):
+		""" Reset the computation of model and mesh (to preserve coherency with topo and full graphs) """
+		self._model_graph = None
+		self._crsec_graph = None
+		self._surface_mesh = None 
+		self._volume_mesh = None
 
 	def set_full_graph(self, G):
 
@@ -204,8 +221,9 @@ class ArterialTree:
 
 		self._full_graph = G
 		self.__set_topo_graph()
-		self._model_graph = None
-		self._crsec_graph = None
+		self.reset_model_mesh()
+		if not self.check_full_graph():
+			print("Warning: the input centerline is invalid.")
 
 
 	def set_topo_graph(self, G, replace = True):
@@ -215,8 +233,7 @@ class ArterialTree:
 		self._topo_graph = G
 		if replace:
 			self.topo_to_full(replace)
-			self._model_graph = None
-			self._crsec_graph = None
+			self.reset_model_mesh()
 
 
 	def set_model_graph(self, G, replace = True, down_replace = True):
@@ -244,25 +261,32 @@ class ArterialTree:
 		Keyword arguments:
 		filename -- path to centerline file
 		"""
-		
-		if filename[-4:] == ".swc":
-			print('Loading ' + filename[-3:] + ' file...')
-			self._full_graph = self.__swc_to_graph(filename)
-
-		elif filename[-4:] == ".vtk" or filename[-4:] == ".vtp":
-			print('Loading ' + filename[-3:] + ' file...')
-			self._full_graph = self.__vtk_to_graph(filename)
-
-		elif filename[-4:] == ".txt":
-			print('Loading ' + filename[-3:] + ' file...')
-			self._full_graph = self.__txt_to_graph(filename)
-
-		elif filename[-4:] == ".tre":
-			print('Loading ' + filename[-3:] + ' file...')
-			self._full_graph = self.__tre_to_graph(filename)
+		if type(filename) is list:
+			print('Loading edg and nds files...')
+			self._full_graph = self.__edg_nds_to_graph(filename[0], filename[1])
 
 		else:
-			raise ValueError("The provided files must be in swc, vtp, tre or vtk format.")
+			if filename[-4:] == ".swc":
+				print('Loading ' + filename[-3:] + ' file...')
+				self._full_graph = self.__swc_to_graph(filename)
+
+			elif filename[-4:] == ".vtk" or filename[-4:] == ".vtp":
+				print('Loading ' + filename[-3:] + ' file...')
+				self._full_graph = self.__vtk_to_graph(filename)
+
+			elif filename[-4:] == ".txt":
+				print('Loading ' + filename[-3:] + ' file...')
+				self._full_graph = self.__txt_to_graph(filename)
+
+			elif filename[-4:] == ".tre":
+				print('Loading ' + filename[-3:] + ' file...')
+				self._full_graph = self.__tre_to_graph(filename)
+
+			else:
+				raise ValueError("The provided files must be in swc, vtp, tre or vtk format.")
+
+		if not self.check_full_graph():
+			print("Warning: the input centerline is invalid.")
 
 
 
@@ -297,9 +321,13 @@ class ArterialTree:
 
 				# Add node type attribute
 				if self._topo_graph.out_degree(n) == 0 or self._topo_graph.in_degree(n) == 0:
-					self._topo_graph.nodes[n]['type'] = "end" 
+					if self._topo_graph.out_degree(n) == 2 or self._topo_graph.in_degree(n) == 2:
+						self._topo_graph.nodes[n]['type'] = "sink" 
+					else:
+						self._topo_graph.nodes[n]['type'] = "end" 	
 				else: 
 					self._topo_graph.nodes[n]['type'] = "bif" 
+				
 
 		# Store the matching of full graph node numbers
 		for n in self._topo_graph.nodes():
@@ -313,7 +341,8 @@ class ArterialTree:
 		
 		# Relabel nodes
 		self._topo_graph = nx.convert_node_labels_to_integers(self._topo_graph, first_label=1, ordering='default', label_attribute=None)
-
+		# Remove the previous model and mesh computations as the full graph was modified
+		self.reset_model_mesh()
 
 
 	#####################################
@@ -322,52 +351,75 @@ class ArterialTree:
 
 	
 
-	def model_network(self, radius_model = True, criterion="AIC", akaike=False, max_distance = np.inf):
+	def model_network(self, radius_model = True, criterion="AIC", akaike=False, max_distance = 6):
 
 		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
 		print('Modeling the network...')
 
-		# If there is a crsec_graph, remove it
-		if self._crsec_graph != None:
-			self._crsec_graph = None
+		# Check if the input data is ok for modelling
+		if not self.check_full_graph():
+			print("The network cannot be modeled as the input centerline is invalid.")
+
+		else:
+
+			# If there is a crsec_graph, remove it
+			if self._crsec_graph != None:
+				self._crsec_graph = None
 
 
-		self._model_graph = self._topo_graph.copy()
-		nx.set_node_attributes(self._model_graph, None, name='bifurcation')
-		nx.set_node_attributes(self._model_graph, False, name='combine')
-		nx.set_node_attributes(self._model_graph, None, name='tangent')
-		nx.set_node_attributes(self._model_graph, None, name='ref')
-		nx.set_edge_attributes(self._model_graph, None, name='spline')
+			self._model_graph = self._topo_graph.copy()
+			nx.set_node_attributes(self._model_graph, None, name='bifurcation')
+			nx.set_node_attributes(self._model_graph, False, name='combine')
+			nx.set_node_attributes(self._model_graph, None, name='tangent')
+			nx.set_node_attributes(self._model_graph, None, name='ref')
+			nx.set_edge_attributes(self._model_graph, None, name='spline')
 
-		# dfs
-		dfs = list(nx.dfs_successors(self._topo_graph, source=1).values())
+			# Get inlet id 
+			sources = []
+			for n in self._topo_graph.nodes():
+				if self._topo_graph.in_degree(n) == 0:
+					sources.append(n)
 
-		# Bifurcation models
-		all_id = [n for n in self._topo_graph.nodes()]
-		original_label = dict(zip(all_id, all_id))
+			# Bifurcation models
+			all_id = [n for n in self._topo_graph.nodes()]
+			original_label = dict(zip(all_id, all_id))
 
-		for l in dfs:
-			for n in l:
-				if n in [nds for nds in self._topo_graph.nodes()]:
-					n = original_label[n]
-					if self._topo_graph.nodes[n]['type'] == "bif":
-						original_label = self.__model_furcation(n, original_label, criterion, akaike, max_distance)
+			# dfs
+			for source in sources:
+				dfs = list(nx.dfs_successors(self._topo_graph, source=source).values())
 
-		# Spline models
-		for e in self._model_graph.edges():
+				for l in dfs:
+					for n in l:
+						if n in [nds for nds in self._topo_graph.nodes()]:
+							n = original_label[n]
+							if self._topo_graph.nodes[n]['type'] == "bif":
+								original_label = self.__model_furcation(n, original_label, criterion, akaike, max_distance)
 
-			if self._model_graph.nodes[e[0]]['type'] == "end" and  self._model_graph.nodes[e[1]]['type'] == "end" :
-				self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
+			# Spline models
+			# Straight tube case
+			for e in self._model_graph.edges():
 
-		# Add rotation attributes
-		nx.set_edge_attributes(self._model_graph, None, name='alpha')
-		nx.set_edge_attributes(self._model_graph, 0, name='connect')
+				if self._model_graph.nodes[e[0]]['type'] == "end" and  self._model_graph.nodes[e[1]]['type'] == "end" :
+					self.__model_vessel(e, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
 
-		# Add rotation information on bifs and edges
-		for e in self._model_graph.edges():
-			self.__compute_rotations(e)
+			# Sink case
+			nds_list = list(self._model_graph.nodes())
+			for n in nds_list:
+				if self._model_graph.nodes[n]['type'] == "sink":
 
+					sink_edg = [e for e in self._model_graph.in_edges(n)] + [e for e in self._model_graph.out_edges(n)] 
+					self.__model_vessel(sink_edg[0], criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
+
+
+			# Add rotation attributes
+			nx.set_edge_attributes(self._model_graph, None, name='alpha')
+			nx.set_edge_attributes(self._model_graph, 0, name='connect')
+
+			# Add rotation information on bifs and edges
+			for e in self._model_graph.edges():
+				self.__compute_rotations(e)
+			
 
 
 	def __model_furcation(self, n, original_label, criterion, akaike, max_distance):
@@ -380,7 +432,7 @@ class ArterialTree:
 
 		LEN_OUT = 1.5 # length of daughter branches = LEN_OUT x radius
 		LEN_IN = 4 # length of mother branch = LEN_IN x radius
-		R_BIF = 0.5 # smoothing magnitude for the bifurcations
+		R_BIF = 3 # smoothing degree for the bifurcations
 
 		MIN_LEN_IN = 3 # Minimum length to consider before merging
 
@@ -414,11 +466,25 @@ class ArterialTree:
 				
 
 				e_act = e_out[i]
-				while nb_data_out < nb_min:
-					if self._model_graph.out_degree(e_act[1])!= 0:
-						e_next = (e_act[1], [e for e in self._model_graph.successors(e_act[1])][0]) # Get a successor edge		
+				n_act = e_act[1]
+
+				while data.shape[0] < nb_min:
+				
+					if self._model_graph.out_degree(n_act)!= 0:
+						e_next = (n_act, [e for e in self._model_graph.successors(n_act)][0]) # Get a successor edge		
 						data =  np.vstack((data, self._model_graph.edges[e_next]['coords'], self._model_graph.nodes[e_next[1]]['coords'])) # Add data
 						e_act = e_next
+						n_act = e_next[1]
+
+					elif self._model_graph.nodes[n_act]["type"] == "sink" and self._model_graph.out_degree(n_act) == 0: # If in sink
+						e_next = list(self._model_graph.in_edges(n_act))
+						if e_act in e_next:
+							e_next.remove(e_act)
+						e_next = e_next[0] # Get a successor edge (in in the sink case)		
+						data =  np.vstack((data, self._model_graph.edges[e_next]['coords'][::-1], self._model_graph.nodes[e_next[0]]['coords'])) # Add data (reversed because in sink)
+						e_act = e_next
+						n_act = e_next[0]
+
 					else: break
 
 				values = np.zeros((4,4))
@@ -720,8 +786,6 @@ class ArterialTree:
 			if not dist_min: # Search further points
 				l += 1
 
-			
-
 		# Get angles
 		angles = np.zeros((len(pt), len(pt)))
 		for j in range(len(pt)):
@@ -767,31 +831,68 @@ class ArterialTree:
 		"""
 
 
-		pts = np.vstack((self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[e]['coords'], self._model_graph.nodes[e[1]]['coords']))
+		# Merge data of both sides 
+		if self._model_graph.nodes[e[0]]['type'] == 'sink': # Out sink
+			sink_edg = [e for e in self._model_graph.out_edges(e[0])] 
+			pts = np.vstack((self._model_graph.nodes[sink_edg[0][1]]['coords'], self._model_graph.edges[sink_edg[0]]['coords'][::-1, :], self._model_graph.nodes[sink_edg[0][0]]['coords']))
+			pts = np.vstack((pts, self._model_graph.edges[sink_edg[1]]['coords'], self._model_graph.nodes[sink_edg[1][1]]['coords']))
+			edg_type = 'out_sink'
+			sink = e[0]
+			ends = (sink_edg[0][1], sink_edg[1][1])
+
+		elif self._model_graph.nodes[e[1]]['type'] == 'sink': #In sink
+			sink_edg = [e for e in self._model_graph.in_edges(e[1])] 
+			pts1 = np.vstack((self._model_graph.nodes[sink_edg[0][0]]['coords'], self._model_graph.edges[sink_edg[0]]['coords'], self._model_graph.nodes[sink_edg[0][1]]['coords']))
+			pts = np.vstack((pts1, self._model_graph.edges[sink_edg[1]]['coords'][::-1, :], self._model_graph.nodes[sink_edg[1][0]]['coords']))
+			edg_type = 'in_sink'
+			sink = e[1]
+			ends = (sink_edg[0][0], sink_edg[1][0])
+
+		else: # Normal edge
+			pts = np.vstack((self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[e]['coords'], self._model_graph.nodes[e[1]]['coords']))
+			edg_type = 'edg'
+			ends = (e[0], e[1])
+
 		if len(pts) <=4:
 			pts = resample(pts, 4)
 
+
+		# Fit spline
 		values = np.zeros((4,4))
 		constraint = [False] * 4
 
-		if self._model_graph.nodes[e[0]]['type'] != "end":
-			values[0,:] = self._model_graph.nodes[e[0]]['coords']
+		if self._model_graph.nodes[ends[0]]['type'] != "end":
+			values[0,:] = self._model_graph.nodes[ends[0]]['coords']
 			constraint[0] = True
-			values[1,:] = self._model_graph.nodes[e[0]]['tangent']
+			if edg_type == "out_sink":
+				values[1,:] = -self._model_graph.nodes[ends[0]]['tangent']
+			else:
+				values[1,:] = self._model_graph.nodes[ends[0]]['tangent']
 			constraint[1] = True
 		
-		if self._model_graph.nodes[e[1]]['type'] != "end":
-			values[-1,:] =  self._model_graph.nodes[e[1]]['coords']
+		if self._model_graph.nodes[ends[1]]['type'] != "end":
+			values[-1,:] =  self._model_graph.nodes[ends[1]]['coords']
 			constraint[-1] = True
-			values[-2,:] = self._model_graph.nodes[e[1]]['tangent']
+			if edg_type == "in_sink":
+				values[-2,:] = -self._model_graph.nodes[ends[1]]['tangent']
+			else:
+				values[-2,:] = self._model_graph.nodes[ends[1]]['tangent']
 			constraint[-2] = True
 
 		spl = Spline()
 		spl.approximation(pts, constraint, values, False, criterion=criterion, akaike=akaike, radius_model=radius_model, max_distance = max_distance)
 		
-		self._model_graph.edges[e]['spline'] = spl
-		self._model_graph.nodes[e[1]]['coords'] = spl.point(1.0, True)
+		# If not sink
+		if edg_type == "edg":
+			self._model_graph.edges[e]['spline'] = spl
+			self._model_graph.nodes[e[1]]['coords'] = spl.point(1.0, True)
+		else:
 
+			# Remove sink point
+			self._model_graph.remove_node(sink)
+
+			# Add new edge
+			self._model_graph.add_edge(ends[0], ends[1], spline = spl, data = pts[1:-1, :])
 
 
 	def __compute_rotations(self, e):
@@ -937,7 +1038,6 @@ class ArterialTree:
 
 						if self._model_graph.nodes[path[i+1]]['ref'] is None: # Reg node case
 							self._model_graph.nodes[path[i+1]]['ref'] = ref0
-
 
 
 
@@ -1171,11 +1271,10 @@ class ArterialTree:
 			self._crsec_graph.add_node(n, coords = self._model_graph.nodes[n]['coords'], type =  self._model_graph.nodes[n]['type'], crsec = None)
 
 		for e in self._model_graph.edges():
-
 			if self._model_graph.nodes[e[0]]['type'] == "bif": 
-				self._crsec_graph.add_edge(e[1], e[0], crsec = None, connect = None)
+				self._crsec_graph.add_edge(e[1], e[0], crsec = None, connect = None, center = None)
 			else:
-				self._crsec_graph.add_edge(e[0], e[1], crsec = None, connect = None)
+				self._crsec_graph.add_edge(e[0], e[1], crsec = None, connect = None, center = None)
 
 
 		if parallel:
@@ -1207,14 +1306,21 @@ class ArterialTree:
 				self._model_graph.nodes[bif_id[i][0]]['bifurcation'] = bif_list[i]
 
 				for j in range(len(bif_id[i]) - 1):
-					self._crsec_graph.nodes[bif_id[i][j+1]]['crsec'] = end_crsec[j]
-					self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['crsec'] = nds[j]
-					self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['connect'] = connect_index[j]
-
+					if self._model_graph.in_degree(bif_id[i][j+1]) == 0 or self._model_graph.out_degree(bif_id[i][j+1]) ==0:
+						order_crsec = [0] + np.arange(1,len(end_crsec[j])).tolist()[::-1]
+						self._crsec_graph.nodes[bif_id[i][j+1]]['crsec'] = end_crsec[j][order_crsec]
+						self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['crsec'] = nds[j][:,order_crsec]
+						self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['connect'] = connect_index[j][order_crsec]
+					else:
+						self._crsec_graph.nodes[bif_id[i][j+1]]['crsec'] = end_crsec[j]
+						self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['crsec'] = nds[j]
+						self._crsec_graph.edges[(bif_id[i][j+1], bif_id[i][0])]['connect'] = connect_index[j]
+				
 
 			# Compute edges sections (parallel)
 			print('Meshing edges.')
 			args = []
+			centers = []
 
 			for e in self._model_graph.edges():
 				if self._model_graph.nodes[e[0]]['type'] != "bif" and self._model_graph.nodes[e[1]]['type'] != "bif":
@@ -1225,13 +1331,14 @@ class ArterialTree:
 					num = int(spl.length() / (spl.mean_radius()* d))
 					if num <= 1:
 						num = 2
+					centers.append(np.linspace(0.0, 1.0, num + 2))
 					v0 = self._model_graph.nodes[e[0]]['ref']
 					alpha = self._model_graph.edges[e]['alpha']
 
 					args.append((spl, num, N, v0, alpha))
 
 			p = Pool(cpu_count())
-			crsec_list = p.starmap(segment_crsec, args)
+			crsec_list  = p.starmap(segment_crsec, args)
 
 			i = 0
 			for e in self._model_graph.edges():
@@ -1241,6 +1348,7 @@ class ArterialTree:
 					crsec = crsec_list[i]
 
 					self._crsec_graph.edges[e]['crsec'] = crsec[1:-1, :, :]
+					self._crsec_graph.edges[e]['center'] = centers[i][1:-1]
 					if self._model_graph.nodes[e[0]]['type'] != "sep":
 						self._crsec_graph.nodes[e[0]]['crsec'] = crsec[0, :, :]
 
@@ -1321,10 +1429,10 @@ class ArterialTree:
 		v0 = self._model_graph.nodes[e[0]]['ref']
 		alpha = self._model_graph.edges[e]['alpha']
 
-		crsec = self.__segment_crsec(spl, num, self._N, v0, alpha)
-
+		crsec, center = self.__segment_crsec(spl, num, self._N, v0, alpha)
 
 		self._crsec_graph.edges[e]['crsec'] = crsec[1:-1, :, :]
+		self._crsec_graph.edges[e]['center'] = center[1:-1]
 		if self._model_graph.nodes[e[0]]['type'] != "sep":
 			self._crsec_graph.nodes[e[0]]['crsec'] = crsec[0, :, :]
 
@@ -1433,7 +1541,7 @@ class ArterialTree:
 
 			crsec[i,:,:] = self.__single_crsec(spl, t[i], v, N)
 
-		return crsec
+		return crsec, t
 
 
 
@@ -1721,6 +1829,7 @@ class ArterialTree:
 
 				# Get bifurcation half section id and orientation from connection information
 				connect = G.edges[e]['connect']
+
 
 				nodes_num = np.arange(2, len(crsec)).tolist()
 				l = len(nodes_num) // nbif
@@ -2465,7 +2574,7 @@ class ArterialTree:
 						self._crsec_graph.nodes[e[1]]['type'] = "reg"
 
 						self._crsec_graph.add_node(nmax, type = "end", crsec = None, coords = P[-1,:])
-						self._crsec_graph.add_edge(e[1], nmax, crsec = None, connect = None)
+						self._crsec_graph.add_edge(e[1], nmax, crsec = None, connect = None, center = None)
 						self.vessel_cross_sections((e[1], nmax))
 
 
@@ -2495,7 +2604,7 @@ class ArterialTree:
 						# Add the cross section of the extensions
 						self._crsec_graph.nodes[e[0]]['type'] = "reg"
 						self._crsec_graph.add_node(nmax, type = "end", crsec = None, coords = P[0,:])
-						self._crsec_graph.add_edge(nmax, e[0], crsec = None, connect = None)
+						self._crsec_graph.add_edge(nmax, e[0], crsec = None, connect = None, center = None)
 						self.vessel_cross_sections((nmax, e[0]))
 
 			if self._surface_mesh is not None:
@@ -2564,7 +2673,183 @@ class ArterialTree:
 					edg = list(self._crsec_graph.edges())[:]
 				
 				self.mesh_surface(edg = edg)
+
 				
+	def deform_surface_to_template(self, edg, t0, t1, template, temp_rad, temp_center,  method = "bicubic"):
+
+		""" Deforms the original mesh to match a given crsec section template
+		Overwrite the cross section graph.
+
+		Keywords arguments: 
+		edg -- edge on which to add a stenosis
+		pt -- 3D coordinate of the starting point of the pathology
+		length -- length of the pathology
+		template -- list of coordinates of the template curves
+		temp_rad -- the radius of the template
+		temp_center -- the center of the template
+		method -- interpolation method "linear" or "bicubic"
+		"""
+
+		# Project point to model graph
+		spl_edg = self._model_graph.edges[edg]['spline']
+
+		Lstart = spl_edg.time_to_length(t0)
+		length = spl_edg.time_to_length(t1) - Lstart
+
+		# Find the crsec to deform and their distance to the starting point
+		t_centers = self._crsec_graph.edges[edg]['center']
+		l_centers = spl_edg.time_to_length(t_centers)
+
+
+		id_crsec0 = np.argwhere(t_centers >= t0)[0][0]
+		id_crsec1 = np.argwhere(l_centers > Lstart + length)[0][0] - 1
+
+		slice_z = l_centers[id_crsec0:id_crsec1+1] - Lstart
+
+		nb_slice = len(template)
+		nb_pt = len(template[0])
+
+		depth = np.linspace(0, length, nb_slice)
+
+		# Interpolate template 
+		depth_interp = []
+		depth_spl =  []
+		# Interpolate along the vessel (linear interpolation)
+		for i in range(nb_pt):
+			# Extract curve
+			poly = np.zeros((nb_slice, 3))
+			for j in range(nb_slice):
+				poly[j, :] = template[j][i, :]
+				poly[j, -1] = depth[j]
+
+			depth_interp.append(poly)
+			if method != "linear ":
+				spl = Spline()
+				spl.interpolation(poly)
+				depth_spl.append(spl)
+
+
+		SAMPLING = 100
+		#slice_z = np.linspace(0, length, SAMPLING)
+
+		crsec_interp = []
+		# Interpolate the cross sections (cubic interpolation)
+		for i in range(len(slice_z)):
+			slice_data = np.zeros((nb_pt, 3))
+			# Extract the data from the depth interpolation spline
+			id1 = np.argwhere(depth >= slice_z[i])[0][0]
+	
+			if depth[id1] == slice_z[i]:
+				for j in range(nb_pt):
+					
+					slice_data[j, :] = depth_interp[j][id1, :]
+			else:
+
+				if method == "linear":
+					for j in range(nb_pt):
+
+						id0 = id1 -1
+						# Find the intersection of the line nd the plane z = slice_z[i]
+						pt0 = depth_interp[j][id0, :]
+						pt1 = depth_interp[j][id1, :]
+						vec = pt1 - pt0
+						vec = vec / norm(vec)
+
+						a = (slice_z[i]-pt0[2]) / vec[2]
+
+						pt = pt0 + a*vec
+						slice_data[j, :] = pt
+				else:
+					for j in range(nb_pt):
+						# Find the intersection of the spline nd the plane z = slice_z[i]
+						pts = depth_spl[j].get_points()
+						idx = np.argwhere(pts[:, 2] >= slice_z[i])[0][0]
+						slice_data[j, :] = pts[idx]
+						slice_data[j, 2] = slice_z[i]
+
+
+			# Interpolate
+			spl = Spline()
+			spl.interpolation(slice_data)
+			crsec_interp.append(spl)
+
+			# Extract the nodes along the new outline (even sampling)
+			t_nodes = spl.resample_time(self._N, include_start = True)
+			nds = spl.point(t_nodes)
+
+			# Get crsec geometry
+			rad = spl_edg.radius(t_centers[id_crsec0 + i])
+			tg = spl_edg.tangent(t_centers[id_crsec0 + i])
+			center = spl_edg.point(t_centers[id_crsec0 + i])
+			loc_center = np.array([temp_center[0], temp_center[1], slice_z[i]])
+
+			crsec = self._crsec_graph.edges[edg]['crsec'][id_crsec0 + i]
+
+			# Rescale the nodes to match the crsec radius
+			scaling_factor = temp_rad / rad
+			nds = nds / scaling_factor
+			loc_center = loc_center / scaling_factor
+
+			# Translate the nodes to match the crsec center
+			translation = center - loc_center
+			for k in range(len(nds)):
+				nds[k, :] = nds[k, :] + translation
+			
+			# Rotate the nodes to match the crsec tangent 
+			temp_tg = np.array([0,0,1])
+			rotation_axis = cross(temp_tg, tg)
+			ang = angle(temp_tg, tg, axis = rotation_axis, signed = True)
+
+			for k in range(len(nds)):
+				ref_nds = nds[k, :] - center
+				rot = rotate_vector(ref_nds, rotation_axis, ang)
+				nds[k, :] = rot + center
+
+			# Rotate the nodes to match the crsec reference
+			ref = crsec[0] - center 
+			ref_temp = nds[0, :]  - center
+			rotation_axis = tg
+			ang = angle(ref_temp, ref, axis = tg, signed = True)
+
+			for k in range(len(nds)):
+				ref_nds = nds[k, :] - center
+				rot = rotate_vector(ref_nds, tg, ang)
+				nds[k, :] = rot + center
+
+			# Show nds and crsec nodes in 3D
+			"""
+			fig = plt.figure(figsize=(10,7))
+			ax = Axes3D(fig)
+			ax.set_facecolor('white')
+			ax.scatter(nds[:, 0],nds[:, 1], nds[:, 2], c="red", depthshade=False)
+			ax.scatter(crsec[:, 0],crsec[:, 1], crsec[:, 2], c="black", depthshade=False)
+			plt.show()
+			"""
+			
+			# Replace the cross section
+			self._crsec_graph.edges[edg]['crsec'][id_crsec0 + i] = nds
+			#spl.show(control_points = False, data = slice_data)
+
+		# For visualization of the result in 3D
+		"""
+		samp_spl = 200
+		t = np.linspace(0, 1, samp_spl)
+		vertices = np.array([]).reshape(0,3)
+		for i in range(len(slice_z)):
+			pts = crsec_interp[i].point(t.tolist())
+			vertices = np.vstack((vertices, pts))
+		edges = []
+		for i in range(len(slice_z) - 1):
+			for j in range(samp_spl-1):
+				edges.append([4, i * samp_spl + j,  i * samp_spl + j + 1, (i+1) * samp_spl + j + 1, (i+1) * samp_spl + j])
+
+		mesh = pv.PolyData(vertices, np.array(edges))
+	
+		mesh.save("test_stenosis_applied.vtk")
+		"""
+
+		if self._surface_mesh is not None:
+			self.mesh_surface()
 
 
 	def deform_surface_to_mesh(self, mesh, edges=[], search_dist = 40):
@@ -2618,8 +2903,9 @@ class ArterialTree:
 				new_crsec[i, :] = self.__intersection(mesh, center, crsec[i], search_dist)
 
 			self._crsec_graph.nodes[e[1]]['crsec'] = new_crsec
+			
 			if self._surface_mesh is not None:
-				self._surface_mesh = None
+				self.mesh_surface()
 				
 
 
@@ -2804,6 +3090,85 @@ class ArterialTree:
 			self.set_topo_graph(self._topo_graph.subgraph(nodes).copy())
 			self.__set_topo_graph()
 
+	def make_inlet(self, n):
+
+		""" Change an outlet point to inlet by adding a sink if necessary
+
+		Keyword arguments:
+		n -- point of the topo graph to change to inlet (must be outlet type point of topo graph)
+		"""
+
+		# Check if the point n is an outlet
+		if self._topo_graph.out_degree(n) == 0 and self._topo_graph.in_degree(n) == 1:
+
+			# Inverse the orientation of the out edge
+			oute = list(self._topo_graph.in_edges(n))[0]
+
+			coords = self._topo_graph.edges[oute]['coords'][::-1, :]
+			full_id = self._topo_graph.edges[oute]['full_id'][::-1]
+
+			self._topo_graph.remove_edge(oute[0], oute[1])
+			self._topo_graph.add_edge(oute[1], oute[0], coords = coords, full_id = full_id)
+
+			if self._topo_graph.nodes[oute[0]]['type'] != "end" and self._topo_graph.in_degree(oute[0]) == 2 and self._topo_graph.out_degree(oute[0]) == 1:
+
+				# Add sink to the next in edge and inverse half
+				outi = list(self._topo_graph.in_edges(oute[0]))
+				outi.remove((oute[1], oute[0]))
+				outi = outi[0]
+
+				coords = self._topo_graph.edges[outi]['coords'][::-1, :]
+				full_id = self._topo_graph.edges[outi]['full_id'][::-1]
+
+				if coords.shape[0] <= 1 :
+					if coords.shape[0] == 0:
+						sink_coords = (self._topo_graph.nodes[outi[0]]['coords'] + self._topo_graph.nodes[outi[1]]['coords']) / 2
+						sink_id = max(list(self._full_graph.nodes())) + 1# Max id of full graph
+					else:
+						sink_coords = coords
+						sink_id = full_id
+
+					coords1 = np.array([]).reshape(0,4)
+					full_id1 = []
+
+					coords2 = np.array([]).reshape(0,4)
+					full_id2 = []
+
+				else:
+
+					ind = coords.shape[0] // 2
+					sink_coords = coords[ind]
+					sink_id = full_id[ind]
+
+					coords1 = coords[:ind]
+					full_id1 = full_id[:ind]
+
+					if coords.shape[0] == 2:
+						coords2 = np.array([]).reshape(0,4)
+						full_id2 = []
+					else:
+						coords2 = coords[ind+1:][::-1]
+						full_id2 = full_id[ind+1:][::-1] # Inverse the nodes 
+					
+
+				name = max(list(self._topo_graph.nodes())) + 1 # Find name for new node in topo graph
+				self._topo_graph.add_node(name, coords = sink_coords, full_id = sink_id, type = "sink") # Add sink node
+				# Remove previous edge
+				self._topo_graph.remove_edge(outi[0], outi[1])
+				# Add both half edges
+				self._topo_graph.add_edge(outi[0], name, coords = coords2, full_id = full_id2)
+				self._topo_graph.add_edge(outi[1], name, coords = coords1, full_id = full_id1)
+
+			# Propagate changes to full graph
+			self.topo_to_full(replace = True)
+			# The model and mesh must be recomputed completely after making a new inlet
+			self.reset_model_mesh()
+
+
+		else:
+			raise ValueError("The node requested is not an outlet. It cannot be changed to inlet.")
+
+
 
 	def crop_branch_degree(self, max_deg):
 
@@ -2874,6 +3239,7 @@ class ArterialTree:
 
 				self._topo_graph.remove_node(n)
 				self.topo_to_full()
+				self.reset_model_mesh()
 		else:
 
 			pred = list(self._model_graph.predecessors(n))[0]
@@ -2919,15 +3285,26 @@ class ArterialTree:
 			if e not in [e for e in self._topo_graph.edges()]:
 				raise ValueError('Not a valid edge.')
 
+			is_sink = False
+			if self._topo_graph.nodes[e[1]]['type'] == "sink":
+				is_sink = True
+				bif_n = [e[0] for e in self._topo_graph.in_edges(e[1])]
+
+			self._topo_graph.remove_edge(e[0], e[1])
+
 			# Get all downstream nodes
-			downstream_nodes =  list(nx.dfs_preorder_nodes(self._topo_graph, source=e[1]))
+			downstream_nodes =  list(nx.dfs_preorder_nodes(self._topo_graph, source=e[1]))	
 
 			# Remove them from topo graph
 			for node in downstream_nodes:
 				#self._full_graph.remove_node(self._topo_graph.nodes[node]["full_id"])
-				self._topo_graph.remove_node(node)
+				if self._topo_graph.nodes[node]['type']!="sink":
+					self._topo_graph.remove_node(node)
+				else:
+					self._topo_graph.nodes[node]['type']="end"
 
 			# Merge data and remove bifurcation point
+
 			if self._topo_graph.out_degree(e[0]) == 1 and self._topo_graph.in_degree(e[0]) == 1:
 
 				eprec = list(self._topo_graph.in_edges(e[0]))[0]
@@ -2942,11 +3319,173 @@ class ArterialTree:
 				# Remove regular point
 				self._topo_graph.remove_node(e[0])
 
+			elif self._topo_graph.out_degree(e[0]) == 2 and self._topo_graph.in_degree(e[0]) == 0: # Out sink
+				self._topo_graph.remove_node(e[0])
+
+
 			# Propagate to full_graph
 			self.topo_to_full()
+			# Check if valid
+			if not self.check_full_graph():
+				self.reset_model_mesh()
 
 		
 		if self._model_graph is not None:
+
+			def remove_bifurcation_branch(nbiftopo, nbif, nsep, apply_crsec, preserve_shape):
+
+				if self._model_graph.nodes[nbif]['bifurcation'].get_n() == 2: # Furcation is a bifurcation
+
+					if preserve_shape:
+
+						# Get correct bifurcation shape spline number
+						id_out = list(self._model_graph.successors(nbif))
+						if id_out[0] == nsep:
+							id_spl = 1
+						else:
+							id_spl = 0
+
+						spl = self._model_graph.nodes[nbif]['bifurcation'].get_spl()[id_spl]
+
+
+					# Get in and out bifurcation edges
+					n_in = nbiftopo
+					n_out = list(self._model_graph.successors(nbif))[id_spl]
+
+					n_first = n_in
+					n_last = n_out
+
+					# Get id of previous and next sep nodes 
+					pred = self._model_graph.predecessors(n_in)
+					for n in pred:
+						if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
+							n_first = n
+							break
+						else: 
+							pred = self._model_graph.predecessors(n)
+
+					succ = self._model_graph.successors(n_out)
+					for n in succ:
+						if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
+							n_last = n
+							break
+						else:
+							succ = self._model_graph.successors(n)
+
+					self._model_graph.remove_node(nbif)
+
+					if apply_crsec:
+							self._crsec_graph.remove_node(nbif)
+
+					if preserve_shape:
+							
+						self._model_graph.nodes[n_in]['type'] = "reg"
+						self._model_graph.nodes[n_out]['type'] = "reg"
+
+						self._model_graph.nodes[n_in]['ref'] = None
+						self._model_graph.nodes[n_out]['ref'] = None
+
+						# Connect them with bifurcation spline
+						print("connecting", n_in, n_out)
+						self._model_graph.add_edge(n_in, n_out, coords = np.array([]).reshape(0,4), spline = spl, alpha = None, connect = 0)
+
+						reset_edges = list(nx.all_simple_edge_paths(self._model_graph, n_first, n_last))[0]
+
+						for re in reset_edges:
+							self._model_graph.edges[re]['connect'] = 0
+							self._model_graph.edges[re]['alpha'] = None
+
+						# Recompute rotation and connect values
+						self.__compute_rotations(reset_edges[0])
+
+						if apply_crsec:
+
+							self._crsec_graph.add_edge(n_in, n_out, coords = np.array([]).reshape(0,4), crsec = None, connect = None, center = None)
+
+							self._crsec_graph.nodes[n_in]['type'] = "reg"
+							self._crsec_graph.nodes[n_out]['type'] = "reg"
+
+							# Compute crsec
+							for e in reset_edges:
+								self.vessel_cross_sections(e)
+
+					else:
+
+						# Get data coordinates between n_first and n_last
+						coords = np.array([]).reshape(0,4)
+						path_first = list(nx.all_simple_paths(self._model_graph, source=n_first, target=n_in))
+
+						if len(path_first) > 0:
+							path_first = path_first[0]
+							for i in range(len(path_first) - 1):
+								coords = np.vstack((coords, self._model_graph.edges[(path_first[i], path_first[i+1])]['coords']))
+								coords = np.vstack((coords, self._model_graph.nodes[path_first[i+1]]['coords']))
+							
+							self._model_graph.remove_node(path_first[i+1])
+							if apply_crsec:
+								self._crsec_graph.remove_node(path_first[i+1])
+
+
+						path_last = list(nx.all_simple_paths(self._model_graph, source=n_out, target=n_last))
+						if len(path_last) > 0:
+							path_last = path_last[0]
+							for i in range(len(path_last) - 1):
+								coords = np.vstack((coords, self._model_graph.nodes[path_last[i]]['coords']))
+								coords = np.vstack((coords, self._model_graph.edges[(path_last[i], path_last[i+1])]['coords']))
+							
+							self._model_graph.remove_node(path_last[i])
+							if apply_crsec:
+								self._crsec_graph.remove_node(path_last[i])
+
+						# Create edge between n_first and n_last
+						self._model_graph.add_edge(n_first, n_last, coords = coords, spline = None, alpha = None, connect = 0)
+						self.__model_vessel((n_first, n_last)) # Recompute spline
+						self.__compute_rotations((n_first, n_last)) # Set rotation and connect values
+
+						if apply_crsec:
+							self._crsec_graph.add_edge(n_first, n_last, crsec = None, coord = None, center = None)
+							self.vessel_cross_sections((n_first, n_last))
+
+
+				else: # Furcation is a trifurcation or more # NOT TESTED YET
+
+					# Create (n-1)-furcation
+					all_ids = list(self._model_graph.successors(path[1]))
+					all_ids.sort()
+					cut_id = all_ids.index(path[2])
+					
+					# Remove downstream nodes
+					downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
+					for node in downstream_nodes:
+						self._model_graph.remove_node(node)
+						if apply_crsec:
+							self._crsec_graph.remove_node(node)
+					
+
+					old_furcation = self._model_graph.nodes[path[1]]['bifurcation']
+					spl_list = old_furcation.get_spl()
+					del spl_list[cut_id]
+					new_furcation = Nfurcation("spline", [spl_list, old_furcation.get_R()])
+
+					# Update center node
+					self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
+					self._model_graph.nodes[path[1]]['coords'] = new_furcation.get_X()
+
+					# Update splines
+					self._model_graph.edges[(path[0], path[1])]['spline'] = new_furcation.get_tspl()[0]
+					k = 1
+					for j in range(len(all_ids)):
+						if j != cut_id:
+							self._model_graph.edges[(path[1], all_ids[j])]['spline'] = new_furcation.get_tspl()[k]
+							k+=1
+
+
+					if apply_crsec:
+						# Update cross sections 
+						new_furcation.compute_cross_sections(self._N, self._d)
+						self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
+						self.furcation_cross_sections(path[1])
+
 
 
 			apply_crsec = False
@@ -2968,170 +3507,65 @@ class ArterialTree:
 						self._crsec_graph.nodes[e[0]]['type'] = "end"
 			else:
 
-				# Get path between e[0] and e[1]
-				path = list(nx.all_simple_paths(self._model_graph, source=e[0], target=e[1]))[0]
-					
-				if self._model_graph.nodes[path[1]]['type']=="bif": # Furcation branch
-					if self._model_graph.nodes[path[1]]['bifurcation'].get_n() == 2: # Furcation is a bifucartion
+				list_edg = [e for e in self._model_graph.edges()]
 
-						# Get all downstream nodes
-						downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
+				if is_sink: # In sink case
 
-						if preserve_shape:
+					# Get out sep nodes for each bif
+					out_sep = []
+					mod_bif = []
 
-							# Get correct bifurcation shape spline number
-							id_out = list(self._model_graph.successors(path[1]))
-							if id_out[0] in path:
-								id_spl = 1
-							else:
-								id_spl = 0
+					for n in bif_n:
+						out_e = [e[1] for e in self._model_graph.out_edges(n)][0]
+						mod_bif.append(out_e)
+						out_sep.append([e[1] for e in self._model_graph.out_edges(out_e)])
 
-							spl = self._model_graph.nodes[path[1]]['bifurcation'].get_spl()[id_spl]
+					# Find which is connected to which
+					for i in range(len(out_sep[0])):
+						for j in range(len(out_sep[1])):
+							if (out_sep[0][i], out_sep[1][j]) in list_edg:
+								sink_edg = (out_sep[0][i], out_sep[1][j])
 
-						# Remove downstream nodes from model graph
-						for node in downstream_nodes:
-							self._model_graph.remove_node(node)
+							if (out_sep[1][j], out_sep[0][i]) in list_edg:
+								sink_edg = (out_sep[1][j], out_sep[0][i])
+								bif_n = [bif_n[0], bif_n[1]]
+								mod_bif = [mod_n[0], mod_n[1]]
 
-							if apply_crsec:
-								self._crsec_graph.remove_node(node)
+					# Remove the connection edge
+					self._model_graph.remove_edge(sink_edg[0], sink_edg[1])
 
-						# Get in and out bifurcation edges
-						n_in = e[0]
-						n_out = list(self._model_graph.successors(path[1]))[0]
+					# Remove the bifurcation branches
+					remove_bifurcation_branch(bif_n[0], mod_bif[0], sink_edg[0], apply_crsec, preserve_shape)
+					remove_bifurcation_branch(bif_n[1], mod_bif[1], sink_edg[1], apply_crsec, preserve_shape)
 
-						n_first = n_in
-						n_last = n_out
+					# Remove the other sep node
+					self._model_graph.remove_node(sink_edg[0])
+					self._model_graph.remove_node(sink_edg[1])
 
-						# Get id of previous and next sep nodes 
-						pred = self._model_graph.predecessors(n_in)
-						for n in pred:
-							if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
-								n_first = n
-								break
-							else: 
-								pred = self._model_graph.predecessors(n)
 
-						succ = self._model_graph.successors(n_out)
-						for n in succ:
-							if self._model_graph.nodes[n]['type'] == "sep" or self._model_graph.nodes[n]['type'] == "end":
-								n_last = n
-								break
-							else:
-								succ = self._model_graph.successors(n)
+				else:
 
-						self._model_graph.remove_node(path[1])
+					if e[1] in list_edg:
 
-						if apply_crsec:
-								self._crsec_graph.remove_node(path[1])
-
-						if preserve_shape:
+						# Get path between e[0] and e[1]
+						path = list(nx.all_simple_paths(self._model_graph, source=e[0], target=e[1]))[0]
 							
-							self._model_graph.nodes[n_in]['type'] = "reg"
-							self._model_graph.nodes[n_out]['type'] = "reg"
-
-							self._model_graph.nodes[n_in]['ref'] = None
-							self._model_graph.nodes[n_out]['ref'] = None
-
-							# Connect them with bifurcation spline
-							self._model_graph.add_edge(n_in, n_out, coords = np.array([]).reshape(0,4), spline = spl, alpha = None, connect = 0)
-
-							reset_edges = list(nx.all_simple_edge_paths(self._model_graph, n_first, n_last))[0]
-
-							for re in reset_edges:
-								self._model_graph.edges[re]['connect'] = 0
-								self._model_graph.edges[re]['alpha'] = None
-
-							# Recompute rotation and connect values
-							self.__compute_rotations(reset_edges[0])
-
-							if apply_crsec:
-
-								self._crsec_graph.add_edge(n_in, n_out, coords = np.array([]).reshape(0,4), crsec = None, connect = None)
-
-								self._crsec_graph.nodes[n_in]['type'] = "reg"
-								self._crsec_graph.nodes[n_out]['type'] = "reg"
-
-								# Compute crsec
-								for e in reset_edges:
-									self.vessel_cross_sections(e)
-
-						else:
-
-							# Get data coordinates between n_first and n_last
-							coords = np.array([]).reshape(0,4)
-							path_first = list(nx.all_simple_paths(self._model_graph, source=n_first, target=n_in))
-
-							if len(path_first) > 0:
-								path_first = path_first[0]
-								for i in range(len(path_first) - 1):
-									coords = np.vstack((coords, self._model_graph.edges[(path_first[i], path_first[i+1])]['coords']))
-									coords = np.vstack((coords, self._model_graph.nodes[path_first[i+1]]['coords']))
-							
-								self._model_graph.remove_node(path_first[i+1])
-								if apply_crsec:
-									self._crsec_graph.remove_node(path_first[i+1])
+						if self._model_graph.nodes[path[1]]['type']=="bif": # Furcation branch
+							if self._model_graph.nodes[path[1]]['bifurcation'].get_n() == 2: # Furcation is a bifurcation
 
 
-							path_last = list(nx.all_simple_paths(self._model_graph, source=n_out, target=n_last))
-							if len(path_last) > 0:
-								path_last = path_last[0]
-								for i in range(len(path_last) - 1):
-									coords = np.vstack((coords, self._model_graph.nodes[path_last[i]]['coords']))
-									coords = np.vstack((coords, self._model_graph.edges[(path_last[i], path_last[i+1])]['coords']))
-							
-								self._model_graph.remove_node(path_last[i])
-								if apply_crsec:
-									self._crsec_graph.remove_node(path_last[i])
+								# Get all downstream nodes
+								downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
 
-							# Create edge between n_first and n_last
-							self._model_graph.add_edge(n_first, n_last, coords = coords, spline = None, alpha = None, connect = 0)
-							self.__model_vessel((n_first, n_last)) # Recompute spline
-							self.__compute_rotations((n_first, n_last)) # Set rotation and connect values
+								# Remove bifurcation branch
+								remove_bifurcation_branch(e[0], path[1], path[2], apply_crsec, preserve_shape)
 
-							if apply_crsec:
-								self._crsec_graph.add_edge(n_first, n_last, crsec = None, coord = None)
-								self.vessel_cross_sections((n_first, n_last))
+								# Remove downstream nodes from model graph
+								for node in downstream_nodes:
+									self._model_graph.remove_node(node)
 
-
-					else: # Furcation is a trifurcation or more # NOT TESTED YET
-
-						# Create (n-1)-furcation
-						all_ids = list(self._model_graph.successors(path[1]))
-						all_ids.sort()
-						cut_id = all_ids.index(path[2])
-					
-						# Remove downstream nodes
-						downstream_nodes = list(nx.dfs_preorder_nodes(self._model_graph, source=path[2]))
-						for node in downstream_nodes:
-							self._model_graph.remove_node(node)
-							if apply_crsec:
-								self._crsec_graph.remove_node(node)
-					
-
-						old_furcation = self._model_graph.nodes[path[1]]['bifurcation']
-						spl_list = old_furcation.get_spl()
-						del spl_list[cut_id]
-						new_furcation = Nfurcation("spline", [spl_list, old_furcation.get_R()])
-
-						# Update center node
-						self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
-						self._model_graph.nodes[path[1]]['coords'] = new_furcation.get_X()
-
-						# Update splines
-						self._model_graph.edges[(path[0], path[1])]['spline'] = new_furcation.get_tspl()[0]
-						k = 1
-						for j in range(len(all_ids)):
-							if j != cut_id:
-								self._model_graph.edges[(path[1], all_ids[j])]['spline'] = new_furcation.get_tspl()[k]
-								k+=1
-
-
-						if apply_crsec:
-							# Update cross sections 
-							new_furcation.compute_cross_sections(self._N, self._d)
-							self._model_graph.nodes[path[1]]['bifurcation'] = new_furcation
-							self.furcation_cross_sections(path[1])
-
+									if apply_crsec:
+										self._crsec_graph.remove_node(node)
 
 
 	def translate(self, val):
@@ -3182,6 +3616,7 @@ class ArterialTree:
 
 		self.set_topo_graph(G)
 
+
 	def transform_radius(self): # TMP
 
 		if self._topo_graph is None:
@@ -3218,8 +3653,6 @@ class ArterialTree:
 			
 
 
-
-
 	def scale(self, val):
 
 		""" Rescales the centerline data points
@@ -3248,26 +3681,308 @@ class ArterialTree:
 
 	def resample(self, p):
 
-		""" Add noise and resample the nodes of the initial centerlines.
+		""" Add resample the nodes of the initial centerlines.
 
 		Keyword arguments:
-		p -- ratio of nodes to add (>1)
+		p -- percentage of points to keep
 		"""
+		nmax =  max(list(self._full_graph.nodes())) + 1
 
 		for e in self._topo_graph.edges():
 
 			pts = np.vstack((self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[e]['coords'], self._topo_graph.nodes[e[1]]['coords']))
+			full_id = self._topo_graph.edges[e]['full_id']
 
 			n = int(pts.shape[0]*p)
-			pts =  resample(pts, num = n+2)
+			if n <2:
+				n = 2
+
+			pts = resample(pts, num = n+2)[1:-1]
+
+			if len(pts) <= len(full_id):
+				full_id = full_id[:len(pts)]
+				
+			else:
+				n_pt = len(pts) - len(full_id)
+				for i in range(n_pt):
+					full_id = full_id + [nmax]
+					nmax+=1
 
 			# Modify topo graph 
-			self._topo_graph.add_edge(e[0], e[1], coords = pts[1:-1])
+			self._topo_graph.edges[e]["coords"] = pts
+			self._topo_graph.edges[e]["full_id"] = full_id
 
-			# Change full graph
-			self.topo_to_full()
+		# Change full graph
+		self.topo_to_full()
+		self.reset_model_mesh()
 
+
+	def delete_data_point(self, n, apply = True):
+
+		""" Delete a data point from the centerline and update topo graph. Can delete only regular points, to remove bifurcations, see remove_branch. 
+
+		Keyword arguments :
+		n -- node name (in full graph)
+		apply -- whether to apply the modification directly to the topo graph or not"""
+
+		if self._full_graph.in_degree(n) == 1 and self._full_graph.out_degree(n) == 1: # Regular node, can be removed
+
+			prec = list(self._full_graph.predecessors(n))[0]
+			succ = list(self._full_graph.successors(n))[0]
+			self._full_graph.remove_node(n) # Remove node and edges
+			self._full_graph.add_edge(prec, succ, coords = np.array([]).reshape(0,4)) # Add new edges
+
+
+
+	def delete_data_edge(self, edg, apply = True):
+
+		""" Delete an edge from the centerline. Update topo graph only if the full graph passes the validity check.
+
+		Keyword arguments :
+		edg -- edges name (in full graph)
+		apply -- whether to apply the modification directly to the topo graph or not"""
+
+		self._full_graph.remove_edge(edg[0], edg[1]) # Remove node and edges
+		if apply:
+			self.__set_topo_graph()
+
+
+
+	def add_data_edge(self, n1, n2, apply = True):
+
+		""" Add an edge to the centerline. The orientation is automatically defines by validity criterion or by the node order.
+		Update topo graph only if the full graph passes the validity check. 
+
+		Keyword arguments :
+		n1, n2 -- node names (in full graph)
+		apply -- whether to apply the modification directly to the topo graph or not"""
+
+		edg = (n1, n2)
+		if self._full_graph.out_degree(n2) == 0 and self._full_graph.in_degree(n1) == 0:
+			edg = (n2, n1)
+
+		self._full_graph.add_edge(edg[0], edg[1], coords = np.array([]).reshape(0,4))
+
+		if apply:
+			self.__set_topo_graph()
+
+
+
+	def modify_control_point_coords(self, edg, i,  coords):
+
+		""" Modify the coordinates of a control point of an edge spline of the model.
+
+		Keyword arguments :
+		edg -- edge name (in model graph)
+		i -- index of the control point to modify
+		coords -- new coordinates"""
 		
+		# Check if e corresponds to an edge
+		if self._model_graph.nodes[edg[0]]!= "bif" and self._model_graph.nodes[edg[1]]!= "bif":
+			P = self._model_graph.edges[edg]["spline"].get_control_points()
+			P[i, :-1] = coords
+			self._model_graph.edges[edg]["spline"].set_control_points(P.tolist())
+
+
+	def modify_control_point_radius(self, edg, i, rad):
+
+		""" Modify the radius of a control point of an edge spline of the model.
+
+		Keyword arguments :
+		edg -- edge name (in model graph)
+		i -- index of the control point to modify
+		rad -- new radius"""
+
+		# Check if e corresponds to an edge
+		if self._model_graph.nodes[edg[0]]!= "bif" and self._model_graph.nodes[edg[1]]!= "bif":
+			P = self._model_graph.edges[edg]["spline"].get_control_points()
+			P[i, -1] = rad
+			self._model_graph.edges[edg]["spline"].set_control_points(P.tolist())
+
+
+	def modify_data_point_coords(self, n, coords, apply = True):
+
+		""" Modify the coordinates of a data point of the centerline.
+
+		Keyword arguments :
+		n -- node name (in full graph)
+		coords -- new coordinates
+		apply -- whether to apply the modification directly to the topo graph or not"""
+
+		# Check if n in nodes
+		if n in [elt for elt in self._full_graph.nodes()]:
+			self._full_graph.nodes[n]['coords'][:-1] = coords
+
+		if apply:
+			self.__set_topo_graph()
+
+
+	def modify_data_point_radius(self, n, rad, apply = True):
+
+		""" Modify the radius of a data point of the centerline.
+
+		Keyword arguments :
+		n -- node name (in full graph)
+		rad -- new radius
+		apply -- whether to apply the modification directly to the topo graph or not"""
+		
+		# Check if n in nodes
+
+		if n in [elt for elt in self._full_graph.nodes()]:
+			self._full_graph.nodes[n]['coords'][-1] = rad
+
+		if apply:
+			self.__set_topo_graph()
+
+	def modify_branch_radius(self, edg, eps, apply = True):
+
+		""" Modify the radius of a data point of the centerline.
+
+		Keyword arguments :
+		edg -- edge name (in topo graph)
+		eps -- the radius to add to every point of the branch
+		apply -- whether to apply the modification directly to the topo graph or not"""
+		
+		full_id = self._topo_graph.edges[edg]["full_id"]
+		for n in full_id:
+			rad = self._full_graph.nodes[n]["coords"][-1] + eps
+			self.modify_data_point_radius(n, rad, False)
+
+		if apply:
+			self.__set_topo_graph()
+
+
+
+	def add_data_point(self, coords, branch = False, apply = True):
+
+		""" Add a data point to the centerlines and update topo graph. The connection with other nodes is determined by validity criterion. 
+
+		Keyword arguments :
+		coords -- coordinates of the new data point
+		branch -- whether the point is a new branch or a regular point 
+		apply -- whether to apply the modification directly to the topo graph or not"""
+
+		# Get new point id
+		nmax = max(list(self._full_graph.nodes())) + 1
+		# Get the id of the closest data point
+		pos = np.array(list(nx.get_node_attributes(self._full_graph, 'coords').values()))
+
+		pt_ids = list(nx.get_node_attributes(self._full_graph, 'coords').keys())
+		kdtree = KDTree(pos[:,:-1])
+		d, idx = kdtree.query(coords[:-1])
+		idx = pt_ids[idx]
+
+		# Find connecting edges according to validity criteria
+		if branch:
+			self._full_graph.add_node(nmax, coords= coords)
+			self._full_graph.add_edge(idx, nmax, coords = np.array([]).reshape(0,4))
+		else:
+			prec = list(self._full_graph.predecessors(idx))
+			succ = list(self._full_graph.successors(idx))
+
+			min_norm = norm(self._full_graph.nodes[prec[0]]['coords'][:-1] - coords[:-1])
+			edg = (prec[0], idx)
+
+			for n in prec:
+				if norm(self._full_graph.nodes[n]['coords'][:-1] - coords[:-1]) < min_norm:
+					min_norm = norm(self._full_graph.nodes[n]['coords'][:-1] - coords[:-1])
+					edg = (n, idx)
+
+			for n in succ:	
+				if norm(self._full_graph.nodes[n]['coords'][:-1] - coords[:-1]) < min_norm:
+						min_norm = norm(self._full_graph.nodes[n]['coords'][:-1] - coords[:-1])
+						edg = (idx, n)
+
+			self._full_graph.add_node(nmax, coords= coords)
+			# Remove local edge and add new ones
+			self._full_graph.remove_edge(edg[0], edg[1])
+			# Build new edges
+			self._full_graph.add_edge(edg[0], nmax, coords = np.array([]).reshape(0,4))
+			self._full_graph.add_edge(nmax, edg[1], coords = np.array([]).reshape(0,4))
+
+		if apply:
+			self.__set_topo_graph()
+
+
+	def get_closest_data_point(self, coords, n):
+
+		# Get the id of the closest data point after projection on the plane of given normal (this function is specific to the Editor)
+
+		pos = np.array(list(nx.get_node_attributes(self._full_graph, 'coords').values()))[:,:-1]
+		# Project all coords to the same plane
+		tmp = np.array([0,0,1])
+		u1 = cross(n, tmp)
+		u2 = cross(u1, n)
+
+		# u1 and u2 are a basis of the plane
+		proj = np.zeros((pos.shape[0], 2))
+
+		for i in range(pos.shape[0]):
+			proj[i, 0] = dot(pos[i, :], u1) 
+			proj[i, 1] = dot(pos[i, :], u2) 
+
+		proj_pt = np.array([dot(coords, u1), dot(coords, u2)])
+
+		pt_ids = list(nx.get_node_attributes(self._full_graph, 'coords').keys())
+
+		kdtree = KDTree(proj)
+		d, idx = kdtree.query(proj_pt)
+		idx = pt_ids[idx]
+
+		return self._full_graph.nodes[idx]['coords']
+
+	def rotate_branch(self, normal, edg, alpha):
+		""" Rotate a branch and all the downstream branches
+		
+		Keyword arguments :
+		normal -- rotation axis
+		edg -- edge of the topo graph that is the center of rotation
+		alpha -- rotation angle"""
+
+		rot_center = self._topo_graph.nodes[edg[0]]["coords"][:-1]
+
+		edg_list = [edg] + list(nx.dfs_edges(self._topo_graph, source=edg[1]))
+		nds_list = list(nx.dfs_preorder_nodes(self._topo_graph, source=edg[1]))
+
+		for e in edg_list:
+			for i in range(self._topo_graph.edges[e]['coords'].shape[0]):
+				if e != edg or (e == edg and i > 0):
+					coord = self._topo_graph.edges[e]['coords'][i, :-1]
+					
+					l = norm(coord - rot_center)
+					v = (coord - rot_center) / l
+							
+					new_v = rotate_vector(v, normal, alpha)
+					new_pos = rot_center + l* new_v
+					self._topo_graph.edges[e]['coords'][i, :-1] = new_pos
+
+		for n in nds_list:
+			coord = self._topo_graph.nodes[n]['coords'][:-1]
+
+			l = norm(coord - rot_center)
+			v = (coord - rot_center) / l
+						
+			new_v = rotate_vector(v, normal, alpha)
+			new_pos = rot_center + l* new_v
+			self._topo_graph.nodes[n]['coords'][:-1] = new_pos
+
+		self.reset_model_mesh() # Model and mesh needs to be recomputed completely
+
+
+
+	def smooth_spline(self, edg, l, radius = False):
+
+		""" Smooth or unsmooth the spline of a givn edge of the model graph.
+		Keyword arguments :
+		edg -- model graph edge
+		l -- smoothing parameter
+		radius -- smooth radius if true, trajectory is false"""
+
+		if not radius:
+			self._model_graph.edges[edg]["spline"]._set_lambda_model([l, None])
+		else:
+			self._model_graph.edges[edg]["spline"]._set_lambda_model([None, l])
+
 
 
 	#####################################
@@ -3429,6 +4144,7 @@ class ArterialTree:
 
 			# Change full graph
 			self.topo_to_full()
+			self.reset_model_mesh()
 
 	
 
@@ -3453,39 +4169,51 @@ class ArterialTree:
 
 			# Change full graph
 			self.topo_to_full()
+			self.reset_model_mesh()
 		
 
 
-	def low_sample(self, p):
+	def low_sample(self, p, apply = True):
 
 		""" Resample the nodes of the initial centerlines.
 
 		Keyword arguments:
 		p -- ratio of nodes to keep [0, 1]
+		apply -- apply to topo graph directly
 		"""
+
+		# Change full graph
+		self.topo_to_full()
 
 		for e in self._topo_graph.edges():
 
-			pts = self._topo_graph.edges[e]['coords']
+			#pts = self._topo_graph.edges[e]['coords']
 			full_id =  self._topo_graph.edges[e]['full_id']
 
-			if p != 0 and pts.shape[0]!=0:
+			if p != 0 and len(full_id)!=0:
 				# Resampling
-				step = int(pts.shape[0]/(p*pts.shape[0]))
+				step = int(len(full_id)/(p*len(full_id)))
 
 				if step > 0:
-					pts =  pts[:-1:step][1:]
-					full_id = full_id[:-1:step][1:]
+					#pts =  pts[:-1:step][1:]
+					full_id_keep = full_id[:-1:step][1:]
 				else:
-					pts = pts[int(pts.shape[0]/2)]
-					full_id = full_id[int(full_id.shape[0]/2)]
+					#pts = pts[int(pts.shape[0]/2)]
+					full_id_keep = full_id[int(len(full_id)/2)]
+			else:
+				full_id_keep = full_id[:]
 
 
-			# Modify topo graph 
-			self._topo_graph.add_edge(e[0], e[1], coords = pts, full_id = full_id)
+			# Modify full graph
+			for  n in full_id:
+				if n not in full_id_keep:
+					self.delete_data_point(n)
 
-			# Change full graph
-			self.topo_to_full()
+		if apply:
+			self.__set_topo_graph()
+			#self._topo_graph.add_edge(e[0], e[1], coords = pts, full_id = full_id)
+
+
 
 
 
@@ -3596,7 +4324,7 @@ class ArterialTree:
 	#####################################
 
 
-	def show(self, points = True, centerline = True, control_points = False):
+	def show(self, points = False, centerline = False, control_points = False):
 
 		""" Displays the centerline network in 3D viewer.
 
@@ -3615,8 +4343,7 @@ class ArterialTree:
 
 			
 			pos = nx.get_node_attributes(self._topo_graph, 'coords')
-			colors = {"end":'blue', "bif":'green', "reg":'orange', "sep":'purple'}
-
+			colors = {"end":'blue', "bif":'green', "reg":'orange', "sep":'purple', "sink":'red'}
 
 			if not points and not centerline and not control_points:
 				
@@ -3713,6 +4440,28 @@ class ArterialTree:
 				G.add_edge(int(file[i, 6]), int(file[i, 0]), coords = np.array([]).reshape(0,4))
 
 		return G
+
+	def __edg_nds_to_graph(self, file_edg, file_nds):
+
+		"""Converts a file of node coordinates a and a file of edges to a graph and set full_graph attribute.
+
+		Keyword arguments:
+		file_edg -- path to edges file
+		file_nds -- path to nodes file
+		"""
+
+		fe = np.loadtxt(file_edg, skiprows=0)
+		fn = np.loadtxt(file_nds, skiprows=0)
+
+		G = nx.DiGraph()
+
+		for i in range(0, fn.shape[0]):
+			G.add_node(i, coords= np.array([float(fn[i, 0]), float(fn[i, 1]), float(fn[i, 2]), float(fn[i, 3])]))
+
+		for i in range(0, fe.shape[0]):
+			G.add_edge(int(fe[i, 0]), int(fe[i, 1]), coords = np.array([]).reshape(0,4))
+		return G
+
 
 	def __txt_to_graph(self, filename):
 
