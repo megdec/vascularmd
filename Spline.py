@@ -341,8 +341,19 @@ class Spline:
 	
 		return radius
 
+	#####################################
+	########## INTERPOLATION  ###########
+	#####################################
 
 
+	def interpolation(self, D):
+		""" Interpolate data points using a spline
+
+		Keyword arguments:
+		D -- numpy array of coordinates for data points"""
+	
+		spl = fitting.interpolate_curve(D.tolist(), 3, centripetal = True)
+		self.set_spl(spl)
 
 
 	#####################################
@@ -856,7 +867,7 @@ class Spline:
 		
 
 
-	def resample_time(self, n, t0 = 0.0, t1 = 1.0):
+	def resample_time(self, n, t0 = 0.0, t1 = 1.0, include_start = False):
 
 		""" Return a vector of n times with equal spacing on spline spl.
 
@@ -870,8 +881,10 @@ class Spline:
 
 		if n == 0:
 			raise ValueError('n must be a positive int')
-
-		L = np.linspace(l0, l1, n+2)[1:-1].tolist() 
+		if include_start:
+			L = np.linspace(l0, l1, n+1)[:-1].tolist() 
+		else:
+			L = np.linspace(l0, l1, n+2)[1:-1].tolist() 
 		T = self.length_to_time(L)
 
 		return T

@@ -24,7 +24,7 @@ import nibabel as nib
 import os
 
 from Nfurcation import Nfurcation
-from ArterialTreeSink import ArterialTree
+from ArterialTree import ArterialTree
 from Spline import Spline
 from Model import Model
 from utils import *

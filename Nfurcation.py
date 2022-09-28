@@ -15,7 +15,7 @@ import pyvista as pv # Meshing
 import pickle
 
 # Trigonometry functions
-from math import pi
+from math import pi, exp
 from numpy.linalg import norm 
 from numpy import dot, cross
 
@@ -362,7 +362,7 @@ class Nfurcation:
 
 		self.__set_tspl() # Trajectory splines
 
-
+	'''
 	def correct_apex_section(self, ind):
 
 		""" Rotate apex section around the apex point 
@@ -419,7 +419,7 @@ class Nfurcation:
 			print(np.vstack(( ap + v1 * r, cross(ref, v1))))
 
 			return np.vstack(( ap + v1 * r, cross(ref, v1)))
-				
+	'''			
 
 
 
@@ -1199,6 +1199,7 @@ class Nfurcation:
 	#####################################
 
 	def relaxation(self, n_iter = 5):
+
 		""" Resamples the cells of the bifurcation """
 
 		for i in range(n_iter):
@@ -1226,57 +1227,35 @@ class Nfurcation:
 		self.mesh_to_crsec(mesh)
 
 
-	def optimal_smooth_radius(self, param):
-		""" Return a smoothing radius proportional to the bifurcation angle """
+	def optimal_smooth_radius(self, degree):
+		""" Return a smoothing radius proportional to the bifurcation angle
+		Keyword arguments :
+		degree -- degree of the transformation (1 = linear, 2 = second degree etc...)"""
 		
 		# Get the bifurcation angle
 		angles, vectors = self.get_angles()
 
 		rad_min = 0
-		rad_max = 0.5
+		rad_max = 0.8
 		ang_min = 0
-		ang_max = 180
-		a = (rad_max - rad_min) / (ang_max - ang_min)
-		b = rad_max - ang_max*a
+		ang_max = 120
 
-		R = a*angles[0] + b
-		print(angles[0], R)
-		return R
+		if degree == 1:
 
-		'''
-		# Old version
-		v1 = self._apexsec[0][0][1][:-1]
-		v2 = self._apexsec[1][0][1][:-1]
-		n = cross(v1, v2)
-		r = self._apexsec[0][0][0][-1]*1.5
+			a = (rad_max - rad_min) / (ang_max - ang_min)
+			b = rad_max - ang_max*a
 
-		end2 = self._AP[0] + v1 * r
-		end1 = self._AP[0] + v2 * r
+			R = a*angles[0] + b
 
-		ang = angle(v1, v2, axis= n, signed = True)
-		a = abs(ang)
+		else:
 
-		# Compute the radius for which the circle goes down to 1/3 of the out branch length
-		mag = param / 2
-		
-		# Get 1/3 point position
-		pt = self._AP[0] + (r * mag) * rotate_vector(v1, n, ang/2) # apex + 1/3 is bisectrice direction rotate (v1, a/2)
-		
-		# Get segment equation
-		u = (self._AP[0] + r*v1) - self._AP[0]
-		A = self._AP[0]
+			b = 0
+			c = rad_min
+			a = (rad_max - c)/(ang_max**degree)
 
-		# Projet to line : the distance is the circle radius
-		k = (u[0]*(pt[0] - A[0]) + u[1]*(pt[1] - A[1]) + u[2]*(pt[2] -A[2])) / (u[0]**2 + u[1]**2 + u[2]**2)
-		P = np.array([k*u[0] + A[0], k*u[1] + A[1], k*u[2] + A[2]])
-		
-		R = norm(P - pt)
+			R = a*angles[0]**degree + b*angles[0]+c
 
 		return R
-		'''
-
-
-
 
 
 	def smooth_apex(self, radius):
@@ -1285,6 +1264,7 @@ class Nfurcation:
 			raise ValueError('Please first perform cross section computation.')
 
 		curve_set, referential_set = self.get_curves()
+
 
 		# Set the curve in the projection referential
 		curve_set_referential = []
