@@ -202,9 +202,13 @@ class Editor:
 		self.pathology_markers = [sphere(pos=scene.center, color=color.yellow, radius=0.3, mode = "marker", visible = False, locked = False), sphere(pos=scene.center, color=color.yellow, radius=0.3, mode = "marker", visible = False, locked = False)]
 		self.pathology_edg = None
 		scene.append_to_caption('  ') 
-		self.pathology_directory_winput = winput(text="pathology_templates/one_side_stenosis/", bind = self.load_pathology_template, width=200)
+		self.pathology_directory_winput = winput(text="pathology_templates/default/", bind = self.load_pathology_template, width=200)
+
+		self.template = None
 		self.load_pathology_template() # Load the default pathology
+
 		self.pathology = []
+		self.pathology_output_dir = "pathology_templates/new_template/"
 
 
 		# Meshing default parameter
@@ -213,7 +217,10 @@ class Editor:
 
 		# Display parameters
 		self.display_spline_step = 10 # Step for displaying spline points
-		self.NB = 10 # Number of nodes in the template for pathology
+		self.temp_num_nds = 50 # Number of nodes in the template for pathology
+		self.temp_num_crsec = 10 # Number of crsec in the template for pathology
+		self.temp_rad = 10 # Radius of the template cross sections
+		self.temp_center = scene.center # position of the center 
 
 		# Link actions to functions
 		scene.bind('click', self.select)
@@ -408,6 +415,42 @@ class Editor:
 			b.activated = False
 			#self.crop_selection = []
 			b.text = " Crop "
+
+
+	def get_closest_data_point(self, coords, n):
+
+		# Get the id of the closest data point AMONG THE VISIBLE NODES after projection on the plane of given normal
+		pos = []
+		ids = []
+		for sph in self.elements["full"]["nodes"].values():
+			if not sph.locked:
+				pos.append([sph.pos.x, sph.pos.y, sph.pos.z])
+				ids.append(sph.id)
+
+
+		pos = np.array(pos)
+
+
+		# Project all coords to the same plane
+		tmp = np.array([0,0,1])
+		u1 = cross(n, tmp)
+		u2 = cross(u1, n)
+
+		# u1 and u2 are a basis of the plane
+		proj = np.zeros((pos.shape[0], 2))
+
+		for i in range(pos.shape[0]):
+			proj[i, 0] = dot(pos[i, :], u1) 
+			proj[i, 1] = dot(pos[i, :], u2) 
+
+		proj_pt = np.array([dot(coords, u1), dot(coords, u2)])
+
+
+		kdtree = KDTree(proj)
+		d, idx = kdtree.query(proj_pt)
+		idx = ids[idx]
+
+		return self.elements["full"]["nodes"][idx]
 
 
 	def update_visibility_state(self, b):
@@ -648,24 +691,24 @@ class Editor:
 		# Use barycenter as center and camera axis as normal
 
 		# Create the crsec outline with a curve + prec curve + baseline curve
-		SIZE = 20 # Set arbitrary square size to 20 mm (10 mm radius)
-		N = 50
-		center = self.barycenter 
-		outline_coords = np.zeros((N,3))
-		angle = 2 * pi / N
-		angle_list = angle * np.arange(N)
+		
+		center = np.array([self.temp_center.x, self.temp_center.y, self.temp_center.z])
 
-		nds = np.zeros((N, 3))
-		for i in range(N):
+		outline_coords = np.zeros((self.temp_num_nds,3))
+		angle = 2 * pi / self.temp_num_nds
+		angle_list = angle * np.arange(self.temp_num_nds)
+
+		nds = np.zeros((self.temp_num_nds, 3))
+		for i in range(self.temp_num_nds):
 			vec = rotate_vector(np.array([0,1,0]), np.array([0,0,1]), angle_list[i])
-			outline_coords[i, :] = center + vec * (SIZE//2)
+			outline_coords[i, :] = center + vec * (self.temp_rad)
 
 		outline = curve(color = color.black, radius = 0.1, mode = "pathology", visible = False, locked = False, category = "outline")
 		previous = [] 
 		current = curve(color = color.red, radius = 0.1, mode = "pathology", visible = False, locked = False, category = "current")
 
-		gray_color = np.linspace(0.1, 1, self.NB)[::-1]
-		for i in range(self.NB):
+		gray_color = np.linspace(0.1, 1, self.temp_num_crsec)[::-1]
+		for i in range(self.temp_num_crsec):
 			previous.append(curve(color = color.gray(gray_color[i]), radius = 0.1, mode = "pathology", visible = True, locked = False, category = "previous"))
 
 		current_point = []
@@ -684,7 +727,7 @@ class Editor:
 
 		self.elements['pathology']['edges'] = [outline, previous, current]
 		self.elements['pathology']['nodes'] = current_point
-		self.elements['pathology']['text'] = [label(pos=scene.center, text="crsec number "  + str(len(self.pathology)) + " / " + str(self.NB), box = False, visible = False, locked = False)]
+		self.elements['pathology']['text'] = [label(pos=scene.center, text="crsec number "  + str(len(self.pathology)) + " / " + str(self.temp_num_crsec), box = False, visible = False, locked = False)]
 
 	
 
@@ -732,6 +775,35 @@ class Editor:
 			if self.cursor_checkbox.checked:
 				self.update_visibility_cursor()
 
+	def save_pathology_template(self):
+
+		# If the directory doesn't exist, create it 
+		try:
+			os.makedirs(self.pathology_output_dir)
+			self.output_message("Saving the pathology template in " + self.pathology_output_dir)
+		except OSError as error:
+			self.output_message("Overwriting the pathology template in " + self.pathology_output_dir, "warning")
+
+
+		for i in range(len(self.pathology)):
+			num = str(i)
+			if len(num) == 1:
+				num = "0" + num
+			if len(num) == 2:
+				num = "0" + num
+
+			f = open(self.pathology_output_dir+ "crsec_" + num + ".txt", 'w') 
+			# Write coordinates in file
+			for j in range(len(self.pathology[i])):
+				f.write(str(self.pathology[i][j, 0]) + "\t" + str(self.pathology[i][j, 1]) + "\t" + str(self.pathology[i][j, 2]) + "\n")
+
+			f.close()
+
+		# Write info file
+		f = open(self.pathology_output_dir + "info.txt", 'w') 
+		f.write("center_x\tcenter_y\tcenter_z\tradius\n")
+		f.write(str(self.temp_center.x) + "\t" + str(self.temp_center.y) + "\t" + str(self.temp_center.z) +"\t" + str(self.temp_rad) + "\n")
+		f.close()
 
 
 	def next_template(self):
@@ -752,29 +824,20 @@ class Editor:
 			for i in range(len(coords)):
 				c.append(vec(coords[i, 0], coords[i, 1], coords[i, 2]))
 
-		if len(self.pathology) == self.NB:
+		if len(self.pathology) == self.temp_num_crsec:
 
 			self.show_hide_template(False)
 			# Reset all the curves
-			for i in range(self.NB):
+			for i in range(self.temp_num_crsec):
 				 self.elements["pathology"]["edges"][1][i].clear()
 			outline_coords = curve_to_coords(self.elements["pathology"]["edges"][0])
 			coords_to_curve(outline_coords, self.elements["pathology"]["edges"][-1])
 
-			self.elements['pathology']['text'][0].text = "crsec number "  + str(1) + " / " + str(self.NB)
+			self.elements['pathology']['text'][0].text = "crsec number "  + str(1) + " / " + str(self.temp_num_crsec)
 			self.pathology.append(np.vstack((outline_coords,outline_coords[0, :])))
 
-			outfolder = "pathology_templates/new_template/"
-			# If the directory doesn't exist, create it 
-			try:
-				os.makedirs(outfolder)
-				self.output_message("Saving the pathology template in " + outfolder)
-			except OSError as error:
-				self.output_message("Overwriting the pathology template in " + outfolder, "warning")
+			self.save_pathology_template()
 
-
-			f = open(outfolder + "template_stenosis.obj", 'wb')
-			pickle.dump(self.pathology, f)
 			
 			self.pathology = [self.pathology[0]]
 			self.edition_mode = "off"
@@ -791,7 +854,7 @@ class Editor:
 
 			# Modify the prec curve to keep track of previous outline
 			coords_to_curve(current_coords, self.elements["pathology"]["edges"][1][len(self.pathology)-2])
-			self.elements['pathology']['text'][0].text = "crsec number "  + str(len(self.pathology)) + " / " + str(self.NB)
+			self.elements['pathology']['text'][0].text = "crsec number "  + str(len(self.pathology)) + " / " + str(self.temp_num_crsec)
 
 
 	def locate_pathology(self, b):
@@ -834,7 +897,7 @@ class Editor:
 
 		t0 = spl.project_point_to_centerline(pt0)
 		t1 = spl.project_point_to_centerline(pt1)
-		#print(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2])
+		
 		self.tree.deform_surface_to_template(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2])
 
 		
@@ -1100,18 +1163,33 @@ class Editor:
 		""" Load the pathology file """
 		try:
 			path = self.pathology_directory_winput.text
-			self.output_message("Loading pathology template from " + path + ".")
+			info_file = None 
+			crsec_files = []
+			for root, dirs, files in os.walk(path):
+				for file in files:
+					if file == "info.txt":
+						info_file = file
+					elif file[:5] == "crsec":
+						crsec_files.append(file)
+			crsec_files.sort()
+			if info_file is None:
+				self.output_message("Info file not found.", "error")
+			elif len(crsec_files) == 0:
+				self.output_message("Crsec files not found.", "error")
+			else:
+				data = []
+				if self.template is not None:
+					self.output_message("Pathology template loaded from " + path + ".")
 
-			f = open(path  + "template.obj", 'rb')	
-			data = pickle.load(f)
-			radius = 10
-			center = np.array([0,  0.225806452, 0])
+				for i in range(len(crsec_files)):
+					data.append(np.loadtxt(path + crsec_files[i], skiprows=0))
 
-			self.template = [data, radius, center]
-			
+				infos = np.loadtxt(path + info_file, skiprows=1)
+				self.template = [data, int(infos[-1]), infos[:-1]]
 
 		except FileNotFoundError:
 			self.output_message("No template found at" + path + ".", "error")
+
 
 	def save(self):
 
@@ -1133,13 +1211,15 @@ class Editor:
 					self.output_message("Vessel model saved in " + file + ".")
 
 				elif self.save_menu.selected == "centerline":
+					file = self.save_directory + self.save_filename
 
-					if self.save_filename[-4:] != ".swc":
-						file = self.save_directory + self.save_filename + ".swc"
+					if self.save_filename[-4:] == ".swc":
+						self.tree.write_swc(file)
+					elif self.save_filename[-4:] == ".txt":
+						self.tree.write_edg_nds(file)
 					else:
-						file = self.save_directory + self.save_filename
-
-					self.tree.write_swc(file)
+						self.tree.write_swc(file)
+					
 					self.output_message("Vessel centerline saved in " + file + ".")
 
 				elif self.save_menu.selected == "surface mesh":
@@ -1432,8 +1512,10 @@ class Editor:
 				mesh = self.tree.get_surface_mesh()
 				if mesh is None: 
 					# Convert mesh selection from model graph to crsec graph
+					self.disable(True)
 					mesh = self.tree.mesh_surface(edg = self.converted_selection())
 					self.disable_close_check()
+					self.disable(False)
 
 				vertices = mesh.points
 				faces = mesh.faces.reshape((-1, 5))
@@ -1548,6 +1630,7 @@ class Editor:
 
 		""" Update the modified elements in the tree object by modifying the graphs"""
 
+		self.disable(True)
 		mode = b.mode # The mode of the button is the representation it controls
 		self.modified[mode] = False
 
@@ -1599,6 +1682,7 @@ class Editor:
 
 		self.unselect("node", mode)
 		self.unselect("edge", mode)
+		self.disable(False)
 
 
 	def converted_selection(self):
@@ -1725,8 +1809,9 @@ class Editor:
 
 					if e in edj_elt:
 						c = self.elements[mode]["edges"][e]
+						c.clear()
 						for i in range(len(coords)):
-							c.modify(i, vector(coords[i][0], coords[i][1], coords[i][2]))
+							c.append(vector(coords[i][0], coords[i][1], coords[i][2]))
 
 					else:
 						c = curve(color = color.black, radius = self.edge_size_sliders["topo"].value, mode = 'topo', category = 'edges', id = e, locked = False)
@@ -1789,7 +1874,6 @@ class Editor:
 								self.elements[mode]["control_nodes"][e][i].visible = False
 
 							self.elements[mode]["control_nodes"].pop(e)
-
 
 					# Modify or add edge
 					for e in G.edges(): 
@@ -1874,7 +1958,9 @@ class Editor:
 
 				else:
 					if mesh is None:
+						self.disable(True)
 						mesh = self.tree.mesh_surface(edg = self.converted_selection())
+						self.disable(False)
 						self.closing_state = False # The surface will be opened after the recomputation
 						self.close_mesh_button.text = "Close"
 						
@@ -2055,13 +2141,14 @@ class Editor:
 
 					if not self.slice_checkbox.checked:
 						# The projection plane is determined by the closest points
-						coords = self.tree.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
-						pos = scene.mouse.project(normal = scene.camera.axis, point = vec(coords[0],coords[1], coords[2]))
-						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, coords[3]]), branch = False, apply = False)
+						close_sph = self.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
+						pos = scene.mouse.project(normal = scene.camera.axis, point = vec(close_sph.pos.x,close_sph.pos.y, close_sph.pos.z))
+						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, close_sph.radius]), idx = close_sph.id, branch = False, apply = False)
 					else:
 						# The projection plane is determined by the normal of the image slice
+						close_sph = self.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
 						pos = scene.mouse.project(normal = self.slice_plane[0], point = self.slice_plane[1])
-						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, 0.3]), branch = False, apply = False)
+						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, close_sph.radius]), idx = close_sph.id, branch = False, apply = False)
 					
 					self.refresh_display("full")
 					self.modified["full"] = True
@@ -2071,14 +2158,14 @@ class Editor:
 
 					if not self.slice_checkbox.checked:
 						# The projection plane is determined by the closest points
-						coords = self.tree.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
-						pos = scene.mouse.project(normal = scene.mouse.ray, point = vec(coords[0],coords[1], coords[2]))
-						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, coords[3]]), branch = True, apply = False)
-
+						close_sph = self.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
+						pos = scene.mouse.project(normal = scene.camera.axis, point = vec(close_sph.pos.x,close_sph.pos.y, close_sph.pos.z))
+						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, close_sph.radius]), idx = close_sph.id, branch = True, apply = False)
 					else:
 						# The projection plane is determined by the normal of the image slice
+						close_sph = self.get_closest_data_point(np.array([pos.x, pos.y, pos.z]), np.array([scene.mouse.ray.x, scene.mouse.ray.y, scene.mouse.ray.z]))
 						pos = scene.mouse.project(normal = self.slice_plane[0], point = self.slice_plane[1])
-						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, 0.5]), branch = False, apply = False)
+						self.tree.add_data_point(np.array([pos.x, pos.y, pos.z, close_sph.radius]), idx = close_sph.id, branch = True, apply = False)
 
 					self.refresh_display("full")
 					self.modified["full"] = True
@@ -2116,19 +2203,6 @@ class Editor:
 			# Actions on topo mode edges
 			if self.edition_mode == "topo" and self.selected_edge is not None:
 
-				if evt.key == "i": # Merge edge to previous bifurcation
-
-					# Make the in node invisible
-					e = self.selected_edge.id
-					pred = list(self.tree.get_topo_graph().predecessors(e[0]))[0]
-					if self.tree.get_topo_graph().nodes[pred]["type"] == "end":
-						self.output_message("Edge can not be merged.")
-					else:
-						# Add the merging to modified elements
-						self.output_message("Merging to previous bifurcation.")
-						self.tree.merge_branch(elt)
-						self.refresh_display("topo")
-					self.modified["topo"] = True
 
 				if evt.key == "u" or evt.key == "d":
 					if evt.key == "u":
@@ -2158,12 +2232,14 @@ class Editor:
 					self.modified["topo"] = True
 				
 				if evt.key == "delete": # Delete branch
-					self.output_message("Removing branches.")
+					self.output_message("Removing branch...")
 
+					self.disable(True)
 					edg = self.selected_edge.id
 					self.tree.remove_branch(edg)
 					self.refresh_display("topo")
 					self.modified["topo"] = True
+					self.disable(False)
 
 			# Actions on topo mode nodes
 			if self.edition_mode == "topo" and self.selected_node is not None and self.selected_node.mode != "cursor":
@@ -2575,7 +2651,7 @@ class Editor:
 
 								self.selected_edge = obj
 								self.selected_edge.color = color.green
-								self.output_message("Edge " + str(obj.id) + " selected. Press 'suppr.' to delete this edge. Press 'i' to merge it to the previous bifurcation. Press 'u' or 'd' to increase or lower the radius of the branch.")
+								self.output_message("Edge " + str(obj.id) + " selected. Press 'suppr.' to delete this edge. Press 'u' or 'd' to increase or lower the radius of the branch.")
 
 					elif self.edition_mode =="topo":
 						if obj.mode == "topo":
@@ -2900,6 +2976,7 @@ class Editor:
 		self.disable(False)
 
 	def mesh_surface(self):
+		self.output_message("Meshing surface.")
 
 		self.disable(True)
 

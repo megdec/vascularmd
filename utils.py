@@ -988,7 +988,8 @@ def segment_crsec(spl, num, N, v0 = [], alpha = None):
 	alpha -- rotation angle
 	"""
 
-	t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
+	#t = np.linspace(0.0, 1.0, num + 2) #t = [0.0] + spl.resample_time(num) + [1.0]
+	t = [0.0] + spl.resample_time(num) + [1.0]
 
 	if len(v0) == 0:
 		v0 = cross(spl.tangent(0), np.array([0,0,1])) # Random initialisation of the reference vector

@@ -78,7 +78,7 @@ class Spline:
 	def get_times(self):
 		if self._length_tab is None:
 			self.__set_length_tab()
-		return np.linspace(0, 1, len(self.get_points())) #np.arange(0, 1, self._spl.delta) 
+		return self._times_tab
 
 	def get_length(self):
 
@@ -164,6 +164,7 @@ class Spline:
 			length.append(length[i-1] + norm(pts[i] - pts[i-1]))
 
 		self._length_tab = np.array(length)
+		self._times_tab = np.linspace(0.0, 1.0, round(1 / self._spl.delta))
 
 
 	def _set_lambda_model(self, lbd=[None, None]):
@@ -790,40 +791,49 @@ class Spline:
 		"""
 
 		length = self.get_length() #np.array(self._length_tab)
+		times = self.get_times()
 
 		if type(L) == list or type(L) == np.ndarray:
 
 			T = []
 			for i in range(len(L)):
 
-				i1 = np.argmax(length > L[i])
+				i1 = np.argmax(length >= L[i])
+				if length[i1] == L[i]:
+					T.append(times[i1])
+				else:
 
-				if i1 == 0:
-					if length[0] > L[i]:
-						T.append(0.0) # length is < 0
+					if i1 == 0:
+						if length[0] > L[i]:
+							T.append(0.0) # length is < 0
+						else: 
+							T.append(1.0) # length is > length of the spline
+					
 					else: 
-						T.append(1.0) # length is > length of the spline
-				
-				else: 
-					i1 = i1 - 1
-					i2 = i1 + 1
-					T.append((i1 * self._spl.delta) + (self._spl.delta * ((L[i] - length[i1]) / (length[i2] - length[i1]))))
+						i1 = i1 - 1
+						i2 = i1 + 1
+						ratio = (L[i] - length[i1]) / (length[i2] - length[i1])
+						T.append(times[i1] + ratio * (times[i2] - times[i1]))
 
 
 		else:
 
-			i1 = np.argmax(length > L)
+			i1 = np.argmax(length >= L)
+			if length[i1] == L:
+				T.append(i1 * self._spl.delta)
+			else:
 
-			if i1 == 0:
-				if length[0] > L:
-					T = 0.0 # length is < 0
+				if i1 == 0:
+					if length[0] > L:
+						T = 0.0 # length is < 0
+					else: 
+						T = 1.0 # length is > length of the spline
+					
 				else: 
-					T = 1.0 # length is > length of the spline
-				
-			else: 
-				i1 = i1 - 1
-				i2 = i1 + 1
-				T = (i1 * self._spl.delta) + (self._spl.delta * ((L - length[i1]) / (length[i2] - length[i1])))
+					i1 = i1 - 1
+					i2 = i1 + 1
+					ratio = (L - length[i1]) / (length[i2] - length[i1])
+					T = times[i1] + ratio * (times[i2] - times[i1])
 
 		return T
 			 
@@ -839,29 +849,48 @@ class Spline:
 		"""
 
 		length = self.get_length() #np.array(self._length_tab)
+		times = self.get_times()
 
 		if type(T) == list or type(T) == np.ndarray:
 
 			L = []
 			for i in range(len(T)):
 
-				i1 = int(np.floor(T[i] / self._spl.delta))
-
-				if i1 >= len(length) - 1:
-					L.append(length[-1])
+				i1 = np.argmax(times >= T[i])
+				if times[i1] == T[i]:
+					L.append(length[i1])
 				else:
-					i2 = i1 + 1
-					L.append(length[i1] - (length[i1] - length[i2]) * ((T[i] / self._spl.delta - i1) / (i2 - i1)))
+
+					if i1 == 0:
+						if times[0] > T[i]:
+							L.append(0.0) # length is < 0
+						else: 
+							L.append(length[-1]) # length is > length of the spline
+					
+					else: 
+						i1 = i1 - 1
+						i2 = i1 + 1
+						ratio = (T[i] - times[i1]) / (times[i2] - times[i1])
+						L.append(length[i1] + ratio * (length[i2] - length[i1]))
 
 		else:
 
-			i1 = int(np.floor(T/ self._spl.delta))
+			i1 = np.argmax(times >= T)
+			if times[i1] == T:
+				L = length[i1]
+			else:
 
-			if i1 >= len(length) - 1:
-					L = length[-1]
-			else: 
-				i2 = i1 + 1
-				L = length[i1] - (length[i1] - length[i2]) * ((T / self._spl.delta - i1) / (i2 - i1))
+				if i1 == 0:
+					if times[0] > T:
+						L =0.0 # length is < 0
+					else: 
+						L.append(length[-1]) # length is > length of the spline
+					
+				else: 
+					i1 = i1 - 1
+					i2 = i1 + 1
+					ratio = (T - times[i1]) / (times[i2] - times[i1])
+					L = length[i1] + ratio * (length[i2] - length[i1])
 
 		return L
 		
