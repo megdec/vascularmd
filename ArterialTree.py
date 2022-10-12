@@ -2884,7 +2884,7 @@ class ArterialTree:
 				self.mesh_surface(edg = edg)
 
 				
-	def deform_surface_to_template(self, edg, t0, t1, template, temp_rad, temp_center,  method = "bicubic"):
+	def deform_surface_to_template(self, edg, t0, t1, template, temp_rad, temp_center,  method = "bicubic", rotate = 0):
 
 		""" Deforms the original mesh to match a given crsec section template
 		Overwrite the cross section graph.
@@ -2898,6 +2898,21 @@ class ArterialTree:
 		temp_center -- the center of the template
 		method -- interpolation method "linear" or "bicubic"
 		"""
+		nb_slice = len(template)
+		nb_pt = len(template[0])
+
+		# If rotate, rotate the template
+		if rotate!= 0:
+			# Convert to radian
+			if rotate < 0:
+				rotate = 360 - rotate
+			rotate = rotate * (pi / 180)
+			ang_list = np.linspace(0, 2*pi, nb_pt - 1)
+			idx = np.argwhere(ang_list >= rotate)[0][0]
+
+			for i in range(nb_slice):
+				template[i] = np.vstack((template[i][idx:-1, :], template[i][:idx, :], template[i][idx, :]))
+
 
 		# Project point to model graph
 		spl_edg = self._model_graph.edges[edg]['spline']
@@ -2909,14 +2924,10 @@ class ArterialTree:
 		t_centers = self._crsec_graph.edges[edg]['center']
 		l_centers = spl_edg.time_to_length(t_centers)
 
-
 		id_crsec0 = np.argwhere(t_centers >= t0)[0][0]
 		id_crsec1 = np.argwhere(l_centers > Lstart + length)[0][0] - 1
 
 		slice_z = l_centers[id_crsec0:id_crsec1+1] - Lstart
-
-		nb_slice = len(template)
-		nb_pt = len(template[0])
 
 		depth = np.linspace(0, length, nb_slice)
 
@@ -2937,9 +2948,6 @@ class ArterialTree:
 				spl.interpolation(poly)
 				depth_spl.append(spl)
 
-
-		SAMPLING = 100
-		#slice_z = np.linspace(0, length, SAMPLING)
 
 		crsec_interp = []
 		# Interpolate the cross sections (cubic interpolation)
@@ -3040,22 +3048,58 @@ class ArterialTree:
 			#spl.show(control_points = False, data = slice_data)
 
 		# For visualization of the result in 3D
-		"""
-		samp_spl = 200
-		t = np.linspace(0, 1, samp_spl)
+	
+		# Write interpolation mesh
+		samp_slices = 200 
+		samp_pt = 200
+
+		slice_z_new = np.linspace(0, length, samp_slices)
 		vertices = np.array([]).reshape(0,3)
-		for i in range(len(slice_z)):
-			pts = crsec_interp[i].point(t.tolist())
-			vertices = np.vstack((vertices, pts))
+		for i in range(samp_pt):
+			slice_data = np.zeros((nb_pt, 3))
+			for j in range(nb_pt):
+				# Find the intersection of the spline nd the plane z = slice_z[i]
+				pts = depth_spl[j].get_points()
+				idx = np.argwhere(pts[:, 2] >= slice_z_new[i])[0][0]
+				slice_data[j, :] = pts[idx]
+				slice_data[j, 2] = slice_z_new[i]
+
+			# Interpolate
+			spl = Spline()
+			spl.interpolation(slice_data)
+			crsec_interp.append(spl)
+
+			# Extract the nodes along the new outline (even sampling)
+			t_nodes = spl.resample_time(samp_pt, include_start = True)
+			nds = spl.point(t_nodes)
+			vertices = np.vstack((vertices, nds))
+
 		edges = []
-		for i in range(len(slice_z) - 1):
-			for j in range(samp_spl-1):
-				edges.append([4, i * samp_spl + j,  i * samp_spl + j + 1, (i+1) * samp_spl + j + 1, (i+1) * samp_spl + j])
+		for i in range(len(slice_z_new) - 1):
+			for j in range(samp_slices-1):
+				edges.append([4, i * samp_pt + j,  i * samp_pt + j + 1, (i+1) * samp_pt + j + 1, (i+1) * samp_pt + j])
+			edges.append([4, i * samp_pt + j,  i * samp_pt + 0, (i+1) * samp_pt + 0, (i+1) * samp_pt + j])
 
 		mesh = pv.PolyData(vertices, np.array(edges))
-	
 		mesh.save("test_stenosis_applied.vtk")
-		"""
+
+		# Write the cross sections with lines and spheres
+
+		circles = pv.MultiBlock()
+		centers = pv.MultiBlock()
+
+		for i in range(nb_slice):
+			circle = pv.PolyData()
+			v = template[i]
+			f = []
+			for j in range(nb_pt - 1):
+				v[j, 2] = depth[i]
+				f.append([2, j, j+1])
+				centers[str(i) + str(j)]= pv.Sphere(radius=0.2, center=(template[i][j, 0], template[i][j, 1], depth[i]))
+			circles[str(i)] = circle
+
+		circles.save("crsecs.vtm")
+		centers.save("points.vtm")
 
 		if self._surface_mesh is not None:
 			self.mesh_surface()
@@ -4056,15 +4100,15 @@ class ArterialTree:
 
 		for e in edg_list:
 			for i in range(self._topo_graph.edges[e]['coords'].shape[0]):
-				if e != edg or (e == edg and i > 0):
-					coord = self._topo_graph.edges[e]['coords'][i, :-1]
+				
+				coord = self._topo_graph.edges[e]['coords'][i, :-1]
 					
-					l = norm(coord - rot_center)
-					v = (coord - rot_center) / l
+				l = norm(coord - rot_center)
+				v = (coord - rot_center) / l
 							
-					new_v = rotate_vector(v, normal, alpha)
-					new_pos = rot_center + l* new_v
-					self._topo_graph.edges[e]['coords'][i, :-1] = new_pos
+				new_v = rotate_vector(v, normal, alpha)
+				new_pos = rot_center + l* new_v
+				self._topo_graph.edges[e]['coords'][i, :-1] = new_pos
 
 		for n in nds_list:
 			coord = self._topo_graph.nodes[n]['coords'][:-1]

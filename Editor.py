@@ -562,7 +562,7 @@ class Editor:
 
 
 		self.output_message("Cutting slice in the medical image.")
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 
 		img = np.array(self.image.dataobj)
 		pix_dim = self.image.header['pixdim'][1:4]
@@ -672,7 +672,7 @@ class Editor:
 			#self.slice = quad(vs=self.slice.vs, texture='image2.jpg')
 		
 
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 		self.slice_checkbox.disabled = False
 		self.slice_checkbox.checked = True
 
@@ -866,13 +866,14 @@ class Editor:
 				self.output_message("Please compute the mesh before adding pathology.", "warning")
 			else:
 
-				self.pathology_edg = self.selected_edge.id
-				spl = self.tree.get_model_graph().edges[self.pathology_edg]["spline"]
-				pos1 = spl.point(0.2)
-				pos2 = spl.point(0.8)
+				if self.pathology_edg!= self.selected_edge.id:
+					self.pathology_edg = self.selected_edge.id
+					spl = self.tree.get_model_graph().edges[self.pathology_edg]["spline"]
+					pos1 = spl.point(0.2)
+					pos2 = spl.point(0.8)
 
-				self.pathology_markers[0].pos = vec(pos1[0], pos1[1], pos1[2])
-				self.pathology_markers[1].pos = vec(pos2[0], pos2[1], pos2[2])
+					self.pathology_markers[0].pos = vec(pos1[0], pos1[1], pos1[2])
+					self.pathology_markers[1].pos = vec(pos2[0], pos2[1], pos2[2])
 
 				self.pathology_markers[0].visible = True
 				self.pathology_markers[1].visible = True
@@ -898,7 +899,7 @@ class Editor:
 		t0 = spl.project_point_to_centerline(pt0)
 		t1 = spl.project_point_to_centerline(pt1)
 		
-		self.tree.deform_surface_to_template(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2])
+		self.tree.deform_surface_to_template(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2], rotate = 0)
 
 		
 	def update_visibility_angle(self, checkbox):
@@ -1393,12 +1394,12 @@ class Editor:
 				if G is None: # Compute model network if not done
 					self.output_message("Computing model...")
 
-					self.disable(True)
+					self.disable(True, checkboxes = True)
 					self.tree.model_network()
 					G = self.tree.get_model_graph()
 					
 					self.output_message("Model complete!")
-					self.disable(False)
+					self.disable(False, checkboxes = True)
 
 				nodes = {}
 				furcation_nodes = {}
@@ -1503,19 +1504,19 @@ class Editor:
 
 					self.output_message("Computing mesh...")
 
-					self.disable(True)
+					self.disable(True, checkboxes = True)
 					self.tree.compute_cross_sections(self.N, self.d)
-					self.disable(False)
+					self.disable(False, checkboxes = True)
 
 					self.output_message("Mesh complete!")
 
 				mesh = self.tree.get_surface_mesh()
 				if mesh is None: 
 					# Convert mesh selection from model graph to crsec graph
-					self.disable(True)
+					self.disable(True, checkboxes = True)
 					mesh = self.tree.mesh_surface(edg = self.converted_selection())
 					self.disable_close_check()
-					self.disable(False)
+					self.disable(False, checkboxes = True)
 
 				vertices = mesh.points
 				faces = mesh.faces.reshape((-1, 5))
@@ -1630,7 +1631,7 @@ class Editor:
 
 		""" Update the modified elements in the tree object by modifying the graphs"""
 
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 		mode = b.mode # The mode of the button is the representation it controls
 		self.modified[mode] = False
 
@@ -1682,7 +1683,7 @@ class Editor:
 
 		self.unselect("node", mode)
 		self.unselect("edge", mode)
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 
 
 	def converted_selection(self):
@@ -1958,9 +1959,9 @@ class Editor:
 
 				else:
 					if mesh is None:
-						self.disable(True)
+						self.disable(True, checkboxes = True)
 						mesh = self.tree.mesh_surface(edg = self.converted_selection())
-						self.disable(False)
+						self.disable(False, checkboxes = True)
 						self.closing_state = False # The surface will be opened after the recomputation
 						self.close_mesh_button.text = "Close"
 						
@@ -2234,12 +2235,12 @@ class Editor:
 				if evt.key == "delete": # Delete branch
 					self.output_message("Removing branch...")
 
-					self.disable(True)
+					self.disable(True, checkboxes = True)
 					edg = self.selected_edge.id
 					self.tree.remove_branch(edg)
 					self.refresh_display("topo")
 					self.modified["topo"] = True
-					self.disable(False)
+					self.disable(False, checkboxes = True)
 
 			# Actions on topo mode nodes
 			if self.edition_mode == "topo" and self.selected_node is not None and self.selected_node.mode != "cursor":
@@ -2856,20 +2857,20 @@ class Editor:
 
 		if self.target_mesh is not None:
 			self.output_message("Mesh deformation...")
-			self.disable(True)
+			self.disable(True, checkboxes = True)
 
 			self.tree.deform_surface_to_mesh(self.target_mesh)
 
 			self.refresh_display("mesh")
 			
-			self.disable(False)
+			self.disable(False, checkboxes = True)
 			self.output_message("Mesh deformation complete!")
 
 
 	def check_mesh(self):
 		""" Checks the mesh quality and display the mesh segments not compatible with simulation in red """
 
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 
 		if self.check_state == False:
 
@@ -2900,13 +2901,13 @@ class Editor:
 			self.check_state = False
 			self.check_mesh_button.text = "Check"
 
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 
 
 	def close_mesh(self):
 		""" Checks the mesh quality and display the mesh segments not compatible with simulation in red """
 
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 
 		if self.closing_state == False:
 
@@ -2924,7 +2925,7 @@ class Editor:
 			self.close_mesh_button.text = "Close"
 			self.output_message("Surface opened.")
 
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 
 
 	def disable_close_check(self):
@@ -2941,7 +2942,7 @@ class Editor:
 	def manage_extensions(self):
 
 		""" Add and remove inlet and outlet extensions """
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 
 		if self.extension_state == False:
 
@@ -2963,22 +2964,21 @@ class Editor:
 			self.extension_button.text = "Extend"
 			self.output_message("Extensions removed.")
 			
+		self.disable(False, checkboxes = True)
 
-
-		self.disable(False)
 
 	def mesh_volume(self):
 
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 		self.output_message("Meshing the volume...")
 		self.tree.mesh_volume(edg = self.converted_selection())
 		self.output_message("Volume meshed.")
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 
 	def mesh_surface(self):
 		self.output_message("Meshing surface.")
 
-		self.disable(True)
+		self.disable(True, checkboxes = True)
 
 		self.tree.compute_cross_sections(self.N, self.d)
 		self.tree.mesh_surface(edg = self.converted_selection())
@@ -2988,7 +2988,7 @@ class Editor:
 		self.refresh_display("mesh")
 		self.disable_close_check()
 
-		self.disable(False)
+		self.disable(False, checkboxes = True)
 
 
 
