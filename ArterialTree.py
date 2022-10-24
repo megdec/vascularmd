@@ -27,6 +27,7 @@ from numpy import dot, cross
 import matplotlib.pyplot as plt # Tools for plots
 from mpl_toolkits.mplot3d import Axes3D # 3D display
 import gc
+import os
 
 import networkx as nx
 
@@ -2883,8 +2884,54 @@ class ArterialTree:
 				
 				self.mesh_surface(edg = edg)
 
+	def load_pathology_template(self, path):
+
+		""" Load the pathology file 
+		Keyword arguments :
+		path -- path to the template folder
+
+		Output :
+		template -- list of coordinates of the template curves
+		temp_rad -- the radius of the template
+		temp_center -- the center of the template
+		"""
+		try:
+			info_file = None 
+			crsec_files = []
+			for root, dirs, files in os.walk(path):
+				for file in files:
+					if file == "info.txt":
+						info_file = file
+					elif file[:5] == "crsec":
+						crsec_files.append(file)
+
+			crsec_files.sort()
+			if info_file is None:
+				raise ValueError("Info file not found.")
+				return [False, False, False]
 				
-	def deform_surface_to_template(self, edg, t0, t1, template, temp_rad, temp_center,  method = "bicubic", rotate = 0):
+			elif len(crsec_files) == 0:
+				raise ValueError("Crsec files not found.")
+				return [False, False, False]
+				
+			else:
+				data = []
+				
+				print("Pathology template loaded from " + path + ".")
+
+				for i in range(len(crsec_files)):
+					data.append(np.loadtxt(path + crsec_files[i], skiprows=0))
+
+				infos = np.loadtxt(path + info_file, skiprows=1)
+				return [data, int(infos[-1]), infos[:-1]]
+
+		except FileNotFoundError:
+			raise ValueError("No template found at" + path + ".")
+			return [False, False, False]
+		
+
+		
+	def deform_surface_to_template(self, edg, t0, t1, template, temp_rad, temp_center, method = "bicubic", rotate = 0):
 
 		""" Deforms the original mesh to match a given crsec section template
 		Overwrite the cross section graph.
@@ -2898,6 +2945,7 @@ class ArterialTree:
 		temp_center -- the center of the template
 		method -- interpolation method "linear" or "bicubic"
 		"""
+		template = template[:]
 		nb_slice = len(template)
 		nb_pt = len(template[0])
 
@@ -2909,10 +2957,9 @@ class ArterialTree:
 			rotate = rotate * (pi / 180)
 			ang_list = np.linspace(0, 2*pi, nb_pt - 1)
 			idx = np.argwhere(ang_list >= rotate)[0][0]
-
+		
 			for i in range(nb_slice):
 				template[i] = np.vstack((template[i][idx:-1, :], template[i][:idx, :], template[i][idx, :]))
-
 
 		# Project point to model graph
 		spl_edg = self._model_graph.edges[edg]['spline']
@@ -2924,7 +2971,7 @@ class ArterialTree:
 		t_centers = self._crsec_graph.edges[edg]['center']
 		l_centers = spl_edg.time_to_length(t_centers)
 
-		id_crsec0 = np.argwhere(t_centers >= t0)[0][0]
+		id_crsec0 = np.argwhere(np.array(t_centers) >= t0)[0][0]
 		id_crsec1 = np.argwhere(l_centers > Lstart + length)[0][0] - 1
 
 		slice_z = l_centers[id_crsec0:id_crsec1+1] - Lstart
@@ -3048,7 +3095,7 @@ class ArterialTree:
 			#spl.show(control_points = False, data = slice_data)
 
 		# For visualization of the result in 3D
-	
+		"""
 		# Write interpolation mesh
 		samp_slices = 200 
 		samp_pt = 200
@@ -3089,17 +3136,23 @@ class ArterialTree:
 		centers = pv.MultiBlock()
 
 		for i in range(nb_slice):
+			print(i)
 			circle = pv.PolyData()
 			v = template[i]
 			f = []
-			for j in range(nb_pt - 1):
+			for j in range(nb_pt):
 				v[j, 2] = depth[i]
-				f.append([2, j, j+1])
-				centers[str(i) + str(j)]= pv.Sphere(radius=0.2, center=(template[i][j, 0], template[i][j, 1], depth[i]))
+				if j < nb_pt - 1:
+					f.append([2, j, j+1])
+				centers[str(i) +","+ str(j)]= pv.Sphere(radius=0.2, center=(template[i][j, 0], template[i][j, 1], depth[i]))
+
+			circle.points = v
+			circle.lines = np.array(f)
 			circles[str(i)] = circle
 
 		circles.save("crsecs.vtm")
 		centers.save("points.vtm")
+		"""
 
 		if self._surface_mesh is not None:
 			self.mesh_surface()
@@ -3467,6 +3520,44 @@ class ArterialTree:
 			#self._topo_graph.remove_node(n)
 
 		#self.topo_to_full(replace = True)
+
+
+	def merge_branch(self, n, mode = "topo"):
+
+		""" Merge the branch with the previous one to from a (n+1)-furcation
+
+		Keyword arguments:
+		e -- edge of the branch to merge """
+
+		# Get previous node
+		if mode == "topo":
+			pred = list(self._topo_graph.predecessors(n))[0]
+			if self._topo_graph.nodes[pred]["type"] == "end":
+				print("Branch cannot be merged.")
+
+			else:
+
+				for e in self._topo_graph.out_edges(n):
+					d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
+					self._topo_graph.add_edge(pred, e[1], coords = d)
+
+
+				self._topo_graph.remove_node(n)
+				self.topo_to_full()
+		else:
+
+			pred = list(self._model_graph.predecessors(n))[0]
+			if self._model_graph.nodes[pred]["type"] == "end":
+				print("Branch cannot be merged.")
+
+			else:
+
+				for e in self._model_graph.out_edges(n):
+					d = np.vstack((self._model_graph.edges[(pred, e[0])]['coords'], self._model_graph.nodes[e[0]]['coords'], self._model_graph.edges[(e)]['coords']))
+					self._model_graph.add_edge(pred, e[1], coords = d)
+
+
+				self._model_graph.remove_node(n)
 
 
 	def remove_branch(self, e, preserve_shape = True, from_node = False):
