@@ -215,6 +215,8 @@ class Editor:
 		self.N = 24 # Number of nodes in one cross section (nx8)
 		self.d = 0.2 # Density of cross sections
 
+		self.mesh_display_limit = 40000
+
 		# Display parameters
 		self.display_spline_step = 10 # Step for displaying spline points
 		self.temp_num_nds = 50 # Number of nodes in the template for pathology
@@ -898,8 +900,8 @@ class Editor:
 
 		t0 = spl.project_point_to_centerline(pt0)
 		t1 = spl.project_point_to_centerline(pt1)
-		
-		self.tree.deform_surface_to_template(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2], rotate = 0)
+		print(t0,t1)
+		self.tree.deform_surface_to_template(self.pathology_edg, t0, t1, self.template[0], self.template[1], self.template[2], rotate = 120)
 
 		
 	def update_visibility_angle(self, checkbox):
@@ -1524,7 +1526,7 @@ class Editor:
 				print('number of faces: ',  len(faces))
 
 				# If too much faces, don't display it
-				if len(faces) > 50000:
+				if len(faces) > self.mesh_display_limit:
 					self.output_message("The entire mesh cannot be displayed has it has too many faces. Please use the mesh selection menu to select a subset of the network, or modify the meshing parameters.", 'warning')
 				else:
 
@@ -2577,7 +2579,7 @@ class Editor:
 			elif self.selected_node.mode == "pathology":
 				self.drag = False
 
-			else:
+			elif self.selected_node.mode == "model":
 
 				self.drag = False
 				pos = self.selected_node.pos
@@ -2586,6 +2588,9 @@ class Editor:
 					self.modified_elements['splines'].append(self.selected_node.id[0])
 				self.unselect("node")
 				self.modified["model"] = True
+
+			else:
+				pass
 				
 
 
