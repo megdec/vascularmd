@@ -3539,7 +3539,8 @@ class ArterialTree:
 
 				for e in self._topo_graph.out_edges(n):
 					d = np.vstack((self._topo_graph.edges[(pred, e[0])]['coords'], self._topo_graph.nodes[e[0]]['coords'], self._topo_graph.edges[(e)]['coords']))
-					self._topo_graph.add_edge(pred, e[1], coords = d)
+					full_id = self._topo_graph.edges[(pred, e[0])]['full_id'] + [self._topo_graph.nodes[e[0]]['full_id']] + self._topo_graph.edges[(e)]['full_id']
+					self._topo_graph.add_edge(pred, e[1], coords = d, full_id = full_id)
 
 
 				self._topo_graph.remove_node(n)
@@ -3572,7 +3573,12 @@ class ArterialTree:
 		if self._topo_graph is None:
 			raise ValueError('No network was found.')
 
+		inlet = False 
+		if self._topo_graph.nodes[e[0]]["type"] == "end":
+			inlet = True 
+
 		if from_node: 
+
 			# Get all downstream nodes
 			downstream_nodes =  list(nx.dfs_preorder_nodes(self._topo_graph, source=e[0]))
 
@@ -3581,6 +3587,11 @@ class ArterialTree:
 				#self._full_graph.remove_node(self._topo_graph.nodes[node]["full_id"])
 				self._topo_graph.remove_node(node)
 				self._topo_graph.nodes[e[0]]['type'] = "end"
+
+						# Inlet case
+			if inlet:
+				self._topo_graph.remove_node(e[0])
+
 		else:
 
 			if e not in [e for e in self._topo_graph.edges()]:
@@ -3592,6 +3603,10 @@ class ArterialTree:
 				bif_n = [e[0] for e in self._topo_graph.in_edges(e[1])]
 
 			self._topo_graph.remove_edge(e[0], e[1])
+
+			# Inlet case
+			if inlet:
+				self._topo_graph.remove_node(e[0])
 
 			# Get all downstream nodes
 			downstream_nodes =  list(nx.dfs_preorder_nodes(self._topo_graph, source=e[1]))	
@@ -3767,10 +3782,15 @@ class ArterialTree:
 				for node in downstream_nodes[1:]:
 					self._model_graph.remove_node(node)
 					self._model_graph.nodes[e[0]]['type'] = "end"
+								# Inlet case
+					if inlet:
+						self._model_graph.remove_node(e[0])
 
 					if apply_crsec:
 						self._crsec_graph.remove_node(node)
 						self._crsec_graph.nodes[e[0]]['type'] = "end"
+						if inlet:
+							self._crsec_graph.remove_node(e[0])
 			else:
 
 				list_edg = [e for e in self._model_graph.edges()]
