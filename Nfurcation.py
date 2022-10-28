@@ -169,6 +169,7 @@ class Nfurcation:
 			
 		return ref_list
 	
+
 	def get_angles(self):
 		""" Compute and return furcation angles."""
 		
@@ -1373,7 +1374,10 @@ class Nfurcation:
 		""" Sends a point to the surface defined by all shape splines according to direction n """
 
 		# Project to main ind
-		pt = self.__projection(O, n, 0.0, 2.5, ind)
+		min_dist = 0
+		max_dist = self._endsec[0][0][3] * 2
+		
+		pt = self.__projection(O, n, min_dist, max_dist, ind)
 
 		ind_list = np.arange(0, len(self._spl)).tolist()
 		ind_list.remove(ind)
@@ -1385,7 +1389,7 @@ class Nfurcation:
 
 			# Check distance
 			if norm(pt - pt2[:-1]) < pt2[-1]:
-				pt = self.__projection(pt, n, 0.0, 2.0, i)
+				pt = self.__projection(pt, n, min_dist, max_dist, i)
 
 		return pt
 
