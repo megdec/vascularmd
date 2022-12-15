@@ -41,7 +41,6 @@ class Nfurcation:
 		if "spline" : args = [[spl1, spl2, ...], R]
 		if "spline" : args = [[spl1, spl2, ...], [[AP1], [AP2],...], R]
 		if "crsec" : args = [[crsec1, crsec2, ...], [[AP_crsec1], [AP_crsec2]...], [AP], R]
-		if "angle" : args = [[crsec1, crsec2, ...], [a1, a2...], R]
 		"""
 	
 		self.model = model
@@ -81,6 +80,7 @@ class Nfurcation:
 			self.__set_spl()
 			self.__set_tAP() # Times at apex
 
+		self.check_input_parameters()
 
 		self.__set_key_pts() # Set key points times
 		self.__set_X() # Geometric center (np array)
@@ -95,7 +95,29 @@ class Nfurcation:
 		self.R = self.optimal_smooth_radius(args[-1])   # Minimum curvature for rounded apex
 		
 
-	
+	#####################################
+	##### CHECK INPUT PARAMETERS  #######
+	#####################################
+
+	def check_input_parameters(self):
+		""" Check that the constraints that link the apex point AP and the apical cross section are verified. 
+		Translate the sections if necessary."""
+
+		for i in range(len(self._AP)): 
+			# Check the apical cross section position
+			for crsec in self._apexsec[i]:
+
+				vAP = self._AP[i] - crsec[0][:3] 
+				vAPnorm = cross(crsec[1][:3], vAP)
+				vAPnorm = cross(vAPnorm,crsec[1][:3])
+				vAPnorm = vAPnorm / norm(vAPnorm)
+				
+				AP_estim = crsec[0][:3] + vAPnorm * crsec[0][3]
+				translate_vector = self._AP[i] - AP_estim
+
+				if norm(translate_vector) > 0.0 : 
+					crsec[0][:3] = crsec[0][:3] + translate_vector
+
 
 	#####################################
 	#############  GETTERS  #############
@@ -314,7 +336,6 @@ class Nfurcation:
 			k += 1
 
 		self._crsec = [end_crsec, bif_crsec, nds_crsec, connect]
-
 
 		
 

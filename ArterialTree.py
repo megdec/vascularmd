@@ -45,7 +45,7 @@ class ArterialTree:
 	##########  CONSTRUCTOR  ############
 	#####################################
 
-	def __init__(self, patient_name, database_name, filename = None):
+	def __init__(self, patient_name, database_name, filename = None, automatic_resampling = True):
 
 
 		# Initiate attributes
@@ -65,6 +65,9 @@ class ArterialTree:
 			self.__set_topo_graph()
 			self._model_graph = None
 			self._crsec_graph = None
+
+			if automatic_resampling:
+				self.automatic_resampling()
 
 
 
@@ -192,6 +195,43 @@ class ArterialTree:
 			return bifurcations
 
 
+	def get_inlet_outlet(self):
+
+		""" Returns the informations about the inlet and outlet of the model (useful for CFD)"""
+
+		if self._model_graph is None:
+			raise ValueError("Please compute model first.")
+		else:
+
+			inlet_nodes = []
+			outlet_nodes = []
+
+			boundary_info = []
+
+			for n in self._model_graph.nodes():
+				if self._model_graph.nodes[n]['type'] == "end":
+					if self._model_graph.in_degree(n) == 0: # Inlet case
+						inlet_nodes.append(n)
+					else:
+						outlet_nodes.append(n)
+
+			for n in inlet_nodes:
+				spl = self._model_graph.edges[[e for e in self._model_graph.out_edges(n)][0]]["spline"]
+				tg = spl.tangent(0.0)
+				center = self._model_graph.nodes[n]["coords"]
+
+				boundary_info.append([center, tg, "inlet"])
+
+			for n in outlet_nodes:
+				spl = self._model_graph.edges[[e for e in self._model_graph.in_edges(n)][0]]["spline"]
+				tg = spl.tangent(1.0)
+				center = self._model_graph.nodes[n]["coords"]
+
+				boundary_info.append([center, tg, "outlet"])
+
+			return boundary_info
+
+
 	#####################################
 	#############  SETTERS  #############
 	#####################################
@@ -252,6 +292,53 @@ class ArterialTree:
 		""" Set the crsec graph of the arterial tree."""
 
 		self._crsec_graph = G
+
+	def automatic_resampling(self):
+		""" Automatically resample data points to a target data point density in order to facilitate the visualization and model edition """
+
+		for e in self._topo_graph.edges():
+			data = np.vstack((self._topo_graph.nodes[e[0]]["coords"], self._topo_graph.edges[e]["coords"], self._topo_graph.nodes[e[1]]["coords"]))
+			
+			# Estimate the data density
+			l = length_polyline(data)[-1]
+			d = len(data) / l
+			num = len(data)
+			resamp_data = data
+
+			mind = 0.6
+			maxd = 0.9
+			if d > maxd:
+				while d > maxd:
+					num -= 1
+					
+					if num < 4:
+						num = 4
+
+					resamp_data = resample(data, num)
+					l = length_polyline(resamp_data)[-1]
+					d = num / l
+					
+					if num == 4:
+						break
+
+			elif d < mind:
+				while d < mind:
+					num+=1
+
+					if num < 4:
+						num = 4
+
+					resamp_data = resample(data, num)
+					l = length_polyline(resamp_data)[-1]
+					d = num / l
+					
+			new_data = resamp_data[1:-1, :]
+			self._topo_graph.edges[e]["coords"] = new_data
+			self._topo_graph.edges[e]["full_id"] = [0]*len(new_data)
+
+
+		# Re-write full
+		self.topo_to_full()
 
 
 	def __load_file(self, filename):
@@ -351,7 +438,7 @@ class ArterialTree:
 
 	
 
-	def model_network(self, radius_model = True, criterion="AIC", akaike=False, max_distance = 6):
+	def model_network(self, radius_model = True, criterion="AIC", akaike=False, max_distance = 6, max_distance_radius = np.inf):
 
 		""" Create Nfurcation objects and approximate centerlines using splines. The network model is stored in the model_graph attribute."""
 
