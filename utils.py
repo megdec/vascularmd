@@ -246,7 +246,7 @@ def resample(D, num = 0):
 
 	D_resamp = []
 	for l in spacing:
-		ind = np.argmax(length > l) -1
+		ind = np.argmax(length > l)-1
 		d = l - length[ind]
 
 		orient = D[ind + 1] - D[ind]

@@ -232,6 +232,7 @@ class ArterialTree:
 			return boundary_info
 
 
+
 	#####################################
 	#############  SETTERS  #############
 	#####################################
@@ -293,7 +294,7 @@ class ArterialTree:
 
 		self._crsec_graph = G
 
-	def automatic_resampling(self):
+	def automatic_resampling(self, mind = 0.4, maxd = 0.6):
 		""" Automatically resample data points to a target data point density in order to facilitate the visualization and model edition """
 
 		for e in self._topo_graph.edges():
@@ -304,9 +305,7 @@ class ArterialTree:
 			d = len(data) / l
 			num = len(data)
 			resamp_data = data
-
-			mind = 0.6
-			maxd = 0.9
+			
 			if d > maxd:
 				while d > maxd:
 					num -= 1
@@ -331,6 +330,7 @@ class ArterialTree:
 					resamp_data = resample(data, num)
 					l = length_polyline(resamp_data)[-1]
 					d = num / l
+		
 					
 			new_data = resamp_data[1:-1, :]
 			self._topo_graph.edges[e]["coords"] = new_data
@@ -509,7 +509,6 @@ class ArterialTree:
 					self.__compute_rotations(n)
 				if self._model_graph.nodes[n]["type"] == "sep":
 					self.__compute_rotations(n)
-			
 
 
 	def __model_furcation(self, n, original_label, criterion, akaike, max_distance):
@@ -1880,7 +1879,7 @@ class ArterialTree:
 		if self._crsec_graph is None:
 
 			print('Computing cross sections with default parameters...')
-			self.compute_cross_sections(24, 0.2) # Get cross section graph
+			self.compute_cross_sections(48, 0.25) # Get cross section graph
 		
 
 		print('Meshing surface...')
@@ -2001,7 +2000,7 @@ class ArterialTree:
 
 
 
-	def mesh_volume(self, layer_ratio = [0.2, 0.3, 0.5], num_a = 10, num_b=10, edg = [], link = True):
+	def mesh_volume(self, layer_ratio = [0.2, 0.4, 0.4], num_a = 4, num_b = 4, edg = [], link = True):
 
 		""" Meshes the volume of the arterial tree with O-grid pattern.
 
@@ -2014,7 +2013,7 @@ class ArterialTree:
 		if self._crsec_graph is None:
 
 			print('Computing cross sections with default parameters...')
-			self.compute_cross_sections(24, 0.2) # Get cross section graph
+			self.compute_cross_sections(48, 0.25) # Get cross section graph
 
 		G = self._crsec_graph
 		
@@ -2363,11 +2362,13 @@ class ArterialTree:
 		"""
 
 
-		if sum(layer_ratio) != 1.0:
+		if abs(sum(layer_ratio) - 1.0) > 10**(3):
 			raise ValueError("The sum of the layer ratios must equal 1.")
+
 			
 		# Get the suface nodes of each individual half section
 		Nh = int((N - 2)/2)
+		rad = norm(crsec[0] - center)
 
 		nb_nds_ogrid = int(N * (num_a + num_b + 3) + ((N - 4)/4)**2)
 		nb_vertices = int(nb_nds_ogrid +  (nbif - 2) * ((N/2 - 1) * (num_a + num_b + 3) + (N - 4)/4 * (((N - 4)/4 -1)/2)))
@@ -2396,7 +2397,7 @@ class ArterialTree:
 				for n in [0, int(N/8), int(N/4)]:
 
 					v = quarters[q, n] - center
-					pt = (center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist()
+					pt = (center + (v / norm(v)) * (layer_ratio[2] * rad)).tolist()
 					square_corners.append(pt)
 					
 
@@ -2406,7 +2407,7 @@ class ArterialTree:
 				if q == 0:
 					# Point of the horizontal shared line
 					v = square_corners[2] - quarters[0, -1] # Direction of the ray
-					pb = quarters[0][-1] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+					pb = quarters[0][-1] + (v / norm(v)) * (layer_ratio[0] * rad) # Starting point of layer b
 					if h == 0:
 						ray_vertices = lin_interp(quarters[0, -1], pb, num_a + 2)[:-1] + lin_interp(pb, square_corners[2], num_b + 2)[:-1] + lin_interp(square_corners[2], center, N/8 + 1)
 					else: 
@@ -2420,7 +2421,7 @@ class ArterialTree:
 					if i <= (quarters.shape[1]-1) / 2: 
 						
 						v = square_sides1[0][i] - quarters[q, i] # Direction of the ray
-						pb = quarters[q, i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+						pb = quarters[q, i] + (v / norm(v)) * (layer_ratio[0] * rad) # Starting point of layer b
 
 						if i == 0:
 							if h == 0:
@@ -2433,7 +2434,7 @@ class ArterialTree:
 					else: # Second half points
 						
 						v = square_sides2[1][i-int(N/8)] - quarters[q, i] # Direction of the ray
-						pb = quarters[q, i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+						pb = quarters[q, i] + (v / norm(v)) * (layer_ratio[0] * rad) # Starting point of layer b
 
 						ray_vertices = lin_interp(quarters[q, i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][i-int(N/8)], num_b + 2)[:-1]
 					
@@ -2521,12 +2522,13 @@ class ArterialTree:
 		layer_ratio, num_a, num_b -- parameters of the O-grid
 		"""
 
-		if sum(layer_ratio) != 1.0:
+		if abs(sum(layer_ratio) - 1.0) > 10**(3):
 			raise ValueError("The sum of the layer ratios must equal 1.")
 		
 		
 		N = crsec.shape[0]
 		nb_vertices = int(N * (num_a + num_b + 3) + ((N - 4)/4)**2)
+		rad = norm(crsec[0] - center)
 
 		vertices = np.zeros((nb_vertices, 3))
 		
@@ -2544,7 +2546,7 @@ class ArterialTree:
 				if n == N:
 					n = 0
 				v = crsec[n] - center
-				pt = (center + v / norm(v) * (layer_ratio[2] * norm(v))).tolist()
+				pt = (center + v / norm(v) * (layer_ratio[2] * rad)).tolist()
 				square_corners.append(pt)
 				
 
@@ -2557,7 +2559,7 @@ class ArterialTree:
 				if j <= N/8: 
 					
 					v = square_sides1[0][j] - crsec[i] # Direction of the ray
-					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+					pb = crsec[i] + (v / norm(v)) * (layer_ratio[0] * rad) # Starting point of layer b
 
 					if s != 0 and j == 0:
 						ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides1[0][j], num_b + 2)[:-1]  # Shared square
@@ -2570,7 +2572,7 @@ class ArterialTree:
 
 				else: 
 					v = square_sides2[1][j-int(N/8)] - crsec[i] # Direction of the ray
-					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * norm(v)) # Starting point of layer b
+					pb = crsec[i] + v / norm(v) * (layer_ratio[0] * rad) # Starting point of layer b
 
 					ray_vertices = lin_interp(crsec[i], pb, num_a + 2)[:-1] + lin_interp(pb, square_sides2[1][j-int(N/8)], num_b + 2)[:-1]
 					

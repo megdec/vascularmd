@@ -303,6 +303,7 @@ class Spline:
 				t = 1.0
 			if t < 0.0:
 				t = 0.0
+			
 
 			pt = self._spl.evaluate_single(t)
 

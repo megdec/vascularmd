@@ -141,6 +141,9 @@ class Nfurcation:
 	def get_CT(self):
 		return self._CT 
 
+	def get_SP(self):
+		return self._SP
+
 	def get_crsec(self):
 		if self._crsec != None:
 			return self._crsec
@@ -162,6 +165,7 @@ class Nfurcation:
 
 	def get_n(self):
 		return self.n 
+
 
 	def get_reference_vectors(self):
 

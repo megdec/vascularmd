@@ -57,7 +57,7 @@ class Editor:
 
 		slider_length = 300
 		slider_width = 5
-		slider_right_margin = 50
+		slider_right_margin = 90
 
 		self.scene = scene
 
@@ -99,7 +99,6 @@ class Editor:
 		scene.append_to_caption('\tOutput filename ')
 		self.save_filename_winput = winput(text="vascular_network", bind = self.update_save_filename, width=200)
 
-
 		scene.append_to_caption('\n\n')
 
 		# Check boxes
@@ -127,17 +126,19 @@ class Editor:
 		self.volume_button = button(text="Volume", bind=self.mesh_volume)
 		
 
-		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t\t")
+		scene.append_to_caption("\n\nOpacity\t\t\t\t\t\t\t\t\t")
+
 
 		self.angle_checkbox_topo = checkbox(text="Show angles", bind=self.update_visibility_angle, checked=False, mode = "topo")
-		scene.append_to_caption("\t\t\t\t\t\t\t\t")
+		scene.append_to_caption("\t\t\t\t\t\t\t")
 
 		# Display bifurcations and control points
+
 		self.angle_checkbox_model = checkbox(text="Show angles", bind=self.update_visibility_angle, checked=False, mode = "model")
 		scene.append_to_caption("\t")
 		self.furcation_checkbox = checkbox(text="Show furcations", bind=self.update_visibility_furcations, checked=False)
 
-		scene.append_to_caption('\t\t\tDisplay ')
+		scene.append_to_caption('\t\tDisplay ')
 
 		self.mesh_representation_menu = menu(choices = ['default', 'wireframe', 'sections', 'solid'], selected = 'default', index=0, bind = self.update_mesh_representation)
 
@@ -146,7 +147,7 @@ class Editor:
 		# Transparency slides
 		self.opacity_sliders  = {'full' : slider(bind = self.update_opacity_state, value = 1, length = slider_length, width = slider_width, right = slider_right_margin)}
 		#self.opacity_sliders['topo'] = slider(bind = self.update_opacity_state, value = 1, length = slider_length, width = slider_width, right = slider_right_margin - 3)
-		scene.append_to_caption('\t\t\t\t\t\t\t\t\t\t\t')
+		scene.append_to_caption('\t\t\t\t\t\t\t\t\t\t')
 		self.opacity_value = {'full' : 1}
 
 		self.control_pts_checkbox = checkbox(text="Show ctrl pts", bind=self.update_visibility_control_pts, checked=False)
@@ -154,16 +155,16 @@ class Editor:
 		self.control_radius_checkbox = checkbox(text="Show ctrl radius", bind=self.update_visibility_control_radius, checked=False)
 
 		# Size sliders
-		scene.append_to_caption('\nEdge radius\t\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\t\tEdge radius\n')
+		scene.append_to_caption('\nEdge radius\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\tEdge radius\t\t\t\t\t\t\t\tEdge radius\n')
 		
 		self.edge_size_sliders = {'full' :  slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode = "full")}
 		self.edge_size_sliders['topo'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "topo")
 		self.edge_size_sliders['model'] = slider(bind = self.update_edge_size, value = 0.2, min=0, max = 0.5, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "model")
-		self.edge_size_sliders['mesh'] = slider(bind = self.update_edge_size, value = 0.05, min=0, max = 0.2, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "mesh")
+		self.edge_size_sliders['mesh'] = slider(bind = self.update_edge_size, value = 0.02, min=0, max = 0.1, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "mesh")
 
-		self.edge_size = {'full' : 0.2, 'topo' : 0.2, 'model': 0.2, 'mesh' : 0.05}
+		self.edge_size = {'full' : 0.2, 'topo' : 0.2, 'model': 0.2, 'mesh' : 0.02}
 		
-		scene.append_to_caption('\nResample\t\t\t\t\t\t\t\t\tNode radius\t\t\t\t\t\t\t\t\tNode radius\n')
+		scene.append_to_caption('\nResample\t\t\t\t\t\t\t\tNode radius\t\t\t\t\t\t\t\tNode radius\n')
 		self.node_size_sliders = {'full' : slider(bind = self.resample_nodes, value = 1, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10, mode  = "full")}
 		self.node_size_sliders['topo'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, left= 10, right = slider_right_margin -10, mode  = "topo")
 		self.node_size_sliders['model'] = slider(bind = self.update_node_size, value = 0.5, min=0, max = 1, length=slider_length, width = slider_width, right = slider_right_margin, mode  = "model")
@@ -171,22 +172,26 @@ class Editor:
 
 		self.node_size = {'topo' : 0.5, 'model' : 0.5}
 
-
 		scene.append_to_caption('Nb nodes (nx8) ')
-		self.parameters_winput = {'N' : winput(text=str(24), bind = self.update_mesh_parameters, width=50, parameter = 'N')}
+		self.parameters_winput = {'N' : winput(text=str(48), bind = self.update_mesh_parameters, width=50, parameter = 'N')}
 		scene.append_to_caption('\tSection density [0,1] ')
-		self.parameters_winput['d'] = winput(text=str(0.2), bind = self.update_mesh_parameters, width=50, parameter = 'd')
+		self.parameters_winput['d'] = winput(text=str(0.25), bind = self.update_mesh_parameters, width=50, parameter = 'd')
 		scene.append_to_caption('\n')
 		
-		scene.append_to_caption('\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
+		scene.append_to_caption('\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
 		self.smooth_checkboxes = {'spatial' : checkbox(text= "Smooth spatial  ", bind = self.select_smooth_parameter, checked = False, parameter = 'spatial')}
 		self.smooth_checkboxes['radius']  = checkbox(text= "Smooth radius", bind = self.select_smooth_parameter, checked = False, parameter = 'radius')
 
-		scene.append_to_caption('\t\t\t Target mesh path ')
-		self.parameters_winput['path'] = winput(text="", bind = self.update_mesh_parameters, width=200, parameter = 'path')
-		self.target_mesh = None
+		scene.append_to_caption('\t\t\t Layer size : a ')
+		self.parameters_winput['a'] = winput(text=str(0.2), bind = self.update_mesh_parameters, width=50, parameter = 'a')
 
-		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
+		scene.append_to_caption('  b ')
+		self.parameters_winput['b'] = winput(text=str(0.4), bind = self.update_mesh_parameters, width=50, parameter = 'b')
+
+		scene.append_to_caption('  c ')
+		self.parameters_winput['c'] = winput(text=str(0.4), bind = self.update_mesh_parameters, width=50, parameter = 'c')
+
+		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t') 
 		
 		self.lbds = 0
 		scene.append_to_caption('Lbd spatial : ')
@@ -194,7 +199,15 @@ class Editor:
 		self.lbdr = 0
 		scene.append_to_caption('\t\tLbd radius : ')
 		self.lbdr_text = wtext(text="")
-		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t')  
+
+		scene.append_to_caption('\t\t\t\t Nb layers : num_a ')
+		self.parameters_winput['num_a'] = winput(text=str(4), bind = self.update_mesh_parameters, width=50, parameter = 'num_a')
+
+		scene.append_to_caption('  num_b ')
+		self.parameters_winput['num_b'] = winput(text=str(4), bind = self.update_mesh_parameters, width=50, parameter = 'num_b')
+
+
+		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t')  
 
 
 		# Widget to add pathologies to the network
@@ -210,10 +223,31 @@ class Editor:
 		self.pathology = []
 		self.pathology_output_dir = "pathology_templates/new_template/"
 
+		scene.append_to_caption('\t Target mesh path ')
+		self.parameters_winput['path'] = winput(text="", bind = self.update_mesh_parameters, width=200, parameter = 'path')
+		self.target_mesh = None
 
-		# Meshing default parameter
-		self.N = 24 # Number of nodes in one cross section (nx8)
-		self.d = 0.2 # Density of cross sections
+		scene.append_to_caption('\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t')  
+
+		scene.append_to_caption('Max distance : coords ')
+		self.parameters_winput['max_coords'] = winput(text=str(6), bind = self.update_mesh_parameters, width=50, parameter = 'max_coords')
+
+		scene.append_to_caption('  radius ')
+		self.parameters_winput['max_radius'] = winput(text=str(1), bind = self.update_mesh_parameters, width=50, parameter = 'max_radius')
+
+		# Model default parameters
+		self.max_coords = 6
+		self.max_radius = 1
+
+		# Meshing default parameters
+		self.N = 48 # Number of nodes in one cross section (nx8)
+		self.d = 0.25 # Density of cross sections
+
+		self.a = 0.2
+		self.b = 0.4
+		self.c = 0.4
+		self.num_a = 4
+		self.num_b = 4
 
 		self.mesh_display_limit = 40000
 
@@ -313,20 +347,24 @@ class Editor:
 	def node_color(self, n, mode):
 		""" Returns the node color, depending on the mode"""
 
-		if mode == 'full' or mode=="data":
-			res = color.red
-		else:
-			if mode =='topo':
-				G = self.tree.get_topo_graph()
+		try:
+			if mode == 'full' or mode=="data":
+				res = color.red
 			else:
-				G = self.tree.get_model_graph()
+				if mode =='topo':
+					G = self.tree.get_topo_graph()
+				else:
+					G = self.tree.get_model_graph()
 
-			typ = G.nodes[n]['type']
-			if typ == 'end' and G.in_degree(n) == 0:
-				typ = 'inlet'
+				typ = G.nodes[n]['type']
+				if typ == 'end' and G.in_degree(n) == 0:
+					typ = 'inlet'
 
-			col = {'end' : color.blue, 'inlet' : color.orange, 'bif' : color.red, 'reg' : color.green, 'sep': color.purple, 'sink' : color.green}
-			res = col[typ]
+				col = {'end' : color.blue, 'inlet' : color.orange, 'bif' : color.red, 'reg' : color.green, 'sep': color.purple, 'sink' : color.green}
+				res = col[typ]
+		except:
+			res = color.black
+
 
 		return res
 
@@ -1397,7 +1435,7 @@ class Editor:
 					self.output_message("Computing model...")
 
 					self.disable(True, checkboxes = True)
-					self.tree.model_network()
+					self.tree.model_network(max_distance = self.max_coords)
 					G = self.tree.get_model_graph()
 					
 					self.output_message("Model complete!")
@@ -1637,7 +1675,12 @@ class Editor:
 		mode = b.mode # The mode of the button is the representation it controls
 		self.modified[mode] = False
 
+		self.unselect("node", mode)
+		self.unselect("edge", mode)
+
+
 		if mode == "full":
+
 			self.refresh_display("full")
 			self.tree.set_full_graph(self.tree.get_full_graph())
 			self.refresh_display("topo")
@@ -1683,8 +1726,6 @@ class Editor:
 			self.output_message("Model graph updated.")
 
 
-		self.unselect("node", mode)
-		self.unselect("edge", mode)
 		self.disable(False, checkboxes = True)
 
 
@@ -2844,7 +2885,37 @@ class Editor:
 		elif b.parameter == "d":
 			self.d = float(self.parameters_winput['d'].text)
 			self.output_message("Density of cross section set to " + str(self.d) + ".")
-			
+
+		elif b.parameter == "a" or b.parameter == "b" or b.parameter == "c":
+
+			tot =  abs(float(self.parameters_winput['a'].text)) +  abs(float(self.parameters_winput['b'].text)) +  abs(float(self.parameters_winput['c'].text))
+
+			self.a =  abs(float(self.parameters_winput['a'].text)) / tot 
+			self.b = abs(float(self.parameters_winput['b'].text)) / tot
+			self.c = abs(float(self.parameters_winput['c'].text)) / tot  
+			self.output_message("Relative size of the different internal layers set to " + str(round(self.a, 2)) + ", "+ str(round(self.b, 2)) + ", "+ str(round(self.c, 2)) + ".")
+
+		elif b.parameter == "num_a":
+
+			self.num_a = abs(int(self.parameters_winput['num_a'].text))
+			self.output_message("Number of layers in the boundary set to " + str(self.num_a) + ".")
+
+
+		elif b.parameter == "num_b":
+
+			self.num_b = abs(int(self.parameters_winput['num_b'].text))
+			self.output_message("Number of layers in the intermediate part set to " + str(self.num_b) + ".")
+
+		elif b.parameter == "max_coords":
+
+			self.max_coords = abs(float(self.parameters_winput["max_coords"].text))
+			self.output_message("The maximum distance of the model to data points coordinates was set to " + str(self.max_coords) + " x radius.")
+
+		elif b.parameter == "max_radius":
+
+			self.max_radius = abs(float(self.parameters_winput['max_radius'].text))
+			self.output_message("The maximum distance of the model to the data points radius was set to " + str(self.max_radius) + " x radius.")
+				
 		else:
 			try:
 				self.target_mesh = pv.read(self.parameters_winput['path'].text)
@@ -2953,7 +3024,7 @@ class Editor:
 
 			self.extension_state = True
 			self.output_message("Adding inlet and outlet extensions...")
-			self.tree.add_extensions(edg = self.converted_selection())
+			self.tree.add_extensions(edg = self.converted_selection(), size = 10)
 			self.refresh_display("model")
 			#self.refresh_display("mesh")
 			self.extension_button.text = "Unextend"
@@ -2976,7 +3047,7 @@ class Editor:
 
 		self.disable(True, checkboxes = True)
 		self.output_message("Meshing the volume...")
-		self.tree.mesh_volume(edg = self.converted_selection())
+		self.tree.mesh_volume(layer_ratio = [self.a, self.b, self.c], num_a = self.num_a, num_b= self.num_b, edg = self.converted_selection())
 		self.output_message("Volume meshed.")
 		self.disable(False, checkboxes = True)
 

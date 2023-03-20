@@ -614,6 +614,26 @@ class Model:
 
 		return np.array(t)
 
+	def plot_basis_functions(self):
+		""" Plots the basis functions """
+
+		times = np.linspace(0,1,100)
+
+		N = np.zeros((len(times), self._n))
+		for i in range(len(times)):
+			N[i, :] = self.__basis_functions(times[i])
+
+		for j in range(self._n):
+			plt.plot(times, N[:, j], linewidth=5)
+		plt.scatter(self._knot, [0]*len(self._knot), color = 'black', s = 100, zorder = 7)
+
+		ax = plt.gca()
+		ax.tick_params(axis='both', which='major', labelsize=36)
+		ax.tick_params(axis='both', which='minor', labelsize=36)
+		
+		plt.show()
+
+
 
 	def __basis_functions(self, t):
 
