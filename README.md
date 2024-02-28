@@ -99,7 +99,7 @@ The data at the different stage of the meshing process are encoded in graphs. Fo
 If you use this code, please cite the following articles. 
  
 **For the meshing framework :**
-
+Decroocq, M., Frindel, C., Rougé, P., Ohta, M., & Lavoué, G. (2023). Modeling and hexahedral meshing of cerebral arterial networks from centerlines. Medical Image Analysis, 89, 102912.
 
 **For the user interface :**
 
